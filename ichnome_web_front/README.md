@@ -1,3 +1,3 @@
-# gitanpot
+# ichnome-web-front
 
-web frontend of [taskie/gitan](https://github.com/taskie/gitan) (very experimental)
+frontend of ichnome-web
