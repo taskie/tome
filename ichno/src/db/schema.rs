@@ -1,5 +1,5 @@
 table! {
-    attributes (id) {
+    attrs (id) {
         id -> Integer,
         entity_type -> Integer,
         entity_id -> Integer,
@@ -28,17 +28,12 @@ table! {
 }
 
 table! {
-    histories (id) {
+    footprints (id) {
         id -> Integer,
-        group_id -> Text,
-        path -> Text,
-        version -> Integer,
-        status -> Integer,
-        mtime -> Nullable<Timestamp>,
-        footprint_id -> Nullable<Integer>,
-        digest -> Nullable<Text>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        digest -> Text,
+        size -> BigInt,
+        fast_digest -> BigInt,
+        git_object_id -> Text,
     }
 }
 
@@ -62,12 +57,17 @@ table! {
 }
 
 table! {
-    footprints (id) {
+    histories (id) {
         id -> Integer,
-        digest -> Text,
-        size -> BigInt,
-        fast_digest -> BigInt,
-        git_object_id -> Text,
+        group_id -> Text,
+        path -> Text,
+        version -> Integer,
+        status -> Integer,
+        mtime -> Nullable<Timestamp>,
+        footprint_id -> Nullable<Integer>,
+        digest -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
 
@@ -89,4 +89,11 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(attributes, contents, histories, groups, footprints, stats,);
+allow_tables_to_appear_in_same_query!(
+    attrs,
+    contents,
+    footprints,
+    groups,
+    histories,
+    stats,
+);
