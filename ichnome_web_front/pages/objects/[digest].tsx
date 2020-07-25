@@ -4,8 +4,8 @@ import { useRouter } from "next/router";
 import { uria } from "@/utils/uri";
 import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
-import { GetObjectResponse } from "@/api/types";
-import ObjectView from "@/components/Object";
+import { GetFootprintResponse } from "@/api/types";
+import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
 
@@ -13,15 +13,15 @@ type Query = {
   digest: string;
 };
 
-type Response = GetObjectResponse;
+type Response = GetFootprintResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { object, stats, histories } }) => {
+const ResponseView: React.FC<{ response: Response }> = ({ response: { footprint, stats, histories } }) => {
   return (
     <>
-      <h2>Object</h2>
-      <ObjectView object={object} />
+      <h2>Footprint</h2>
+      <FootprintView footprint={footprint} />
       {stats != null ? (
         <>
           <h2>Stats</h2>
@@ -38,7 +38,7 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { object, st
   );
 };
 
-export const ObjectPage: NextPage<Props> = (props) => {
+export const FootprintPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
   const { digest } = (rawQuery as unknown) as Query;
@@ -46,19 +46,19 @@ export const ObjectPage: NextPage<Props> = (props) => {
     <div className="container">
       <Head>
         <title>
-          Object: {digest} - {applicationName}
+          Footprint: {digest} - {applicationName}
         </title>
       </Head>
-      <h1>Object: {digest.slice(0, 8)}</h1>
+      <h1>Footprint: {digest.slice(0, 8)}</h1>
       {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
     </div>
   );
 };
 
-ObjectPage.getInitialProps = async ({ query: rawQuery }) => {
+FootprintPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
     const { digest } = (rawQuery as unknown) as Query;
-    const path = uria`objects/${digest}`;
+    const path = uria`footprints/${digest}`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {
@@ -67,4 +67,4 @@ ObjectPage.getInitialProps = async ({ query: rawQuery }) => {
   }
 };
 
-export default ObjectPage;
+export default FootprintPage;

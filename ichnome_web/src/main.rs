@@ -11,8 +11,8 @@ use diesel::{
     MysqlConnection,
 };
 use ichnome::{
-    db::{MysqlHistories, MysqlNamespaces, MysqlObjects, MysqlStats},
-    History, Namespace, Object, Stat, META_NAMESPACE_ID,
+    db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats},
+    Footprint, Group, History, Stat, META_NAMESPACE_ID,
 };
 use serde::Serialize;
 use structopt::{clap, StructOpt};
@@ -21,39 +21,38 @@ type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 
 #[derive(Serialize)]
 struct GetStatsResponse {
-    namespace: Namespace,
+    group: Group,
     stats: Vec<Stat>,
 }
 
 fn get_stats_impl(
     conn: &MysqlConnection,
-    namespace_id: &str,
+    group_id: &str,
 ) -> Result<Option<GetStatsResponse>, Box<dyn std::error::Error>> {
-    let namespace = MysqlNamespaces::find(conn, namespace_id)?;
-    match namespace {
-        Some(namespace) => {
-            let stats = MysqlStats::select_by_namespace_id(conn, namespace_id)?;
-            Ok(Some(GetStatsResponse { namespace, stats }))
+    let group = MysqlGroups::find(conn, group_id)?;
+    match group {
+        Some(group) => {
+            let stats = MysqlStats::select_by_group_id(conn, group_id)?;
+            Ok(Some(GetStatsResponse { group, stats }))
         }
         None => Ok(None),
     }
 }
 
-#[get("/stats/{namespace_id}")]
+#[get("/stats/{group_id}")]
 async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<String>) -> Result<impl Responder, Error> {
-    let namespace_id = path_params.into_inner();
-    let namespace_id_2 = namespace_id.clone();
+    let group_id = path_params.into_inner();
+    let group_id_2 = group_id.clone();
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp =
-        web::block(move || get_stats_impl(&conn, &namespace_id).map_err(|e| e.to_string())).await.map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp = web::block(move || get_stats_impl(&conn, &group_id).map_err(|e| e.to_string())).await.map_err(|e| {
+        error!("{}", e);
+        HttpResponse::InternalServerError().finish()
+    })?;
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
-            let res = HttpResponse::NotFound().body(format!("No namespace: {}", &namespace_id_2));
+            let res = HttpResponse::NotFound().body(format!("No group: {}", &group_id_2));
             Ok(res)
         }
     }
@@ -61,50 +60,50 @@ async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<String>) -> R
 
 #[derive(Serialize)]
 struct GetStatResponse {
-    namespace: Namespace,
+    group: Group,
     stat: Stat,
     histories: Option<Vec<History>>,
-    objects: Option<HashMap<i32, Object>>,
+    footprints: Option<HashMap<i32, Footprint>>,
     eq_stats: Option<Vec<Stat>>,
 }
 
 fn get_stat_impl(
     conn: &MysqlConnection,
-    namespace_id: &str,
+    group_id: &str,
     path: &str,
 ) -> Result<Option<GetStatResponse>, Box<dyn std::error::Error>> {
-    let namespace = MysqlNamespaces::find(conn, namespace_id).map_err(|e| e.to_string())?;
-    if let Some(namespace) = namespace {
-        let stat = MysqlStats::find_by_path(conn, namespace_id, path)?;
+    let group = MysqlGroups::find(conn, group_id).map_err(|e| e.to_string())?;
+    if let Some(group) = group {
+        let stat = MysqlStats::find_by_path(conn, group_id, path)?;
         if let Some(stat) = stat {
-            let histories = Some(MysqlHistories::select_by_path(conn, namespace_id, path)?);
-            let objects = Some({
-                let mut object_ids = vec![];
-                if let Some(object_id) = stat.object_id {
-                    object_ids.push(object_id)
+            let histories = Some(MysqlHistories::select_by_path(conn, group_id, path)?);
+            let footprints = Some({
+                let mut footprint_ids = vec![];
+                if let Some(footprint_id) = stat.footprint_id {
+                    footprint_ids.push(footprint_id)
                 }
                 if let Some(histories) = histories.as_ref() {
                     for history in histories.iter() {
-                        if let Some(object_id) = history.object_id {
-                            object_ids.push(object_id);
+                        if let Some(footprint_id) = history.footprint_id {
+                            footprint_ids.push(footprint_id);
                         }
                     }
                 }
-                let object_list = MysqlObjects::select(conn, &object_ids)?;
-                let mut objects = HashMap::new();
-                for object in object_list {
-                    objects.insert(object.id, object);
+                let footprint_list = MysqlFootprints::select(conn, &footprint_ids)?;
+                let mut footprints = HashMap::new();
+                for footprint in footprint_list {
+                    footprints.insert(footprint.id, footprint);
                 }
-                objects
+                footprints
             });
             let eq_stats = Some({
-                if let Some(object_id) = stat.object_id {
-                    MysqlStats::select_by_object_id(conn, None, object_id)?
+                if let Some(footprint_id) = stat.footprint_id {
+                    MysqlStats::select_by_footprint_id(conn, None, footprint_id)?
                 } else {
                     vec![]
                 }
             });
-            Ok(Some(GetStatResponse { namespace, stat, histories, objects, eq_stats }))
+            Ok(Some(GetStatResponse { group, stat, histories, footprints, eq_stats }))
         } else {
             Ok(None)
         }
@@ -113,16 +112,15 @@ fn get_stat_impl(
     }
 }
 
-#[get("/stats/{namespace_id}/{path:.*}")]
+#[get("/stats/{group_id}/{path:.*}")]
 async fn get_stat(pool: web::Data<DbPool>, path_params: web::Path<(String, String)>) -> Result<impl Responder, Error> {
-    let (namespace_id, path) = path_params.into_inner();
-    let namespace_id_2 = namespace_id.clone();
+    let (group_id, path) = path_params.into_inner();
+    let group_id_2 = group_id.clone();
     let path_2 = path.clone();
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_stat_impl(&conn, &namespace_id, &path).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| {
+    let resp =
+        web::block(move || get_stat_impl(&conn, &group_id, &path).map_err(|e| e.to_string())).await.map_err(|e| {
             error!("{}", e);
             HttpResponse::InternalServerError().finish()
         })?;
@@ -130,51 +128,53 @@ async fn get_stat(pool: web::Data<DbPool>, path_params: web::Path<(String, Strin
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
-            let res = HttpResponse::NotFound().body(format!("No stat: {}/{}", &namespace_id_2, &path_2));
+            let res = HttpResponse::NotFound().body(format!("No stat: {}/{}", &group_id_2, &path_2));
             Ok(res)
         }
     }
 }
 
 #[derive(Serialize)]
-struct GetObjectResponse {
-    object: Object,
-    namespace_id: Option<String>,
+struct GetFootprintResponse {
+    footprint: Footprint,
+    group_id: Option<String>,
     stats: Option<Vec<Stat>>,
     histories: Option<Vec<History>>,
 }
 
-fn get_object_impl(
+fn get_footprint_impl(
     conn: &MysqlConnection,
     digest: &str,
-) -> Result<Option<GetObjectResponse>, Box<dyn std::error::Error>> {
-    let object = MysqlObjects::find_by_digest(conn, digest)?;
-    let namespace_id: Option<String> = None;
-    if let Some(object) = object {
-        let stats = Some(MysqlStats::select_by_object_id(conn, namespace_id.as_ref().map(|s| s.as_str()), object.id)?);
+) -> Result<Option<GetFootprintResponse>, Box<dyn std::error::Error>> {
+    let footprint = MysqlFootprints::find_by_digest(conn, digest)?;
+    let group_id: Option<String> = None;
+    if let Some(footprint) = footprint {
+        let stats =
+            Some(MysqlStats::select_by_footprint_id(conn, group_id.as_ref().map(|s| s.as_str()), footprint.id)?);
         let histories =
-            Some(MysqlHistories::select_by_object_id(conn, namespace_id.as_ref().map(|s| s.as_str()), object.id)?);
-        Ok(Some(GetObjectResponse { object, namespace_id, stats, histories }))
+            Some(MysqlHistories::select_by_footprint_id(conn, group_id.as_ref().map(|s| s.as_str()), footprint.id)?);
+        Ok(Some(GetFootprintResponse { footprint, group_id, stats, histories }))
     } else {
         Ok(None)
     }
 }
 
-#[get("/objects/{digest}")]
-async fn get_object(pool: web::Data<DbPool>, path_params: web::Path<String>) -> Result<impl Responder, Error> {
+#[get("/footprints/{digest}")]
+async fn get_footprint(pool: web::Data<DbPool>, path_params: web::Path<String>) -> Result<impl Responder, Error> {
     let digest = path_params.into_inner();
     let digest_2 = digest.clone();
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_object_impl(&conn, &digest).map_err(|e| e.to_string())).await.map_err(|e| {
-        error!("{}", e);
-        HttpResponse::InternalServerError().finish()
-    })?;
+    let resp =
+        web::block(move || get_footprint_impl(&conn, &digest).map_err(|e| e.to_string())).await.map_err(|e| {
+            error!("{}", e);
+            HttpResponse::InternalServerError().finish()
+        })?;
 
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
-            let res = HttpResponse::NotFound().body(format!("No object: {}", digest_2));
+            let res = HttpResponse::NotFound().body(format!("No footprint: {}", digest_2));
             Ok(res)
         }
     }
@@ -190,90 +190,89 @@ pub struct Opt {
 }
 
 #[derive(Serialize)]
-struct GetNamespacesResponse {
-    namespaces: Vec<Namespace>,
+struct GetGroupsResponse {
+    groups: Vec<Group>,
 }
 
-fn get_namespaces_impl(conn: &MysqlConnection) -> Result<Option<GetNamespacesResponse>, Box<dyn std::error::Error>> {
-    let namespaces = MysqlNamespaces::select_all(conn)?;
-    Ok(Some(GetNamespacesResponse { namespaces }))
+fn get_groups_impl(conn: &MysqlConnection) -> Result<Option<GetGroupsResponse>, Box<dyn std::error::Error>> {
+    let groups = MysqlGroups::select_all(conn)?;
+    Ok(Some(GetGroupsResponse { groups }))
 }
 
-#[get("/namespaces")]
-async fn get_namespaces(pool: web::Data<DbPool>) -> Result<impl Responder, Error> {
+#[get("/groups")]
+async fn get_groups(pool: web::Data<DbPool>) -> Result<impl Responder, Error> {
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_namespaces_impl(&conn).map_err(|e| e.to_string())).await.map_err(|e| {
+    let resp = web::block(move || get_groups_impl(&conn).map_err(|e| e.to_string())).await.map_err(|e| {
         error!("{}", e);
         HttpResponse::InternalServerError().finish()
     })?;
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
-            let res = HttpResponse::NotFound().body("No namespaces");
+            let res = HttpResponse::NotFound().body("No groups");
             Ok(res)
         }
     }
 }
 
 #[derive(Serialize)]
-struct GetNamespaceResponse {
-    namespace: Namespace,
+struct GetGroupResponse {
+    group: Group,
     stat: Option<Stat>,
     histories: Option<Vec<History>>,
-    objects: Option<HashMap<i32, Object>>,
+    footprints: Option<HashMap<i32, Footprint>>,
 }
 
-fn get_namespace_impl(
+fn get_group_impl(
     conn: &MysqlConnection,
-    namespace_id: &str,
-) -> Result<Option<GetNamespaceResponse>, Box<dyn std::error::Error>> {
-    let namespace = MysqlNamespaces::find(conn, namespace_id)?;
-    if let Some(namespace) = namespace {
-        let stat = MysqlStats::find_by_path(conn, META_NAMESPACE_ID, namespace_id)?;
-        let histories = Some(MysqlHistories::select_by_path(conn, META_NAMESPACE_ID, namespace_id)?);
-        let objects = Some({
-            let mut object_ids = vec![];
+    group_id: &str,
+) -> Result<Option<GetGroupResponse>, Box<dyn std::error::Error>> {
+    let group = MysqlGroups::find(conn, group_id)?;
+    if let Some(group) = group {
+        let stat = MysqlStats::find_by_path(conn, META_NAMESPACE_ID, group_id)?;
+        let histories = Some(MysqlHistories::select_by_path(conn, META_NAMESPACE_ID, group_id)?);
+        let footprints = Some({
+            let mut footprint_ids = vec![];
             if let Some(stat) = stat.as_ref() {
-                if let Some(object_id) = stat.object_id {
-                    object_ids.push(object_id)
+                if let Some(footprint_id) = stat.footprint_id {
+                    footprint_ids.push(footprint_id)
                 }
             }
             if let Some(histories) = histories.as_ref() {
                 for history in histories.iter() {
-                    if let Some(object_id) = history.object_id {
-                        object_ids.push(object_id);
+                    if let Some(footprint_id) = history.footprint_id {
+                        footprint_ids.push(footprint_id);
                     }
                 }
             }
-            let object_list = MysqlObjects::select(conn, &object_ids)?;
-            let mut objects = HashMap::new();
-            for object in object_list {
-                objects.insert(object.id, object);
+            let footprint_list = MysqlFootprints::select(conn, &footprint_ids)?;
+            let mut footprints = HashMap::new();
+            for footprint in footprint_list {
+                footprints.insert(footprint.id, footprint);
             }
-            objects
+            footprints
         });
-        Ok(Some(GetNamespaceResponse { namespace, stat, histories, objects }))
+        Ok(Some(GetGroupResponse { group, stat, histories, footprints }))
     } else {
         Ok(None)
     }
 }
 
-#[get("/namespaces/{namespace_id}")]
-async fn get_namespace(pool: web::Data<DbPool>, path_params: web::Path<String>) -> Result<impl Responder, Error> {
-    let namespace_id = path_params.into_inner();
-    let namespace_id_2 = namespace_id.clone();
+#[get("/groups/{group_id}")]
+async fn get_group(pool: web::Data<DbPool>, path_params: web::Path<String>) -> Result<impl Responder, Error> {
+    let group_id = path_params.into_inner();
+    let group_id_2 = group_id.clone();
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp =
-        web::block(move || get_namespace_impl(&conn, &namespace_id).map_err(|e| e.to_string())).await.map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp = web::block(move || get_group_impl(&conn, &group_id).map_err(|e| e.to_string())).await.map_err(|e| {
+        error!("{}", e);
+        HttpResponse::InternalServerError().finish()
+    })?;
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
-            let res = HttpResponse::NotFound().body(format!("No namespace: {}", &namespace_id_2));
+            let res = HttpResponse::NotFound().body(format!("No group: {}", &group_id_2));
             Ok(res)
         }
     }
@@ -294,9 +293,9 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .service(get_stats)
             .service(get_stat)
-            .service(get_object)
-            .service(get_namespaces)
-            .service(get_namespace)
+            .service(get_footprint)
+            .service(get_groups)
+            .service(get_group)
     })
     .bind(&opt.address)?
     .run()

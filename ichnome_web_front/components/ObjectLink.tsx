@@ -7,12 +7,12 @@ type Props = {
   length?: number;
 };
 
-export const ObjectLink: React.FC<Props> = ({ digest, length }) => (
-  <Link href={uri`/objects/${digest}`}>
+export const FootprintLink: React.FC<Props> = ({ digest, length }) => (
+  <Link href={uri`/footprints/${digest}`}>
     <a>
       <Digest digest={digest} length={length} />
     </a>
   </Link>
 );
 
-export default ObjectLink;
+export default FootprintLink;

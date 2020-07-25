@@ -4,39 +4,39 @@ import { useRouter } from "next/router";
 import { uria } from "@/utils/uri";
 import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
-import { GetNamespacesResponse } from "@/api/types";
-import Namespace from "@/components/Namespace";
+import { GetGroupsResponse } from "@/api/types";
+import Group from "@/components/Group";
 
-type Response = GetNamespacesResponse;
+type Response = GetGroupsResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { namespaces } }) => {
+const ResponseView: React.FC<{ response: Response }> = ({ response: { groups } }) => {
   return (
     <>
-      {namespaces.map((n) => (
-        <Namespace key={n.id} namespace={n} />
+      {groups.map((n) => (
+        <Group key={n.id} group={n} />
       ))}
     </>
   );
 };
 
-export const NamespacePage: NextPage<Props> = (props) => {
+export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
   return (
     <div className="container">
       <Head>
-        <title>Namespaces - {applicationName}</title>
+        <title>Groups - {applicationName}</title>
       </Head>
-      <h1>Namespaces</h1>
+      <h1>Groups</h1>
       {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
     </div>
   );
 };
 
-NamespacePage.getInitialProps = async ({ query: rawQuery }) => {
+GroupPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const path = uria`namespaces`;
+    const path = uria`groups`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {
@@ -45,4 +45,4 @@ NamespacePage.getInitialProps = async ({ query: rawQuery }) => {
   }
 };
 
-export default NamespacePage;
+export default GroupPage;

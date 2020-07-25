@@ -1,30 +1,30 @@
 import Link from "next/link";
 import { uri } from "../utils/uri";
-import { IchNamespace } from "@/api/types";
-import NamespaceLink from "./NamespaceLink";
-import ObjectLink from "./ObjectLink";
+import { IchGroup } from "@/api/types";
+import GroupLink from "./GroupLink";
+import FootprintLink from "./FootprintLink";
 
 type Props = {
-  namespace: IchNamespace;
+  group: IchGroup;
 };
 
-export const Namespace: React.FC<Props> = ({ namespace: { id, type, url, digest, created_at, updated_at } }) => {
+export const Group: React.FC<Props> = ({ group: { id, type, url, digest, created_at, updated_at } }) => {
   return (
     <ul>
       <li>
-        ID: <NamespaceLink namespaceId={id} /> (Stats: <NamespaceLink namespaceId={id} family={"stats"} />)
+        ID: <GroupLink groupId={id} /> (Stats: <GroupLink groupId={id} family={"stats"} />)
       </li>
       <li>Type: {type}</li>
       <li>URL: {url}</li>
       {digest != null ? (
         <li>
-          Digest: <ObjectLink digest={digest} />
+          Digest: <FootprintLink digest={digest} />
         </li>
       ) : undefined}
-      <li>Namespace Created At: {created_at}</li>
-      <li>Namespace Updated At: {updated_at}</li>
+      <li>Group Created At: {created_at}</li>
+      <li>Group Updated At: {updated_at}</li>
     </ul>
   );
 };
 
-export default Namespace;
+export default Group;

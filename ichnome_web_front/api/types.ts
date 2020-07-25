@@ -1,4 +1,4 @@
-export type IchNamespace = {
+export type IchGroup = {
   id: string;
   url: string;
   type: number;
@@ -6,7 +6,7 @@ export type IchNamespace = {
   version?: number;
   status?: number;
   mtime?: string;
-  object_id?: number;
+  footprint_id?: number;
   digest?: string;
   size?: number;
   created_at: string;
@@ -15,13 +15,13 @@ export type IchNamespace = {
 
 export type IchStat = {
   id: number;
-  namespace_id: string;
+  group_id: string;
   path: string;
   history_id: number;
   version: number;
   status: number;
   mtime?: string;
-  object_id?: number;
+  footprint_id?: number;
   digest?: string;
   size?: number;
   created_at: string;
@@ -30,18 +30,18 @@ export type IchStat = {
 
 export type IchHistory = {
   id: number;
-  namespace_id: string;
+  group_id: string;
   path: string;
   version: number;
   status: number;
   mtime?: string;
-  object_id?: number;
+  footprint_id?: number;
   digest?: string;
   created_at: string;
   updated_at: string;
 };
 
-export type IchObject = {
+export type IchFootprint = {
   id: number;
   digest: string;
   size: number;
@@ -49,32 +49,32 @@ export type IchObject = {
 };
 
 export type GetStatsResponse = {
-  namespace: IchNamespace;
+  group: IchGroup;
   stats: IchStat[];
 };
 
 export type GetStatResponse = {
-  namespace: IchNamespace;
+  group: IchGroup;
   stat: IchStat;
   histories?: IchHistory[];
-  objects?: { [k: string]: IchObject };
+  footprints?: { [k: string]: IchFootprint };
   eq_stats?: IchStat[];
 };
 
-export type GetObjectResponse = {
-  object: IchObject;
-  namespace_id?: string;
+export type GetFootprintResponse = {
+  footprint: IchFootprint;
+  group_id?: string;
   stats?: IchStat[];
   histories?: IchHistory[];
 };
 
-export type GetNamespacesResponse = {
-  namespaces: IchNamespace[];
+export type GetGroupsResponse = {
+  groups: IchGroup[];
 };
 
-export type GetNamespaceResponse = {
-  namespace: IchNamespace;
+export type GetGroupResponse = {
+  group: IchGroup;
   stat?: IchStat;
   histories?: IchHistory[];
-  objects?: { [k: string]: IchObject };
+  footprints?: { [k: string]: IchFootprint };
 };

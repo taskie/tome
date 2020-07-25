@@ -2,17 +2,17 @@ import Link from "next/link";
 import { uri } from "../utils/uri";
 
 type Props = {
-  namespaceId: string;
+  groupId: string;
   family?: string;
 };
 
-export const NamespaceLink: React.FC<Props> = ({ namespaceId, family }) => {
-  const href = family === "stats" ? uri`/stats/${namespaceId}` : uri`/namespaces/${namespaceId}`;
+export const GroupLink: React.FC<Props> = ({ groupId, family }) => {
+  const href = family === "stats" ? uri`/stats/${groupId}` : uri`/groups/${groupId}`;
   return (
     <Link href={href}>
-      <a>{namespaceId}</a>
+      <a>{groupId}</a>
     </Link>
   );
 };
 
-export default NamespaceLink;
+export default GroupLink;

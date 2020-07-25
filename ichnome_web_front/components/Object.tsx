@@ -1,23 +1,23 @@
-import { IchObject } from "@/api/types";
-import ObjectLink from "./ObjectLink";
+import { IchFootprint } from "@/api/types";
+import FootprintLink from "./FootprintLink";
 import Digest from "./Digest";
 
 type Props = {
-  object: IchObject;
+  footprint: IchFootprint;
 };
 
-export const Object: React.FC<Props> = ({ object: { digest, size, git_object_id } }) => {
+export const Footprint: React.FC<Props> = ({ footprint: { digest, size, git_object_id } }) => {
   return (
     <ul>
       <li>
-        Digest: <ObjectLink digest={digest} />
+        Digest: <FootprintLink digest={digest} />
       </li>
       <li>Size: {size}</li>
       <li>
-        Git Object ID: <Digest digest={git_object_id} />
+        Git Footprint ID: <Digest digest={git_object_id} />
       </li>
     </ul>
   );
 };
 
-export default Object;
+export default Footprint;

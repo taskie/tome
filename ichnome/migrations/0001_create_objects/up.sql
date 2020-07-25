@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `objects` (
+CREATE TABLE IF NOT EXISTS `footprints` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `digest` CHAR(64) NOT NULL,
     `size` BIGINT NOT NULL,
@@ -8,4 +8,4 @@ CREATE TABLE IF NOT EXISTS `objects` (
     UNIQUE (`digest`)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
-CREATE INDEX `objects_git_object_id` ON `objects` (`git_object_id`);
+CREATE INDEX `footprints_git_object_id` ON `footprints` (`git_object_id`);

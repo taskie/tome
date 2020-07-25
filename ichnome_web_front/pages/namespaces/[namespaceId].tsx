@@ -4,26 +4,26 @@ import { useRouter } from "next/router";
 import { uria } from "@/utils/uri";
 import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
-import { GetNamespaceResponse } from "@/api/types";
-import Namespace from "@/components/Namespace";
+import { GetGroupResponse } from "@/api/types";
+import Group from "@/components/Group";
 import Stat from "@/components/Stat";
-import ObjectView from "@/components/Object";
+import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 
 type Query = {
-  namespaceId: string;
+  groupId: string;
 };
 
-type Response = GetNamespaceResponse;
+type Response = GetGroupResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { namespace, stat, histories, objects } }) => {
-  const object = stat != null && objects != null ? objects["" + stat.object_id] : undefined;
+const ResponseView: React.FC<{ response: Response }> = ({ response: { group, stat, histories, footprints } }) => {
+  const footprint = stat != null && footprints != null ? footprints["" + stat.footprint_id] : undefined;
   return (
     <>
-      <h2>Namespace</h2>
-      <Namespace namespace={namespace} />
+      <h2>Group</h2>
+      <Group group={group} />
       <h2>Stat</h2>
       {stat != null ? <Stat stat={stat} /> : "Nothing"}
       {histories != null ? (
@@ -32,37 +32,37 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { namespace,
           <HistoryGroup histories={histories} />
         </>
       ) : undefined}
-      {object != null ? (
+      {footprint != null ? (
         <>
-          <h2>Object</h2>
-          <ObjectView object={object} />
+          <h2>Footprint</h2>
+          <FootprintView footprint={footprint} />
         </>
       ) : undefined}
     </>
   );
 };
 
-export const NamespacePage: NextPage<Props> = (props) => {
+export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
-  const { namespaceId } = (rawQuery as unknown) as Query;
+  const { groupId } = (rawQuery as unknown) as Query;
   return (
     <div className="container">
       <Head>
         <title>
-          {namespaceId} - {applicationName}
+          {groupId} - {applicationName}
         </title>
       </Head>
-      <h1>{namespaceId}</h1>
+      <h1>{groupId}</h1>
       {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
     </div>
   );
 };
 
-NamespacePage.getInitialProps = async ({ query: rawQuery }) => {
+GroupPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const { namespaceId } = (rawQuery as unknown) as Query;
-    const path = uria`namespaces/${namespaceId}`;
+    const { groupId } = (rawQuery as unknown) as Query;
+    const path = uria`groups/${groupId}`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {
@@ -71,4 +71,4 @@ NamespacePage.getInitialProps = async ({ query: rawQuery }) => {
   }
 };
 
-export default NamespacePage;
+export default GroupPage;

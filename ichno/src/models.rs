@@ -1,11 +1,11 @@
 use chrono::NaiveDateTime;
 use serde::Serialize;
 
-use crate::db::schema::{histories, namespaces, objects, stats};
+use crate::db::schema::{footprints, groups, histories, stats};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Identifiable, Queryable)]
-#[table_name = "objects"]
-pub struct Object {
+#[table_name = "footprints"]
+pub struct Footprint {
     pub id: i32,
 
     pub digest: String,
@@ -15,8 +15,8 @@ pub struct Object {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "objects"]
-pub struct ObjectInsertForm<'a> {
+#[table_name = "footprints"]
+pub struct FootprintInsertForm<'a> {
     pub digest: &'a str,
     pub size: i64,
     pub fast_digest: i64,
@@ -28,13 +28,13 @@ pub struct ObjectInsertForm<'a> {
 pub struct History {
     pub id: i32,
 
-    pub namespace_id: String,
+    pub group_id: String,
     pub path: String,
     pub version: i32,
 
     pub status: i32,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
     pub digest: Option<String>,
 
     pub created_at: NaiveDateTime,
@@ -44,13 +44,13 @@ pub struct History {
 #[derive(Debug, Insertable)]
 #[table_name = "histories"]
 pub struct HistoryInsertForm<'a> {
-    pub namespace_id: &'a str,
+    pub group_id: &'a str,
     pub path: &'a str,
     pub version: i32,
 
     pub status: i32,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
     pub digest: Option<&'a str>,
 
     pub created_at: NaiveDateTime,
@@ -58,8 +58,8 @@ pub struct HistoryInsertForm<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Identifiable, Queryable)]
-#[table_name = "namespaces"]
-pub struct Namespace {
+#[table_name = "groups"]
+pub struct Group {
     pub id: String,
 
     pub url: String,
@@ -70,7 +70,7 @@ pub struct Namespace {
     pub version: Option<i32>,
     pub status: Option<i32>,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
 
     pub digest: Option<String>,
     pub size: Option<i64>,
@@ -81,9 +81,9 @@ pub struct Namespace {
 }
 
 #[derive(Debug, Insertable, Optional)]
-#[table_name = "namespaces"]
-#[optional(name = "NamespaceUpdateForm", derive = "Default, Debug, AsChangeset")]
-pub struct NamespaceInsertForm<'a> {
+#[table_name = "groups"]
+#[optional(name = "GroupUpdateForm", derive = "Default, Debug, AsChangeset")]
+pub struct GroupInsertForm<'a> {
     #[optional(skip = true)]
     pub id: &'a str,
 
@@ -95,7 +95,7 @@ pub struct NamespaceInsertForm<'a> {
     pub version: Option<i32>,
     pub status: Option<i32>,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
 
     pub digest: Option<&'a str>,
     pub size: Option<i64>,
@@ -111,7 +111,7 @@ pub struct NamespaceInsertForm<'a> {
 pub struct Stat {
     pub id: i32,
 
-    pub namespace_id: String,
+    pub group_id: String,
     pub path: String,
 
     pub history_id: i32,
@@ -119,7 +119,7 @@ pub struct Stat {
     pub version: i32,
     pub status: i32,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
 
     pub digest: Option<String>,
     pub size: Option<i64>,
@@ -134,7 +134,7 @@ pub struct Stat {
 #[optional(name = "StatUpdateForm", derive = "Default, Debug, AsChangeset")]
 pub struct StatInsertForm<'a> {
     #[optional(skip = true)]
-    pub namespace_id: &'a str,
+    pub group_id: &'a str,
     #[optional(skip = true)]
     pub path: &'a str,
 
@@ -143,7 +143,7 @@ pub struct StatInsertForm<'a> {
     pub version: i32,
     pub status: i32,
     pub mtime: Option<NaiveDateTime>,
-    pub object_id: Option<i32>,
+    pub footprint_id: Option<i32>,
 
     pub digest: Option<&'a str>,
     pub size: Option<i64>,

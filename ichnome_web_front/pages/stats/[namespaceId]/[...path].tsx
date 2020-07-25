@@ -6,12 +6,12 @@ import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
 import { GetStatResponse } from "@/api/types";
 import Stat from "@/components/Stat";
-import ObjectView from "@/components/Object";
+import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
 
 type Query = {
-  namespaceId: string;
+  groupId: string;
   path: string[];
 };
 
@@ -19,8 +19,8 @@ type Response = GetStatResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { stat, histories, objects, eq_stats } }) => {
-  const object = objects != null ? objects["" + stat.object_id] : undefined;
+const ResponseView: React.FC<{ response: Response }> = ({ response: { stat, histories, footprints, eq_stats } }) => {
+  const footprint = footprints != null ? footprints["" + stat.footprint_id] : undefined;
   return (
     <>
       <h2>Stat</h2>
@@ -31,10 +31,10 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { stat, hist
           <HistoryGroup histories={histories} />
         </>
       ) : undefined}
-      {object != null ? (
+      {footprint != null ? (
         <>
-          <h2>Object</h2>
-          <ObjectView object={object} />
+          <h2>Footprint</h2>
+          <FootprintView footprint={footprint} />
         </>
       ) : undefined}
       {eq_stats != null ? (
@@ -50,16 +50,16 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { stat, hist
 export const StatPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
-  const { namespaceId, path: statPath } = (rawQuery as unknown) as Query;
+  const { groupId, path: statPath } = (rawQuery as unknown) as Query;
   return (
     <div className="container">
       <Head>
         <title>
-          {namespaceId}/{statPath.join("/")} - {applicationName}
+          {groupId}/{statPath.join("/")} - {applicationName}
         </title>
       </Head>
       <h1>
-        {namespaceId}/{statPath.join("/")}
+        {groupId}/{statPath.join("/")}
       </h1>
       {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
     </div>
@@ -68,8 +68,8 @@ export const StatPage: NextPage<Props> = (props) => {
 
 StatPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const { namespaceId, path: statPath } = (rawQuery as unknown) as Query;
-    const path = uria`stats/${namespaceId}/` + statPath.join("/");
+    const { groupId, path: statPath } = (rawQuery as unknown) as Query;
+    const path = uria`stats/${groupId}/` + statPath.join("/");
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {

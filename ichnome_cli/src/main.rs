@@ -29,7 +29,7 @@ pub enum SubCommands {
 #[derive(Debug, StructOpt)]
 pub struct Register {
     #[structopt(name = "NAMESPACE")]
-    pub namespace_id: String,
+    pub group_id: String,
 
     #[structopt(name = "URL")]
     pub url: String,
@@ -41,7 +41,7 @@ pub struct Register {
 #[derive(Debug, StructOpt)]
 pub struct Pull {
     #[structopt(name = "NAMESPACE")]
-    pub namespace_id: String,
+    pub group_id: String,
 }
 
 fn main_with_error() -> Result<i32, Box<dyn Error>> {
@@ -58,7 +58,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             action::register(
                 &ctx,
                 &RegisterRequest {
-                    namespace_id: register.namespace_id,
+                    group_id: register.group_id,
                     url: register.url,
                     current_time,
                     options: RegisterOptions { force: register.force },
@@ -66,10 +66,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             )?;
         }
         SubCommands::Pull(pull) => {
-            action::pull(
-                &ctx,
-                &PullRequest { namespace_id: pull.namespace_id, current_time, options: PullOptions {} },
-            )?;
+            action::pull(&ctx, &PullRequest { group_id: pull.group_id, current_time, options: PullOptions {} })?;
         }
     }
     Ok(0)

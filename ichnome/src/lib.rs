@@ -15,8 +15,8 @@ mod constants;
 mod models;
 mod ssh;
 
-pub use constants::{NamespaceType, Status, DEFAULT_NAMESPACE_ID, META_NAMESPACE_ID};
+pub use constants::{GroupType, Status, DEFAULT_NAMESPACE_ID, META_NAMESPACE_ID};
 pub use models::{
-    History, HistoryInsertForm, Namespace, NamespaceInsertForm, NamespaceUpdateForm, Object, ObjectInsertForm, Stat,
+    Footprint, FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, History, HistoryInsertForm, Stat,
     StatInsertForm, StatUpdateForm,
 };

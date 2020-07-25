@@ -6,7 +6,7 @@ pub enum Status {
     ENABLED = 1,
 }
 
-pub enum NamespaceType {
+pub enum GroupType {
     LOCAL = 0,
     REMOTE = 1,
 }

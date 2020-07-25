@@ -3,10 +3,10 @@ import Link from "next/link";
 import { applicationName } from "../config";
 import { defaultInstance } from "../api/apiClient";
 import { NextPage } from "next";
-import { GetNamespacesResponse } from "@/api/types";
-import NamespaceLink from "@/components/NamespaceLink";
+import { GetGroupsResponse } from "@/api/types";
+import GroupLink from "@/components/GroupLink";
 
-type Response = GetNamespacesResponse;
+type Response = GetGroupsResponse;
 
 type Props = { response?: Response; err?: string };
 
@@ -18,16 +18,16 @@ export const HomePage: NextPage<Props> = (props) => {
       </Head>
       <main>
         <h1 className="title">{applicationName}</h1>
-        <h2>Namespaces</h2>
+        <h2>Groups</h2>
         <ul>
-          {props.response?.namespaces.map((n) => (
+          {props.response?.groups.map((n) => (
             <li>
-              <NamespaceLink key={n.id} namespaceId={n.id} family="stats" />
+              <GroupLink key={n.id} groupId={n.id} family="stats" />
             </li>
           ))}
         </ul>
         <p>
-          <Link href="/namespaces">
+          <Link href="/groups">
             <a>List</a>
           </Link>
         </p>
@@ -38,7 +38,7 @@ export const HomePage: NextPage<Props> = (props) => {
 
 HomePage.getInitialProps = async () => {
   try {
-    const path = "namespaces";
+    const path = "groups";
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {

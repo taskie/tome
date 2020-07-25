@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS `namespaces`;
+DROP TABLE IF EXISTS `groups`;

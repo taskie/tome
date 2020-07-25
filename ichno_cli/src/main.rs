@@ -41,15 +41,15 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
 
     ichno::db::migrate(&conn)?;
 
-    let namespace_id = DEFAULT_NAMESPACE_ID;
+    let group_id = DEFAULT_NAMESPACE_ID;
     let opt = Opt::from_args();
     match opt.sub {
         SubCommands::Scan(_) => {
             let mut ctx = file::Context {
                 connection: &conn,
                 db_path: &db_path,
-                namespace_id,
-                namespace: None,
+                group_id,
+                group: None,
                 current_time: Local::now(),
             };
             let path = Path::new(".");
@@ -64,21 +64,21 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 match result {
                     Ok(entry) => {
                         if entry.metadata().unwrap().is_file() {
-                            let path = file::upsert_with_file(&ctx, namespace_id, entry.path())?.path;
+                            let path = file::upsert_with_file(&ctx, group_id, entry.path())?.path;
                             path_set.insert(path);
                         }
                     }
                     Err(err) => warn!("{}", err),
                 }
             }
-            let stats = SqliteStats::select_by_namespace_id(&conn, namespace_id)?;
+            let stats = SqliteStats::select_by_group_id(&conn, group_id)?;
             for stat in stats.iter() {
                 if path_set.contains(&stat.path) {
                     continue;
                 }
                 let path = Path::new(&stat.path);
                 if !path.exists() {
-                    file::remove_with_file(&ctx, namespace_id, path)?;
+                    file::remove_with_file(&ctx, group_id, path)?;
                 }
             }
             file::post_process(&mut ctx)?;

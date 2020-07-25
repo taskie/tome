@@ -3,7 +3,7 @@ use std::error::Error;
 use diesel::prelude::*;
 
 use crate::models::{
-    History, HistoryInsertForm, Namespace, NamespaceInsertForm, NamespaceUpdateForm, Object, ObjectInsertForm, Stat,
+    Footprint, FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, History, HistoryInsertForm, Stat,
     StatInsertForm, StatUpdateForm,
 };
 
@@ -14,38 +14,41 @@ pub fn migrate(conn: &SqliteConnection) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub struct MysqlObjects;
+pub struct MysqlFootprints;
 
-impl MysqlObjects {
-    pub fn find(conn: &MysqlConnection, id: i32) -> Result<Option<Object>, Box<dyn Error>> {
-        use crate::db::schema::objects::dsl;
-        let q = dsl::objects.find(id);
-        Ok(q.first::<Object>(conn).optional()?)
+impl MysqlFootprints {
+    pub fn find(conn: &MysqlConnection, id: i32) -> Result<Option<Footprint>, Box<dyn Error>> {
+        use crate::db::schema::footprints::dsl;
+        let q = dsl::footprints.find(id);
+        Ok(q.first::<Footprint>(conn).optional()?)
     }
 
-    pub fn select(conn: &MysqlConnection, ids: &Vec<i32>) -> Result<Vec<Object>, Box<dyn Error>> {
-        use crate::db::schema::objects::dsl;
-        let q = dsl::objects.filter(dsl::id.eq_any(ids));
-        Ok(q.load::<Object>(conn)?)
+    pub fn select(conn: &MysqlConnection, ids: &Vec<i32>) -> Result<Vec<Footprint>, Box<dyn Error>> {
+        use crate::db::schema::footprints::dsl;
+        let q = dsl::footprints.filter(dsl::id.eq_any(ids));
+        Ok(q.load::<Footprint>(conn)?)
     }
 
-    pub fn find_by_digest(conn: &MysqlConnection, digest: &str) -> Result<Option<Object>, Box<dyn Error>> {
-        use crate::db::schema::objects::dsl;
-        let q = dsl::objects.filter(dsl::digest.eq(digest));
-        Ok(q.first::<Object>(conn).optional()?)
+    pub fn find_by_digest(conn: &MysqlConnection, digest: &str) -> Result<Option<Footprint>, Box<dyn Error>> {
+        use crate::db::schema::footprints::dsl;
+        let q = dsl::footprints.filter(dsl::digest.eq(digest));
+        Ok(q.first::<Footprint>(conn).optional()?)
     }
 
-    pub fn insert(conn: &MysqlConnection, object_form: &ObjectInsertForm) -> Result<(), Box<dyn Error>> {
-        use crate::db::schema::objects::dsl;
-        let q = diesel::insert_into(dsl::objects).values(object_form);
+    pub fn insert(conn: &MysqlConnection, footprint_form: &FootprintInsertForm) -> Result<(), Box<dyn Error>> {
+        use crate::db::schema::footprints::dsl;
+        let q = diesel::insert_into(dsl::footprints).values(footprint_form);
         q.execute(conn)?;
         Ok(())
     }
 
-    pub fn insert_and_find(conn: &MysqlConnection, object_form: &ObjectInsertForm) -> Result<Object, Box<dyn Error>> {
-        Self::insert(conn, object_form)?;
-        let object = Self::find_by_digest(conn, object_form.digest)?;
-        Ok(object.unwrap())
+    pub fn insert_and_find(
+        conn: &MysqlConnection,
+        footprint_form: &FootprintInsertForm,
+    ) -> Result<Footprint, Box<dyn Error>> {
+        Self::insert(conn, footprint_form)?;
+        let footprint = Self::find_by_digest(conn, footprint_form.digest)?;
+        Ok(footprint.unwrap())
     }
 }
 
@@ -60,12 +63,12 @@ impl MysqlHistories {
 
     pub fn find_latest_by_path(
         conn: &MysqlConnection,
-        namespace_id: &str,
+        group_id: &str,
         path: &str,
     ) -> Result<Option<History>, Box<dyn Error>> {
         use crate::db::schema::histories::dsl;
         let q = dsl::histories
-            .filter(dsl::namespace_id.eq(namespace_id))
+            .filter(dsl::group_id.eq(group_id))
             .filter(dsl::path.eq(path))
             .order(dsl::version.desc())
             .limit(1);
@@ -74,45 +77,38 @@ impl MysqlHistories {
 
     pub fn find_by_path_and_version(
         conn: &MysqlConnection,
-        namespace_id: &str,
+        group_id: &str,
         path: &str,
         version: i32,
     ) -> Result<Option<History>, Box<dyn Error>> {
         use crate::db::schema::histories::dsl;
         let q = dsl::histories
-            .filter(dsl::namespace_id.eq(namespace_id))
+            .filter(dsl::group_id.eq(group_id))
             .filter(dsl::path.eq(path))
             .filter(dsl::version.eq(version));
         Ok(q.first::<History>(conn).optional()?)
     }
 
-    pub fn select_by_path(
-        conn: &MysqlConnection,
-        namespace_id: &str,
-        path: &str,
-    ) -> Result<Vec<History>, Box<dyn Error>> {
+    pub fn select_by_path(conn: &MysqlConnection, group_id: &str, path: &str) -> Result<Vec<History>, Box<dyn Error>> {
         use crate::db::schema::histories::dsl;
-        let q = dsl::histories
-            .filter(dsl::namespace_id.eq(namespace_id))
-            .filter(dsl::path.eq(path))
-            .order(dsl::version.asc());
+        let q = dsl::histories.filter(dsl::group_id.eq(group_id)).filter(dsl::path.eq(path)).order(dsl::version.asc());
         let histories = q.load::<History>(conn)?;
         Ok(histories)
     }
 
-    pub fn select_by_object_id(
+    pub fn select_by_footprint_id(
         conn: &MysqlConnection,
-        namespace_id: Option<&str>,
-        object_id: i32,
+        group_id: Option<&str>,
+        footprint_id: i32,
     ) -> Result<Vec<History>, Box<dyn Error>> {
         use crate::db::schema::histories::dsl;
-        if let Some(namespace_id) = namespace_id {
-            let expr = dsl::object_id.eq(object_id).and(dsl::namespace_id.eq(namespace_id));
-            let q = dsl::histories.filter(expr).order(dsl::namespace_id.asc()).order(dsl::path.asc());
+        if let Some(group_id) = group_id {
+            let expr = dsl::footprint_id.eq(footprint_id).and(dsl::group_id.eq(group_id));
+            let q = dsl::histories.filter(expr).order(dsl::group_id.asc()).order(dsl::path.asc());
             Ok(q.load::<History>(conn)?)
         } else {
-            let expr = dsl::object_id.eq(object_id);
-            let q = dsl::histories.filter(expr).order(dsl::namespace_id.asc()).order(dsl::path.asc());
+            let expr = dsl::footprint_id.eq(footprint_id);
+            let q = dsl::histories.filter(expr).order(dsl::group_id.asc()).order(dsl::path.asc());
             Ok(q.load::<History>(conn)?)
         }
     }
@@ -130,55 +126,48 @@ impl MysqlHistories {
     ) -> Result<History, Box<dyn Error>> {
         Self::insert(conn, history_form)?;
         let history =
-            Self::find_by_path_and_version(conn, history_form.namespace_id, history_form.path, history_form.version)?;
+            Self::find_by_path_and_version(conn, history_form.group_id, history_form.path, history_form.version)?;
         Ok(history.unwrap())
     }
 }
 
-pub struct MysqlNamespaces;
+pub struct MysqlGroups;
 
-impl MysqlNamespaces {
-    pub fn find(conn: &MysqlConnection, id: &str) -> Result<Option<Namespace>, Box<dyn Error>> {
-        use crate::db::schema::namespaces::dsl;
-        let q = dsl::namespaces.find(id);
-        Ok(q.first::<Namespace>(conn).optional()?)
+impl MysqlGroups {
+    pub fn find(conn: &MysqlConnection, id: &str) -> Result<Option<Group>, Box<dyn Error>> {
+        use crate::db::schema::groups::dsl;
+        let q = dsl::groups.find(id);
+        Ok(q.first::<Group>(conn).optional()?)
     }
 
-    pub fn select(conn: &MysqlConnection, ids: &Vec<&str>) -> Result<Vec<Namespace>, Box<dyn Error>> {
-        use crate::db::schema::namespaces::dsl;
-        let q = dsl::namespaces.filter(dsl::id.eq_any(ids));
-        Ok(q.load::<Namespace>(conn)?)
+    pub fn select(conn: &MysqlConnection, ids: &Vec<&str>) -> Result<Vec<Group>, Box<dyn Error>> {
+        use crate::db::schema::groups::dsl;
+        let q = dsl::groups.filter(dsl::id.eq_any(ids));
+        Ok(q.load::<Group>(conn)?)
     }
 
-    pub fn select_all(conn: &MysqlConnection) -> Result<Vec<Namespace>, Box<dyn Error>> {
-        use crate::db::schema::namespaces::dsl;
-        let q = dsl::namespaces;
-        Ok(q.load::<Namespace>(conn)?)
+    pub fn select_all(conn: &MysqlConnection) -> Result<Vec<Group>, Box<dyn Error>> {
+        use crate::db::schema::groups::dsl;
+        let q = dsl::groups;
+        Ok(q.load::<Group>(conn)?)
     }
 
-    pub fn insert(conn: &MysqlConnection, namespace_form: &NamespaceInsertForm) -> Result<(), Box<dyn Error>> {
-        use crate::db::schema::namespaces::dsl;
-        let q = diesel::insert_into(dsl::namespaces).values(namespace_form);
+    pub fn insert(conn: &MysqlConnection, group_form: &GroupInsertForm) -> Result<(), Box<dyn Error>> {
+        use crate::db::schema::groups::dsl;
+        let q = diesel::insert_into(dsl::groups).values(group_form);
         q.execute(conn)?;
         Ok(())
     }
 
-    pub fn insert_and_find(
-        conn: &MysqlConnection,
-        namespace_form: &NamespaceInsertForm,
-    ) -> Result<Namespace, Box<dyn Error>> {
-        Self::insert(conn, namespace_form)?;
-        let namespace = Self::find(conn, namespace_form.id)?;
-        Ok(namespace.unwrap())
+    pub fn insert_and_find(conn: &MysqlConnection, group_form: &GroupInsertForm) -> Result<Group, Box<dyn Error>> {
+        Self::insert(conn, group_form)?;
+        let group = Self::find(conn, group_form.id)?;
+        Ok(group.unwrap())
     }
 
-    pub fn update(
-        conn: &MysqlConnection,
-        id: &str,
-        namespace_form: &NamespaceUpdateForm,
-    ) -> Result<(), Box<dyn Error>> {
-        use crate::db::schema::namespaces::dsl;
-        let q = diesel::update(dsl::namespaces.find(id)).set(namespace_form);
+    pub fn update(conn: &MysqlConnection, id: &str, group_form: &GroupUpdateForm) -> Result<(), Box<dyn Error>> {
+        use crate::db::schema::groups::dsl;
+        let q = diesel::update(dsl::groups.find(id)).set(group_form);
         let n = q.execute(conn)?;
         assert_eq!(1, n);
         Ok(())
@@ -187,11 +176,11 @@ impl MysqlNamespaces {
     pub fn update_and_find(
         conn: &MysqlConnection,
         id: &str,
-        namespace_form: &NamespaceUpdateForm,
-    ) -> Result<Namespace, Box<dyn Error>> {
-        Self::update(conn, id, namespace_form)?;
-        let namespace = Self::find(conn, id)?;
-        Ok(namespace.unwrap())
+        group_form: &GroupUpdateForm,
+    ) -> Result<Group, Box<dyn Error>> {
+        Self::update(conn, id, group_form)?;
+        let group = Self::find(conn, id)?;
+        Ok(group.unwrap())
     }
 }
 
@@ -204,36 +193,31 @@ impl MysqlStats {
         Ok(q.first::<Stat>(conn).optional()?)
     }
 
-    pub fn find_by_path(
-        conn: &MysqlConnection,
-        namespace_id: &str,
-        path: &str,
-    ) -> Result<Option<Stat>, Box<dyn Error>> {
+    pub fn find_by_path(conn: &MysqlConnection, group_id: &str, path: &str) -> Result<Option<Stat>, Box<dyn Error>> {
         use crate::db::schema::stats::dsl;
-        let q = dsl::stats.filter(dsl::namespace_id.eq(namespace_id)).filter(dsl::path.eq(path));
+        let q = dsl::stats.filter(dsl::group_id.eq(group_id)).filter(dsl::path.eq(path));
         Ok(q.first::<Stat>(conn).optional()?)
     }
 
-    pub fn select_by_namespace_id(conn: &MysqlConnection, namespace_id: &str) -> Result<Vec<Stat>, Box<dyn Error>> {
+    pub fn select_by_group_id(conn: &MysqlConnection, group_id: &str) -> Result<Vec<Stat>, Box<dyn Error>> {
         use crate::db::schema::stats::dsl;
-        let q =
-            dsl::stats.filter(dsl::namespace_id.eq(namespace_id)).order(dsl::namespace_id.asc()).order(dsl::path.asc());
+        let q = dsl::stats.filter(dsl::group_id.eq(group_id)).order(dsl::group_id.asc()).order(dsl::path.asc());
         Ok(q.load::<Stat>(conn)?)
     }
 
-    pub fn select_by_object_id(
+    pub fn select_by_footprint_id(
         conn: &MysqlConnection,
-        namespace_id: Option<&str>,
-        object_id: i32,
+        group_id: Option<&str>,
+        footprint_id: i32,
     ) -> Result<Vec<Stat>, Box<dyn Error>> {
         use crate::db::schema::stats::dsl;
-        if let Some(namespace_id) = namespace_id {
-            let expr = dsl::object_id.eq(object_id).and(dsl::namespace_id.eq(namespace_id));
-            let q = dsl::stats.filter(expr).order(dsl::namespace_id.asc()).order(dsl::path.asc());
+        if let Some(group_id) = group_id {
+            let expr = dsl::footprint_id.eq(footprint_id).and(dsl::group_id.eq(group_id));
+            let q = dsl::stats.filter(expr).order(dsl::group_id.asc()).order(dsl::path.asc());
             Ok(q.load::<Stat>(conn)?)
         } else {
-            let expr = dsl::object_id.eq(object_id);
-            let q = dsl::stats.filter(expr).order(dsl::namespace_id.asc()).order(dsl::path.asc());
+            let expr = dsl::footprint_id.eq(footprint_id);
+            let q = dsl::stats.filter(expr).order(dsl::group_id.asc()).order(dsl::path.asc());
             Ok(q.load::<Stat>(conn)?)
         }
     }
@@ -247,7 +231,7 @@ impl MysqlStats {
 
     pub fn insert_and_find(conn: &MysqlConnection, stat_form: &StatInsertForm) -> Result<Stat, Box<dyn Error>> {
         Self::insert(conn, stat_form)?;
-        let stat = Self::find_by_path(conn, stat_form.namespace_id, stat_form.path)?;
+        let stat = Self::find_by_path(conn, stat_form.group_id, stat_form.path)?;
         Ok(stat.unwrap())
     }
 

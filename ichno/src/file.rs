@@ -16,10 +16,10 @@ use twox_hash::XxHash64;
 use url::Url;
 
 use crate::{
-    constants::{NamespaceType, Status, META_NAMESPACE_ID},
-    db::{SqliteHistories, SqliteNamespaces, SqliteObjects, SqliteStats},
+    constants::{GroupType, Status, META_NAMESPACE_ID},
+    db::{SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats},
     models::{
-        HistoryInsertForm, Namespace, NamespaceInsertForm, NamespaceUpdateForm, ObjectInsertForm, Stat, StatInsertForm,
+        FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, HistoryInsertForm, Stat, StatInsertForm,
         StatUpdateForm,
     },
 };
@@ -105,8 +105,8 @@ pub(crate) fn new_updated_metadata_if_needed(
 pub struct Context<'c, 'a, Tz: TimeZone> {
     pub connection: &'c SqliteConnection,
     pub db_path: &'a Path,
-    pub namespace_id: &'a str,
-    pub namespace: Option<Namespace>,
+    pub group_id: &'a str,
+    pub group: Option<Group>,
     pub current_time: DateTime<Tz>,
 }
 
@@ -116,7 +116,7 @@ impl<'c, 'a, Tz: TimeZone> Context<'c, 'a, Tz> {
     }
 
     pub fn base_directory(&self) -> Option<PathBuf> {
-        self.namespace
+        self.group
             .as_ref()
             .and_then(|ns| Url::parse(&ns.url).ok())
             .map(|url| PathBuf::from(url.path()))
@@ -126,25 +126,25 @@ impl<'c, 'a, Tz: TimeZone> Context<'c, 'a, Tz> {
 
 pub fn pre_process<Tz: TimeZone>(ctx: &mut Context<Tz>) -> Result<(), Box<dyn Error>> {
     let conn = ctx.connection;
-    let namespace_id = ctx.namespace_id;
+    let group_id = ctx.group_id;
     let now = ctx.naive_current_time();
-    let mut namespace = SqliteNamespaces::find(conn, namespace_id)?;
-    if let Some(namespace) = namespace {
-        ctx.namespace = Some(namespace);
+    let mut group = SqliteGroups::find(conn, group_id)?;
+    if let Some(group) = group {
+        ctx.group = Some(group);
     } else {
         let abs_db_path = ctx.db_path.canonicalize()?;
         let url = format!("file://{}", abs_db_path.to_str().unwrap());
-        namespace = Some(SqliteNamespaces::insert_and_find(
+        group = Some(SqliteGroups::insert_and_find(
             &conn,
-            &NamespaceInsertForm {
-                id: namespace_id,
+            &GroupInsertForm {
+                id: group_id,
                 url: &url,
-                type_: NamespaceType::LOCAL as i32,
+                type_: GroupType::LOCAL as i32,
                 history_id: None,
                 version: None,
                 status: None,
                 mtime: None,
-                object_id: None,
+                footprint_id: None,
                 digest: None,
                 size: None,
                 fast_digest: None,
@@ -152,40 +152,40 @@ pub fn pre_process<Tz: TimeZone>(ctx: &mut Context<Tz>) -> Result<(), Box<dyn Er
                 updated_at: now,
             },
         )?);
-        trace!("- namespace: {:?}", namespace.as_ref().unwrap());
-        ctx.namespace = Some(namespace.unwrap().clone());
+        trace!("- group: {:?}", group.as_ref().unwrap());
+        ctx.group = Some(group.unwrap().clone());
     }
     Ok(())
 }
 
 pub fn post_process<Tz: TimeZone>(ctx: &mut Context<Tz>) -> Result<(), Box<dyn Error>> {
-    let meta_namespace_id = META_NAMESPACE_ID;
-    let stat = upsert_with_file_without_canonicalization(ctx, meta_namespace_id, ctx.namespace_id, ctx.db_path)?;
-    let namespace = SqliteNamespaces::update_and_find(
+    let meta_group_id = META_NAMESPACE_ID;
+    let stat = upsert_with_file_without_canonicalization(ctx, meta_group_id, ctx.group_id, ctx.db_path)?;
+    let group = SqliteGroups::update_and_find(
         ctx.connection,
-        ctx.namespace_id,
-        &NamespaceUpdateForm {
+        ctx.group_id,
+        &GroupUpdateForm {
             type_: None,
             url: None,
             history_id: Some(Some(stat.history_id)),
             version: Some(Some(stat.version)),
             status: Some(Some(stat.status)),
             mtime: Some(stat.mtime),
-            object_id: Some(stat.object_id),
+            footprint_id: Some(stat.footprint_id),
             digest: Some(stat.digest.as_ref().map(|s| s.as_ref())),
             size: Some(stat.size),
             fast_digest: Some(stat.fast_digest),
             updated_at: Some(ctx.naive_current_time()),
         },
     )?;
-    trace!("- namespace: {:?}", namespace);
-    ctx.namespace = Some(namespace);
+    trace!("- group: {:?}", group);
+    ctx.group = Some(group);
     Ok(())
 }
 
 pub fn remove_with_file<Tz: TimeZone, P: AsRef<Path>>(
     ctx: &Context<Tz>,
-    namespace_id: &str,
+    group_id: &str,
     path: P,
 ) -> Result<Option<Stat>, Box<dyn Error>> {
     let conn = ctx.connection;
@@ -194,13 +194,13 @@ pub fn remove_with_file<Tz: TimeZone, P: AsRef<Path>>(
     let path_ref = path.strip_prefix(base_path)?;
     let path_str = path_ref.to_str().expect(&format!("invalid path string"));
     debug!("* {}", path_str);
-    let old_stat = SqliteStats::find_by_path(conn, namespace_id, path_str)?;
+    let old_stat = SqliteStats::find_by_path(conn, group_id, path_str)?;
     if let Some(old_stat) = old_stat {
         if old_stat.status == Status::DISABLED as i32 {
             return Ok(Some(old_stat));
         }
         let now = ctx.naive_current_time();
-        let last_history = SqliteHistories::find_latest_by_path(conn, namespace_id, path_str)?;
+        let last_history = SqliteHistories::find_latest_by_path(conn, group_id, path_str)?;
         let version = match last_history {
             Some(h) => h.version + 1,
             None => 1,
@@ -208,12 +208,12 @@ pub fn remove_with_file<Tz: TimeZone, P: AsRef<Path>>(
         let history = SqliteHistories::insert_and_find(
             conn,
             &HistoryInsertForm {
-                namespace_id,
+                group_id,
                 path: path_str,
                 version,
                 status: Status::DISABLED as i32,
                 mtime: None,
-                object_id: None,
+                footprint_id: None,
                 digest: None,
                 created_at: now,
                 updated_at: now,
@@ -228,7 +228,7 @@ pub fn remove_with_file<Tz: TimeZone, P: AsRef<Path>>(
                 version: Some(history.version),
                 status: Some(history.status),
                 mtime: Some(history.mtime),
-                object_id: Some(history.object_id),
+                footprint_id: Some(history.footprint_id),
                 digest: Some(None),
                 size: Some(None),
                 fast_digest: Some(None),
@@ -244,37 +244,37 @@ pub fn remove_with_file<Tz: TimeZone, P: AsRef<Path>>(
 
 pub fn upsert_with_file<Tz: TimeZone, P: AsRef<Path>>(
     ctx: &Context<Tz>,
-    namespace_id: &str,
+    group_id: &str,
     path: P,
 ) -> Result<Stat, Box<dyn Error>> {
     let base_path = ctx.base_directory().unwrap();
     let path = if path.as_ref().is_absolute() { PathBuf::from(path.as_ref()) } else { base_path.join(path) };
     let path_ref = path.strip_prefix(base_path)?;
     let path_str = path_ref.to_str().expect(&format!("invalid path string"));
-    upsert_with_file_without_canonicalization(ctx, namespace_id, path_str, path_ref)
+    upsert_with_file_without_canonicalization(ctx, group_id, path_str, path_ref)
 }
 
 pub(crate) fn upsert_with_file_without_canonicalization<Tz: TimeZone>(
     ctx: &Context<Tz>,
-    namespace_id: &str,
+    group_id: &str,
     path_str: &str,
     file_path: &Path,
 ) -> Result<Stat, Box<dyn Error>> {
     let conn = ctx.connection;
     debug!("* {}", path_str);
-    let old_stat = SqliteStats::find_by_path(conn, namespace_id, path_str)?;
+    let old_stat = SqliteStats::find_by_path(conn, group_id, path_str)?;
     let now = ctx.naive_current_time();
     let metadata = new_updated_metadata_if_needed(&old_stat, file_path)?;
     trace!("- updated_metadata: {:?}", metadata);
     if let Some(metadata) = metadata {
-        let mut object = SqliteObjects::find_by_digest(conn, &metadata.digest)?;
-        if object == None {
+        let mut footprint = SqliteFootprints::find_by_digest(conn, &metadata.digest)?;
+        if footprint == None {
             let mut hasher = Sha1::default();
             treblo::object::blob_from_path(&mut hasher, file_path)?;
             let git_object_id = treblo::hex::to_hex_string(hasher.fixed_result().as_slice());
-            object = Some(SqliteObjects::insert_and_find(
+            footprint = Some(SqliteFootprints::insert_and_find(
                 conn,
-                &ObjectInsertForm {
+                &FootprintInsertForm {
                     digest: &metadata.digest,
                     size: metadata.size,
                     fast_digest: metadata.fast_digest,
@@ -282,9 +282,9 @@ pub(crate) fn upsert_with_file_without_canonicalization<Tz: TimeZone>(
                 },
             )?);
         }
-        let object = object.unwrap();
-        trace!("- object: {:?}", object);
-        let last_history = SqliteHistories::find_latest_by_path(conn, namespace_id, path_str)?;
+        let footprint = footprint.unwrap();
+        trace!("- footprint: {:?}", footprint);
+        let last_history = SqliteHistories::find_latest_by_path(conn, group_id, path_str)?;
         let version = match last_history {
             Some(h) => h.version + 1,
             None => 1,
@@ -292,13 +292,13 @@ pub(crate) fn upsert_with_file_without_canonicalization<Tz: TimeZone>(
         let history = SqliteHistories::insert_and_find(
             conn,
             &HistoryInsertForm {
-                namespace_id,
+                group_id,
                 path: path_str,
                 version,
                 status: Status::ENABLED as i32,
                 mtime: Some(metadata.mtime),
-                object_id: Some(object.id),
-                digest: Some(&object.digest),
+                footprint_id: Some(footprint.id),
+                digest: Some(&footprint.digest),
                 created_at: now,
                 updated_at: now,
             },
@@ -313,26 +313,26 @@ pub(crate) fn upsert_with_file_without_canonicalization<Tz: TimeZone>(
                     version: Some(history.version),
                     status: Some(history.status),
                     mtime: Some(history.mtime),
-                    object_id: Some(history.object_id),
-                    digest: Some(Some(object.digest.as_str())),
-                    size: Some(Some(object.size)),
-                    fast_digest: Some(Some(object.fast_digest)),
+                    footprint_id: Some(history.footprint_id),
+                    digest: Some(Some(footprint.digest.as_str())),
+                    size: Some(Some(footprint.size)),
+                    fast_digest: Some(Some(footprint.fast_digest)),
                     updated_at: Some(now),
                 },
             )?,
             None => SqliteStats::insert_and_find(
                 conn,
                 &StatInsertForm {
-                    namespace_id,
+                    group_id,
                     path: path_str,
                     history_id: history.id,
                     version: history.version,
                     status: history.status,
                     mtime: history.mtime,
-                    object_id: history.object_id,
-                    digest: Some(&object.digest),
-                    size: Some(object.size),
-                    fast_digest: Some(object.fast_digest),
+                    footprint_id: history.footprint_id,
+                    digest: Some(&footprint.digest),
+                    size: Some(footprint.size),
+                    fast_digest: Some(footprint.fast_digest),
                     created_at: now,
                     updated_at: now,
                 },

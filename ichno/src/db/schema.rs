@@ -3,12 +3,12 @@ table! {
         id -> Integer,
         entity_type -> Integer,
         entity_id -> Integer,
-        namespace_id -> Nullable<Text>,
+        group_id -> Nullable<Text>,
         path -> Nullable<Text>,
         version -> Nullable<Integer>,
         digest -> Nullable<Text>,
         key -> Text,
-        value_object_id -> Integer,
+        value_footprint_id -> Integer,
         value_digest -> Text,
         value_content_type -> Integer,
         status -> Integer,
@@ -18,8 +18,8 @@ table! {
 }
 
 table! {
-    contents (object_id) {
-        object_id -> Integer,
+    contents (footprint_id) {
+        footprint_id -> Integer,
         digest -> Text,
         body -> Binary,
         created_at -> Timestamp,
@@ -30,12 +30,12 @@ table! {
 table! {
     histories (id) {
         id -> Integer,
-        namespace_id -> Text,
+        group_id -> Text,
         path -> Text,
         version -> Integer,
         status -> Integer,
         mtime -> Nullable<Timestamp>,
-        object_id -> Nullable<Integer>,
+        footprint_id -> Nullable<Integer>,
         digest -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
@@ -43,7 +43,7 @@ table! {
 }
 
 table! {
-    namespaces (id) {
+    groups (id) {
         id -> Text,
         url -> Text,
         #[sql_name = "type"]
@@ -52,7 +52,7 @@ table! {
         version -> Nullable<Integer>,
         status -> Nullable<Integer>,
         mtime -> Nullable<Timestamp>,
-        object_id -> Nullable<Integer>,
+        footprint_id -> Nullable<Integer>,
         digest -> Nullable<Text>,
         size -> Nullable<BigInt>,
         fast_digest -> Nullable<BigInt>,
@@ -62,7 +62,7 @@ table! {
 }
 
 table! {
-    objects (id) {
+    footprints (id) {
         id -> Integer,
         digest -> Text,
         size -> BigInt,
@@ -74,13 +74,13 @@ table! {
 table! {
     stats (id) {
         id -> Integer,
-        namespace_id -> Text,
+        group_id -> Text,
         path -> Text,
         history_id -> Integer,
         version -> Integer,
         status -> Integer,
         mtime -> Nullable<Timestamp>,
-        object_id -> Nullable<Integer>,
+        footprint_id -> Nullable<Integer>,
         digest -> Nullable<Text>,
         size -> Nullable<BigInt>,
         fast_digest -> Nullable<BigInt>,
@@ -89,4 +89,4 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(attributes, contents, histories, namespaces, objects, stats,);
+allow_tables_to_appear_in_same_query!(attributes, contents, histories, groups, footprints, stats,);
