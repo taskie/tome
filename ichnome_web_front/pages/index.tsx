@@ -8,43 +8,14 @@ import GroupLink from "@/components/GroupLink";
 
 type Response = GetGroupsResponse;
 
-type Props = { response?: Response; err?: string };
-
-export const HomePage: NextPage<Props> = (props) => {
+export const HomePage: NextPage = () => {
   return (
     <div className="container">
       <Head>
         <title>{applicationName}</title>
       </Head>
-      <main>
-        <h1 className="title">{applicationName}</h1>
-        <h2>Groups</h2>
-        <ul>
-          {props.response?.groups.map((n) => (
-            <li>
-              <GroupLink key={n.id} groupId={n.id} family="stats" />
-            </li>
-          ))}
-        </ul>
-        <p>
-          <Link href="/groups">
-            <a>List</a>
-          </Link>
-        </p>
-      </main>
     </div>
   );
-};
-
-HomePage.getInitialProps = async () => {
-  try {
-    const path = "groups";
-    const { data } = await defaultInstance.get(path);
-    return { response: data };
-  } catch (err) {
-    console.error(err);
-    return { err: err.message };
-  }
 };
 
 export default HomePage;

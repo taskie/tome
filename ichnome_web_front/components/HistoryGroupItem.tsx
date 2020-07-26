@@ -4,23 +4,27 @@ import StatLink from "./StatLink";
 import FootprintLink from "./FootprintLink";
 
 type Props = {
+  workspaceName: string;
+  groupName?: string;
   history: IchHistory;
 };
 
 export const HistoryGroupItem: React.FC<Props> = ({
-  history: { group_id, path, version, mtime, digest, updated_at },
+  workspaceName,
+  groupName,
+  history: { group_name, path, version, mtime, digest, updated_at },
 }) => {
   return (
     <li>
-      {digest != null ? <FootprintLink digest={digest} length={8} /> : undefined}
+      {digest != null ? <FootprintLink workspaceName={workspaceName} digest={digest} length={8} /> : undefined}
       {" / "}
       {mtime != null ? mtime : "Nothing"}
       {" / "}
       {updated_at}
       {" / "}
-      <GroupLink groupId={group_id} />
+      <GroupLink workspaceName={workspaceName} groupName={group_name ?? groupName ?? "default"} />
       {" / "}
-      <StatLink groupId={group_id} path={path} />
+      <StatLink workspaceName={workspaceName} groupName={group_name ?? groupName ?? "default"} path={path} />
       {" / "}
       {version}
     </li>

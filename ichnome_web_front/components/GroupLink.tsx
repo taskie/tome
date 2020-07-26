@@ -2,15 +2,17 @@ import Link from "next/link";
 import { uri } from "../utils/uri";
 
 type Props = {
-  groupId: string;
+  workspaceName: string;
+  groupName: string;
   family?: string;
 };
 
-export const GroupLink: React.FC<Props> = ({ groupId, family }) => {
-  const href = family === "stats" ? uri`/stats/${groupId}` : uri`/groups/${groupId}`;
+export const GroupLink: React.FC<Props> = ({ workspaceName, groupName, family }) => {
+  const href =
+    family === "stats" ? uri`/${workspaceName}/stats/${groupName}` : uri`/${workspaceName}/groups/${groupName}`;
   return (
     <Link href={href}>
-      <a>{groupId}</a>
+      <a>{groupName}</a>
     </Link>
   );
 };

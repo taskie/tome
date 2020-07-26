@@ -2,24 +2,21 @@ use std::{error::Error, path::Path};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{Connection, MysqlConnection, SqliteConnection};
-use ichno::db::{SqliteFootprints, SqliteHistories, SqliteStats};
-use ichno::db::{SqliteGroups, SqliteWorkspaces};
+use ichno::db::{SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats, SqliteWorkspaces};
 
 use url::Url;
 
 use crate::{
-    constants::{GroupType},
+    constants::GroupType,
     db::{
         actions::{
             create_footprint_if_needed, create_group_if_needed, create_meta_group_if_needed,
-            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat,
-            FileState,
+            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat, FileState,
         },
         MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces,
     },
     models::{
-        Group, GroupUpdateForm, HistoryInsertForm, StatInsertForm,
-        StatUpdateForm, Workspace, WorkspaceUpdateForm,
+        Group, GroupUpdateForm, HistoryInsertForm, StatInsertForm, StatUpdateForm, Workspace, WorkspaceUpdateForm,
     },
     ssh,
 };

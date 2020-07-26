@@ -10,6 +10,7 @@ import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
 
 type Query = {
+  workspaceName: string;
   digest: string;
 };
 
@@ -18,20 +19,23 @@ type Response = GetFootprintResponse;
 type Props = { response?: Response; err?: string };
 
 const ResponseView: React.FC<{ response: Response }> = ({ response: { footprint, stats, histories } }) => {
+  const router = useRouter();
+  const { query: rawQuery } = router;
+  const { workspaceName } = (rawQuery as unknown) as Query;
   return (
     <>
       <h2>Footprint</h2>
-      <FootprintView footprint={footprint} />
+      <FootprintView workspaceName={workspaceName} footprint={footprint} />
       {stats != null ? (
         <>
           <h2>Stats</h2>
-          <StatGroup stats={stats} />
+          <StatGroup workspaceName={workspaceName} stats={stats} />
         </>
       ) : undefined}
       {histories != null ? (
         <>
           <h2>Histories</h2>
-          <HistoryGroup histories={histories} />
+          <HistoryGroup workspaceName={workspaceName} histories={histories} />
         </>
       ) : undefined}
     </>
@@ -57,8 +61,8 @@ export const FootprintPage: NextPage<Props> = (props) => {
 
 FootprintPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const { digest } = (rawQuery as unknown) as Query;
-    const path = uria`footprints/${digest}`;
+    const { workspaceName, digest } = (rawQuery as unknown) as Query;
+    const path = uria`${workspaceName}/footprints/${digest}`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {

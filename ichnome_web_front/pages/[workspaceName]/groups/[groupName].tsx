@@ -11,31 +11,36 @@ import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 
 type Query = {
-  groupId: string;
+  workspaceName: string;
+  groupName: string;
 };
 
 type Response = GetGroupResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { group, stat, histories, footprints } }) => {
+const ResponseView: React.FC<{ response: Response; workspaceName: string; groupName: string }> = ({
+  response: { group, stat, histories, footprints },
+  workspaceName,
+  groupName,
+}) => {
   const footprint = stat != null && footprints != null ? footprints["" + stat.footprint_id] : undefined;
   return (
     <>
       <h2>Group</h2>
-      <Group group={group} />
+      <Group workspaceName={workspaceName} group={group} />
       <h2>Stat</h2>
-      {stat != null ? <Stat stat={stat} /> : "Nothing"}
+      {stat != null ? <Stat workspaceName={workspaceName} groupName={groupName} stat={stat} /> : "Nothing"}
       {histories != null ? (
         <>
           <h2>Histories</h2>
-          <HistoryGroup histories={histories} />
+          <HistoryGroup workspaceName={workspaceName} groupName={groupName} histories={histories} />
         </>
       ) : undefined}
       {footprint != null ? (
         <>
           <h2>Footprint</h2>
-          <FootprintView footprint={footprint} />
+          <FootprintView workspaceName={workspaceName} footprint={footprint} />
         </>
       ) : undefined}
     </>
@@ -45,24 +50,28 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { group, sta
 export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
-  const { groupId } = (rawQuery as unknown) as Query;
+  const { workspaceName, groupName } = (rawQuery as unknown) as Query;
   return (
     <div className="container">
       <Head>
         <title>
-          {groupId} - {applicationName}
+          {groupName} - {applicationName}
         </title>
       </Head>
-      <h1>{groupId}</h1>
-      {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
+      <h1>{groupName}</h1>
+      {props.response != null ? (
+        <ResponseView response={props.response} workspaceName={workspaceName} groupName={groupName} />
+      ) : (
+        <p>Some error occured: {props.err}</p>
+      )}
     </div>
   );
 };
 
 GroupPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const { groupId } = (rawQuery as unknown) as Query;
-    const path = uria`groups/${groupId}`;
+    const { workspaceName, groupName } = (rawQuery as unknown) as Query;
+    const path = uria`${workspaceName}/groups/${groupName}`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {

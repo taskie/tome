@@ -1,5 +1,6 @@
 export type IchGroup = {
-  id: string;
+  id: number;
+  name: string;
   url: string;
   type: number;
   history_id?: number;
@@ -15,7 +16,7 @@ export type IchGroup = {
 
 export type IchStat = {
   id: number;
-  group_id: string;
+  group_name: string;
   path: string;
   history_id: number;
   version: number;
@@ -30,7 +31,7 @@ export type IchStat = {
 
 export type IchHistory = {
   id: number;
-  group_id: string;
+  group_name: string;
   path: string;
   version: number;
   status: number;

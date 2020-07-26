@@ -7,15 +7,20 @@ import { applicationName } from "@/config";
 import { GetGroupsResponse } from "@/api/types";
 import Group from "@/components/Group";
 
+type Query = { workspaceName: string };
+
 type Response = GetGroupsResponse;
 
 type Props = { response?: Response; err?: string };
 
-const ResponseView: React.FC<{ response: Response }> = ({ response: { groups } }) => {
+const ResponseView: React.FC<{ response: Response; workspaceName: string }> = ({
+  workspaceName,
+  response: { groups },
+}) => {
   return (
     <>
       {groups.map((n) => (
-        <Group key={n.id} group={n} />
+        <Group key={n.id} workspaceName={workspaceName} group={n} />
       ))}
     </>
   );
@@ -23,13 +28,19 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { groups } }
 
 export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
+  const { query: rawQuery } = router;
+  const { workspaceName } = (rawQuery as unknown) as Query;
   return (
     <div className="container">
       <Head>
         <title>Groups - {applicationName}</title>
       </Head>
       <h1>Groups</h1>
-      {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
+      {props.response != null ? (
+        <ResponseView response={props.response} workspaceName={workspaceName} />
+      ) : (
+        <p>Some error occured: {props.err}</p>
+      )}
     </div>
   );
 };

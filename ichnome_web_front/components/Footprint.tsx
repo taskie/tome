@@ -1,21 +1,18 @@
 import { IchFootprint } from "@/api/types";
 import FootprintLink from "./FootprintLink";
-import Digest from "./Digest";
 
 type Props = {
+  workspaceName: string;
   footprint: IchFootprint;
 };
 
-export const Footprint: React.FC<Props> = ({ footprint: { digest, size, git_object_id } }) => {
+export const Footprint: React.FC<Props> = ({ workspaceName, footprint: { digest, size } }) => {
   return (
     <ul>
       <li>
-        Digest: <FootprintLink digest={digest} />
+        Digest: <FootprintLink workspaceName={workspaceName} digest={digest} />
       </li>
       <li>Size: {size}</li>
-      <li>
-        Git Footprint ID: <Digest digest={git_object_id} />
-      </li>
     </ul>
   );
 };

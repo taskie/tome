@@ -5,6 +5,7 @@ extern crate log;
 
 use std::{collections::HashMap, env};
 
+use crate::models::{WebHistory, WebStat};
 use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer, Responder};
 use diesel::{
     r2d2::{self, ConnectionManager},
@@ -12,31 +13,39 @@ use diesel::{
 };
 use ichnome::{
     db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces},
-    Footprint, Group, History, Stat, META_GROUP_NAME,
+    Footprint, Group, History, Stat, Workspace, META_GROUP_NAME,
 };
 use serde::Serialize;
+use std::collections::HashSet;
 use structopt::{clap, StructOpt};
 
 type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 
-#[derive(Serialize)]
-struct GetStatsResponse {
-    group: Group,
-    stats: Vec<Stat>,
-}
+mod models;
 
-fn find_group(
+fn find_workspace_and_group(
     conn: &MysqlConnection,
     workspace_name: &str,
     group_name: &str,
-) -> Result<Option<Group>, Box<dyn std::error::Error>> {
+) -> Result<Option<(Workspace, Group)>, Box<dyn std::error::Error>> {
     let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
         let group = MysqlGroups::find_by_name(conn, workspace.id, group_name)?;
-        Ok(group)
+        if let Some(group) = group {
+            Ok(Some((workspace, group)))
+        } else {
+            Ok(None)
+        }
     } else {
         Ok(None)
     }
+}
+
+#[derive(Serialize)]
+struct GetStatsResponse {
+    workspace: Workspace,
+    group: Group,
+    stats: Vec<Stat>,
 }
 
 fn get_stats_impl(
@@ -44,13 +53,12 @@ fn get_stats_impl(
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<GetStatsResponse>, Box<dyn std::error::Error>> {
-    let group = find_group(conn, workspace_name, group_name)?;
-    match group {
-        Some(group) => {
-            let stats = MysqlStats::select_by_group_id(conn, group.id)?;
-            Ok(Some(GetStatsResponse { group, stats }))
-        }
-        None => Ok(None),
+    let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
+    if let Some((workspace, group)) = pair {
+        let stats = MysqlStats::select_by_group_id(conn, group.id)?;
+        Ok(Some(GetStatsResponse { workspace, group, stats }))
+    } else {
+        Ok(None)
     }
 }
 
@@ -77,6 +85,7 @@ async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<(String, Stri
 
 #[derive(Serialize)]
 struct GetStatResponse {
+    workspace: Workspace,
     group: Group,
     stat: Stat,
     histories: Option<Vec<History>>,
@@ -90,8 +99,8 @@ fn get_stat_impl(
     group_name: &str,
     path: &str,
 ) -> Result<Option<GetStatResponse>, Box<dyn std::error::Error>> {
-    let group = find_group(conn, workspace_name, group_name)?;
-    if let Some(group) = group {
+    let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
+    if let Some((workspace, group)) = pair {
         let stat = MysqlStats::find_by_path(conn, group.id, path)?;
         if let Some(stat) = stat {
             let histories = Some(MysqlHistories::select_by_path(conn, group.id, path)?);
@@ -121,7 +130,7 @@ fn get_stat_impl(
                     vec![]
                 }
             });
-            Ok(Some(GetStatResponse { group, stat, histories, footprints, eq_stats }))
+            Ok(Some(GetStatResponse { workspace, group, stat, histories, footprints, eq_stats }))
         } else {
             Ok(None)
         }
@@ -158,10 +167,11 @@ async fn get_stat(
 
 #[derive(Serialize)]
 struct GetFootprintResponse {
+    workspace: Workspace,
     footprint: Footprint,
     group_name: Option<String>,
-    stats: Option<Vec<Stat>>,
-    histories: Option<Vec<History>>,
+    stats: Option<Vec<WebStat>>,
+    histories: Option<Vec<WebHistory>>,
 }
 
 fn get_footprint_impl(
@@ -178,12 +188,43 @@ fn get_footprint_impl(
     let footprint = MysqlFootprints::find_by_digest(conn, digest)?;
     let group_name: Option<String> = None;
     if let Some(footprint) = footprint {
-        let stats = Some(MysqlStats::select_by_footprint_id(conn, workspace.id, footprint.id)?);
-        let histories = Some(MysqlHistories::select_by_footprint_id(conn, workspace.id, footprint.id)?);
-        if stats.as_ref().map_or(false, |ss| ss.is_empty()) && histories.as_ref().map_or(false, |hs| hs.is_empty()) {
+        let mut group_ids = HashSet::new();
+        let stats = MysqlStats::select_by_footprint_id(conn, workspace.id, footprint.id)?;
+        let histories = MysqlHistories::select_by_footprint_id(conn, workspace.id, footprint.id)?;
+        if stats.is_empty() && histories.is_empty() {
             return Ok(None);
         }
-        Ok(Some(GetFootprintResponse { footprint, group_name, stats, histories }))
+        for s in stats.iter() {
+            group_ids.insert(s.group_id);
+        }
+        for h in histories.iter() {
+            group_ids.insert(h.group_id);
+        }
+        let group_ids: Vec<i32> = group_ids.into_iter().collect();
+        let groups = MysqlGroups::select(conn, &group_ids)?;
+        let mut group_map = HashMap::new();
+        for g in groups.iter() {
+            group_map.insert(g.id, g);
+        }
+        let stats: Vec<WebStat> = stats
+            .iter()
+            .map(|s| (s, group_map.get(&s.group_id)))
+            .filter(|(_, g)| g.is_some())
+            .map(|(s, g)| WebStat::from(&workspace, *g.unwrap(), s))
+            .collect();
+        let histories: Vec<WebHistory> = histories
+            .iter()
+            .map(|h| (h, group_map.get(&h.group_id)))
+            .filter(|(_, g)| g.is_some())
+            .map(|(h, g)| WebHistory::from(&workspace, *g.unwrap(), h))
+            .collect();
+        Ok(Some(GetFootprintResponse {
+            workspace,
+            footprint,
+            group_name,
+            stats: Some(stats),
+            histories: Some(histories),
+        }))
     } else {
         Ok(None)
     }
@@ -216,6 +257,7 @@ async fn get_footprint(
 
 #[derive(Serialize)]
 struct GetGroupsResponse {
+    workspace: Workspace,
     groups: Vec<Group>,
 }
 
@@ -226,7 +268,7 @@ fn get_groups_impl(
     let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
         let groups = MysqlGroups::select_all(conn, workspace.id)?;
-        Ok(Some(GetGroupsResponse { groups }))
+        Ok(Some(GetGroupsResponse { workspace, groups }))
     } else {
         Ok(None)
     }
@@ -253,6 +295,7 @@ async fn get_groups(pool: web::Data<DbPool>, path_params: web::Path<(String,)>) 
 
 #[derive(Serialize)]
 struct GetGroupResponse {
+    workspace: Workspace,
     group: Group,
     stat: Option<Stat>,
     histories: Option<Vec<History>>,
@@ -264,8 +307,8 @@ fn get_group_impl(
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<GetGroupResponse>, Box<dyn std::error::Error>> {
-    let group = find_group(conn, workspace_name, group_name)?;
-    if let Some(group) = group {
+    let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
+    if let Some((workspace, group)) = pair {
         let meta_group = MysqlGroups::find_by_name(conn, group.workspace_id, META_GROUP_NAME)?;
         let meta_group = if let Some(meta_group) = meta_group { meta_group } else { return Ok(None) };
         let stat = MysqlStats::find_by_path(conn, meta_group.id, group_name)?;
@@ -291,7 +334,7 @@ fn get_group_impl(
             }
             footprints
         });
-        Ok(Some(GetGroupResponse { group, stat, histories, footprints }))
+        Ok(Some(GetGroupResponse { workspace, group, stat, histories, footprints }))
     } else {
         Ok(None)
     }

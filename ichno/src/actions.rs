@@ -11,17 +11,10 @@ use url::Url;
 
 use crate::{
     constants::GroupType,
-    db::{
-        actions::{
-            create_group_if_needed,
-            create_workspace_if_needed,  update_meta_group_stat,
-            update_stat_with_paths_if_needed,
-        },
+    db::actions::{
+        create_group_if_needed, create_workspace_if_needed, update_meta_group_stat, update_stat_with_paths_if_needed,
     },
-    models::{
-        Group, Stat,
-        Workspace,
-    },
+    models::{Group, Stat, Workspace},
 };
 
 pub struct Context<'c, 'a> {
