@@ -4,7 +4,6 @@ use std::{
     hash::Hasher,
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
-    time::UNIX_EPOCH,
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -27,7 +26,7 @@ pub(crate) fn create_workspace_if_needed(
     name: &str,
     now: NaiveDateTime,
 ) -> Result<Workspace, Box<dyn Error>> {
-    let mut workspace = Workspaces::find_by_name(conn, name)?;
+    let workspace = Workspaces::find_by_name(conn, name)?;
     Ok(if let Some(workspace) = workspace {
         workspace
     } else {
@@ -55,7 +54,7 @@ pub(crate) fn create_group_if_needed(
     type_: GroupType,
     now: NaiveDateTime,
 ) -> Result<Group, Box<dyn Error>> {
-    let mut group = Groups::find_by_name(conn, workspace.id, name)?;
+    let group = Groups::find_by_name(conn, workspace.id, name)?;
     Ok(if let Some(group) = group {
         group
     } else {
@@ -90,13 +89,14 @@ pub(crate) fn create_meta_group_if_needed(
     create_group_if_needed(conn, workspace, group_name, &url, GroupType::META, now)
 }
 
+#[allow(dead_code)]
 pub(crate) fn create_attr_group_if_needed(
     conn: &Connection,
     workspace: &Workspace,
     now: NaiveDateTime,
 ) -> Result<Group, Box<dyn Error>> {
     let group_name = ATTR_GROUP_NAME;
-    let url = format!("ichno://{}/{}", workspace.name, group_name);
+    let url = format!("ichno://{}/groups/{}", workspace.name, group_name);
     let url = Url::parse(&url)?;
     create_group_if_needed(conn, workspace, group_name, &url, GroupType::ATTR, now)
 }
@@ -316,6 +316,7 @@ pub(crate) fn create_footprint_if_needed(
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn create_content_with_bytes_if_needed(
     conn: &Connection,
     bytes: &[u8],
@@ -341,6 +342,7 @@ pub(crate) fn create_content_with_bytes_if_needed(
     Ok((content, footprint))
 }
 
+#[allow(dead_code)]
 pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
     conn: &Connection,
     workspace: &Workspace,
@@ -416,7 +418,7 @@ pub(crate) fn new_updated_file_state_if_needed(
     stat: Option<&Stat>,
     path: &Path,
 ) -> Result<Option<FileState>, Box<dyn Error>> {
-    let (mut f, mtime, size) = if let Ok(f) = File::open(path) {
+    let (f, mtime, size) = if let Ok(f) = File::open(path) {
         let md = f.metadata()?;
         let mtime = DateTime::<Utc>::from(md.modified()?).naive_utc();
         let size = md.len() as i64;

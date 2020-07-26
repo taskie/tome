@@ -1,32 +1,28 @@
 use std::{error::Error, path::Path};
 
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{Connection, MysqlConnection, SqliteConnection};
-use ichno::{
-    db::{SqliteFootprints, SqliteHistories, SqliteStats},
-    Status,
-};
-use sha1::Sha1;
+use ichno::db::{SqliteFootprints, SqliteHistories, SqliteStats};
+use ichno::db::{SqliteGroups, SqliteWorkspaces};
+
 use url::Url;
 
 use crate::{
-    constants::{GroupType, META_GROUP_NAME},
+    constants::{GroupType},
     db::{
         actions::{
             create_footprint_if_needed, create_group_if_needed, create_meta_group_if_needed,
-            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat, FileMetadata,
+            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat,
             FileState,
         },
         MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces,
     },
     models::{
-        FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, HistoryInsertForm, Stat, StatInsertForm,
+        Group, GroupUpdateForm, HistoryInsertForm, StatInsertForm,
         StatUpdateForm, Workspace, WorkspaceUpdateForm,
     },
     ssh,
 };
-use ichno::db::{SqliteGroups, SqliteWorkspaces};
-use sha1::digest::FixedOutput;
 
 pub struct Context<'c> {
     pub connection: &'c MysqlConnection,
@@ -169,7 +165,7 @@ pub fn pull(ctx: &Context, req: &PullRequest) -> Result<PullResponse, Box<dyn Er
 
 fn load_local_db(
     ctx: &Context,
-    req: &PullRequest,
+    _req: &PullRequest,
     glb_workspace: &Workspace,
     glb_group: &Group,
     path: &Path,
@@ -178,7 +174,7 @@ fn load_local_db(
     let now = ctx.naive_current_time();
     let meta_group = create_meta_group_if_needed(glb_conn, glb_workspace, now)?;
     let meta_stat = MysqlStats::find_by_path(glb_conn, meta_group.id, &glb_group.name)?;
-    let updated_metadata = if let Some(FileState::Enabled(updated_metadata)) =
+    let _updated_metadata = if let Some(FileState::Enabled(updated_metadata)) =
         new_updated_file_state_if_needed(meta_stat.as_ref(), path)?
     {
         updated_metadata
@@ -285,7 +281,7 @@ fn load_local_db(
         }
     }
 
-    let group = update_meta_group_stat(glb_conn, glb_workspace, glb_group, path, now)?;
+    let _group = update_meta_group_stat(glb_conn, glb_workspace, glb_group, path, now)?;
 
     Ok(())
 }

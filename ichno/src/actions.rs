@@ -1,35 +1,27 @@
 use std::{
     convert::AsRef,
     error::Error,
-    fs::File,
-    hash::Hasher,
-    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
 };
 
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::sqlite::SqliteConnection;
-use sha1::Sha1;
-use sha2::{digest::FixedOutput, Sha256};
-use twox_hash::XxHash64;
+
 use url::Url;
 
 use crate::{
-    constants::{GroupType, Status, DEFAULT_WORKSPACE_NAME, META_GROUP_NAME},
+    constants::GroupType,
     db::{
         actions::{
-            calc_digest, calc_fast_digest, create_group_if_needed, create_meta_group_if_needed,
-            create_workspace_if_needed, update_disabled_stat_if_needed, update_meta_group_stat,
-            update_stat_with_paths_if_needed, update_stat_with_present_paths_if_needed,
+            create_group_if_needed,
+            create_workspace_if_needed,  update_meta_group_stat,
+            update_stat_with_paths_if_needed,
         },
-        SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats, SqliteWorkspaces,
     },
     models::{
-        FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, HistoryInsertForm, Stat, StatInsertForm,
-        StatUpdateForm,
+        Group, Stat,
+        Workspace,
     },
-    Workspace, WorkspaceInsertForm, DEFAULT_GROUP_NAME,
 };
 
 pub struct Context<'c, 'a> {

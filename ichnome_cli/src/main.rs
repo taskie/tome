@@ -3,9 +3,9 @@ extern crate log;
 
 use std::{env, error::Error, process::exit};
 
-use chrono::{Local, Utc};
+use chrono::Utc;
 use diesel::{Connection, MysqlConnection};
-use ichno::DEFAULT_WORKSPACE_NAME;
+
 use ichnome::{
     action,
     action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},

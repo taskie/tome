@@ -3,7 +3,7 @@ extern crate log;
 
 use std::{collections::HashSet, env, error::Error, ffi::OsStr, path::Path, process::exit};
 
-use chrono::{Local, Utc};
+use chrono::Utc;
 use diesel::{connection::Connection, sqlite::SqliteConnection};
 use dotenv;
 use ignore;
@@ -83,7 +83,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 }
                 let path = Path::new(&stat.path);
                 if !path.exists() {
-                    actions::update_file_stat(&ctx, path);
+                    actions::update_file_stat(&ctx, path)?;
                 }
             }
             actions::post_process(&mut ctx)?;
