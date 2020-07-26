@@ -1,29 +1,27 @@
 table! {
     attrs (id) {
         id -> Integer,
-        entity_type -> Integer,
-        entity_id -> Integer,
-        group_id -> Nullable<Varchar>,
-        path -> Nullable<Varchar>,
-        version -> Nullable<Integer>,
-        digest -> Nullable<Char>,
+        workspace_id -> Integer,
+        target_footprint_id -> Integer,
+        target_digest -> Char,
         key -> Varchar,
         value_footprint_id -> Integer,
         value_digest -> Char,
         value_content_type -> Integer,
+        value_summary -> Nullable<Varchar>,
         status -> Integer,
+        attr_stat_id -> Nullable<Integer>,
         created_at -> Datetime,
         updated_at -> Datetime,
     }
 }
 
 table! {
-    contents (footprint_id) {
+    contents (id) {
+        id -> Integer,
         footprint_id -> Integer,
-        digest -> Char,
         body -> Blob,
         created_at -> Datetime,
-        updated_at -> Datetime,
     }
 }
 
@@ -33,24 +31,21 @@ table! {
         digest -> Char,
         size -> Bigint,
         fast_digest -> Bigint,
-        git_object_id -> Char,
+        created_at -> Datetime,
     }
 }
 
 table! {
     groups (id) {
-        id -> Varchar,
+        id -> Integer,
+        workspace_id -> Integer,
+        name -> Varchar,
         url -> Varchar,
         #[sql_name = "type"]
         type_ -> Integer,
-        history_id -> Nullable<Integer>,
-        version -> Nullable<Integer>,
-        status -> Nullable<Integer>,
-        mtime -> Nullable<Datetime>,
-        footprint_id -> Nullable<Integer>,
-        digest -> Nullable<Char>,
-        size -> Nullable<Bigint>,
-        fast_digest -> Nullable<Bigint>,
+        description -> Varchar,
+        status -> Integer,
+        group_stat_id -> Nullable<Integer>,
         created_at -> Datetime,
         updated_at -> Datetime,
     }
@@ -59,7 +54,8 @@ table! {
 table! {
     histories (id) {
         id -> Integer,
-        group_id -> Varchar,
+        workspace_id -> Integer,
+        group_id -> Integer,
         path -> Varchar,
         version -> Integer,
         status -> Integer,
@@ -74,7 +70,8 @@ table! {
 table! {
     stats (id) {
         id -> Integer,
-        group_id -> Varchar,
+        workspace_id -> Integer,
+        group_id -> Integer,
         path -> Varchar,
         history_id -> Integer,
         version -> Integer,
@@ -89,11 +86,23 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(
-    attrs,
-    contents,
-    footprints,
-    groups,
-    histories,
-    stats,
-);
+table! {
+    workspaces (id) {
+        id -> Integer,
+        name -> Varchar,
+        description -> Varchar,
+        status -> Integer,
+        created_at -> Datetime,
+        updated_at -> Datetime,
+    }
+}
+
+joinable!(attrs -> stats (attr_stat_id));
+joinable!(attrs -> workspaces (workspace_id));
+joinable!(contents -> footprints (footprint_id));
+joinable!(groups -> workspaces (workspace_id));
+joinable!(histories -> footprints (footprint_id));
+joinable!(stats -> footprints (footprint_id));
+joinable!(stats -> histories (history_id));
+
+allow_tables_to_appear_in_same_query!(attrs, contents, footprints, groups, histories, stats, workspaces,);

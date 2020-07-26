@@ -1,6 +1,6 @@
 use std::{error::Error, path::Path};
 
-use chrono::{DateTime, TimeZone};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use diesel::{Connection, MysqlConnection, SqliteConnection};
 use ichno::{
     db::{SqliteFootprints, SqliteHistories, SqliteStats},
@@ -10,98 +10,127 @@ use sha1::Sha1;
 use url::Url;
 
 use crate::{
-    constants::{GroupType, META_NAMESPACE_ID},
-    db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats},
-    file,
-    file::FileMetadata,
+    constants::{GroupType, META_GROUP_NAME},
+    db::{
+        actions::{
+            create_footprint_if_needed, create_group_if_needed, create_meta_group_if_needed,
+            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat, FileMetadata,
+            FileState,
+        },
+        MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces,
+    },
     models::{
         FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, HistoryInsertForm, Stat, StatInsertForm,
-        StatUpdateForm,
+        StatUpdateForm, Workspace, WorkspaceUpdateForm,
     },
     ssh,
 };
+use ichno::db::{SqliteGroups, SqliteWorkspaces};
 use sha1::digest::FixedOutput;
 
 pub struct Context<'c> {
     pub connection: &'c MysqlConnection,
+    pub timer: Box<dyn Fn() -> DateTime<Utc>>,
+}
+
+impl<'c> Context<'c> {
+    pub fn current_time(&self) -> DateTime<Utc> {
+        (self.timer)()
+    }
+
+    pub fn naive_current_time(&self) -> NaiveDateTime {
+        self.current_time().naive_utc()
+    }
 }
 
 #[derive(Debug)]
-pub struct RegisterRequest<Tz: TimeZone> {
-    pub group_id: String,
+pub struct SetupRequest {
+    pub workspace_name: String,
+    pub options: SetupOptions,
+}
+
+#[derive(Default, Debug)]
+pub struct SetupOptions {
+    pub description: Option<String>,
+    pub force: bool,
+}
+
+#[derive(Debug)]
+pub struct SetupResponse {
+    pub workspace: Workspace,
+}
+
+pub fn setup(ctx: &Context, req: &SetupRequest) -> Result<SetupResponse, Box<dyn Error>> {
+    let conn = ctx.connection;
+    let now = ctx.naive_current_time();
+    let workspace = MysqlWorkspaces::find_by_name(conn, &req.workspace_name)?;
+    if let Some(workspace) = workspace {
+        if req.options.force {
+            MysqlWorkspaces::update_and_find(
+                conn,
+                workspace.id,
+                &WorkspaceUpdateForm {
+                    description: req.options.description.as_ref().map(|s| s.as_str()),
+                    ..Default::default()
+                },
+            )?;
+        } else {
+            panic!("workspae {} already exists", workspace.name)
+        }
+    }
+    let workspace = create_workspace_if_needed(conn, &req.workspace_name, now)?;
+    Ok(SetupResponse { workspace })
+}
+
+#[derive(Debug)]
+pub struct RegisterRequest {
+    pub workspace_name: String,
+    pub group_name: String,
     pub url: String,
-    pub current_time: DateTime<Tz>,
     pub options: RegisterOptions,
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct RegisterOptions {
+    pub description: Option<String>,
     pub force: bool,
 }
 
 #[derive(Debug)]
 pub struct RegisterResponse {
+    pub workspace: Workspace,
     pub group: Group,
 }
 
-impl Default for RegisterOptions {
-    fn default() -> Self {
-        RegisterOptions { force: false }
-    }
-}
-
-pub fn register<Tz: TimeZone>(ctx: &Context, req: &RegisterRequest<Tz>) -> Result<RegisterResponse, Box<dyn Error>> {
+pub fn register(ctx: &Context, req: &RegisterRequest) -> Result<RegisterResponse, Box<dyn Error>> {
     let conn = ctx.connection;
-    Url::parse(&req.url)?;
-    let group = MysqlGroups::find(conn, &req.group_id)?;
-    let group = if let Some(_) = group {
-        if !req.options.force {
-            panic!(format!("group duplicated: {}", req.group_id));
+    let now = ctx.naive_current_time();
+    let workspace = MysqlWorkspaces::find_by_name(conn, &req.workspace_name)?.unwrap();
+    let url = Url::parse(&req.url)?;
+    let group = MysqlGroups::find_by_name(conn, workspace.id, &req.group_name)?;
+    if let Some(group) = group {
+        if req.options.force {
+            MysqlGroups::update_and_find(
+                conn,
+                group.id,
+                &GroupUpdateForm {
+                    url: Some(&req.url),
+                    description: req.options.description.as_ref().map(|s| s.as_str()),
+                    ..Default::default()
+                },
+            )?;
+        } else {
+            panic!("group {} already exists", group.name)
         }
-        MysqlGroups::update_and_find(
-            conn,
-            &req.group_id,
-            &GroupUpdateForm {
-                url: Some(&req.url),
-                type_: Some(GroupType::REMOTE as i32),
-                history_id: Some(None),
-                version: Some(None),
-                status: Some(None),
-                mtime: Some(None),
-                footprint_id: Some(None),
-                digest: Some(None),
-                size: Some(None),
-                fast_digest: Some(None),
-                updated_at: Some(req.current_time.naive_utc()),
-            },
-        )?
-    } else {
-        MysqlGroups::insert_and_find(
-            conn,
-            &GroupInsertForm {
-                id: &req.group_id,
-                url: &req.url,
-                type_: GroupType::REMOTE as i32,
-                history_id: None,
-                version: None,
-                status: None,
-                mtime: None,
-                footprint_id: None,
-                digest: None,
-                size: None,
-                fast_digest: None,
-                created_at: req.current_time.naive_utc(),
-                updated_at: req.current_time.naive_utc(),
-            },
-        )?
-    };
-    Ok(RegisterResponse { group })
+    }
+    let group = create_group_if_needed(conn, &workspace, &req.group_name, &url, GroupType::REMOTE, now)?;
+    Ok(RegisterResponse { workspace, group })
 }
 
 #[derive(Debug)]
-pub struct PullRequest<Tz: TimeZone> {
-    pub group_id: String,
-    pub current_time: DateTime<Tz>,
+pub struct PullRequest {
+    pub workspace_name: String,
+    pub group_name: String,
     pub options: PullOptions,
 }
 
@@ -119,132 +148,135 @@ pub struct PullResponse {
     pub group: Group,
 }
 
-pub fn pull<Tz: TimeZone>(ctx: &Context, req: &PullRequest<Tz>) -> Result<PullResponse, Box<dyn Error>> {
+pub fn pull(ctx: &Context, req: &PullRequest) -> Result<PullResponse, Box<dyn Error>> {
     let conn = ctx.connection;
-    let group = MysqlGroups::find(conn, &req.group_id)?;
-    let group = group.unwrap();
+    let workspace = MysqlWorkspaces::find_by_name(conn, &req.workspace_name)?.unwrap();
+    let group = MysqlGroups::find_by_name(conn, workspace.id, &req.group_name)?.unwrap();
     let url = Url::parse(&group.url)?;
     let scheme = url.scheme();
     if scheme == "ssh" {
         let tempfile = ssh::download(&url)?;
-        load_local_db(ctx, req, &group, tempfile.path())?;
+        load_local_db(ctx, req, &workspace, &group, tempfile.path())?;
         tempfile.close()?;
     } else if scheme == "file" {
         let path = Path::new(url.path());
-        load_local_db(ctx, req, &group, path)?;
+        load_local_db(ctx, req, &workspace, &group, path)?;
     } else {
         panic!(format!("unknown scheme: {}", scheme));
     }
     Ok(PullResponse { group })
 }
 
-fn load_local_db<Tz: TimeZone>(
+fn load_local_db(
     ctx: &Context,
-    req: &PullRequest<Tz>,
-    _group: &Group,
+    req: &PullRequest,
+    glb_workspace: &Workspace,
+    glb_group: &Group,
     path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let global_conn = ctx.connection;
-    let global_group_id = req.group_id.as_str();
+    let glb_conn = ctx.connection;
+    let now = ctx.naive_current_time();
+    let meta_group = create_meta_group_if_needed(glb_conn, glb_workspace, now)?;
+    let meta_stat = MysqlStats::find_by_path(glb_conn, meta_group.id, &glb_group.name)?;
+    let updated_metadata = if let Some(FileState::Enabled(updated_metadata)) =
+        new_updated_file_state_if_needed(meta_stat.as_ref(), path)?
+    {
+        updated_metadata
+    } else {
+        return Ok(());
+    };
 
-    let meta_stat = MysqlStats::find_by_path(global_conn, META_NAMESPACE_ID, global_group_id)?;
-    let updated_metadata = file::new_updated_metadata_if_needed(&meta_stat, path)?;
-    match updated_metadata {
-        None => {
-            return Ok(());
-        }
-        _ => {}
-    }
-    let updated_metadata = updated_metadata.unwrap();
+    let loc_conn = SqliteConnection::establish(path.to_str().unwrap())?;
+    let loc_conn = &loc_conn;
+    let loc_workspace_name = ichno::DEFAULT_WORKSPACE_NAME;
+    let loc_workspace = SqliteWorkspaces::find_by_name(loc_conn, loc_workspace_name)?.unwrap();
+    let loc_group_name = ichno::DEFAULT_GROUP_NAME;
+    let loc_group = SqliteGroups::find_by_name(loc_conn, loc_workspace.id, loc_group_name)?.unwrap();
 
-    let local_conn = SqliteConnection::establish(path.to_str().unwrap())?;
-    let local_conn = &local_conn;
-    let local_group_id = ichno::DEFAULT_NAMESPACE_ID;
-
-    let local_stats = SqliteStats::select_by_group_id(&local_conn, local_group_id)?;
-    for local_stat in local_stats.iter() {
-        let path = &local_stat.path;
-        let global_stat = MysqlStats::find_by_path(global_conn, global_group_id, path)?;
-        if global_stat == None || global_stat.as_ref().unwrap().version != local_stat.version {
-            let local_histories = SqliteHistories::select_by_path(local_conn, local_group_id, path)?;
-            for local_history in local_histories.iter() {
-                if let Some(global_stat) = global_stat.as_ref() {
-                    if local_history.version <= global_stat.version {
+    let loc_stats = SqliteStats::select_by_group_id(loc_conn, loc_group.id)?;
+    for loc_stat in loc_stats.iter() {
+        let path = &loc_stat.path;
+        let glb_stat = MysqlStats::find_by_path(glb_conn, glb_group.id, path)?;
+        if glb_stat == None || glb_stat.as_ref().unwrap().version != loc_stat.version {
+            let loc_histories = SqliteHistories::select_by_path(loc_conn, loc_group.id, path)?;
+            for loc_history in loc_histories.iter() {
+                if let Some(glb_stat) = glb_stat.as_ref() {
+                    if loc_history.version <= glb_stat.version {
                         continue;
                     }
                 }
-                let global_footprint = if let Some(local_footprint_id) = local_history.footprint_id {
-                    let digest = local_history.digest.as_ref().unwrap();
-                    let global_footprint = MysqlFootprints::find_by_digest(global_conn, digest)?;
-                    if let Some(_) = global_footprint {
-                        global_footprint
+                let glb_footprint = if let Some(loc_footprint_id) = loc_history.footprint_id {
+                    let digest = loc_history.digest.as_ref().unwrap();
+                    let glb_footprint = MysqlFootprints::find_by_digest(glb_conn, digest)?;
+                    if let Some(_) = glb_footprint {
+                        glb_footprint
                     } else {
-                        let local_footprint = SqliteFootprints::find(local_conn, local_footprint_id)?;
-                        if let Some(local_footprint) = local_footprint {
-                            Some(MysqlFootprints::insert_and_find(
-                                global_conn,
-                                &FootprintInsertForm {
-                                    digest: local_footprint.digest.as_str(),
-                                    size: local_footprint.size,
-                                    fast_digest: local_footprint.fast_digest,
-                                    git_object_id: local_footprint.git_object_id.as_str(),
-                                },
+                        let loc_footprint = SqliteFootprints::find(loc_conn, loc_footprint_id)?;
+                        if let Some(loc_footprint) = loc_footprint {
+                            Some(create_footprint_if_needed(
+                                glb_conn,
+                                loc_footprint.digest.as_str(),
+                                loc_footprint.size,
+                                loc_footprint.fast_digest,
+                                now,
                             )?)
                         } else {
-                            warn!("Footprint (id: {}) is not found in local DB", local_footprint_id);
+                            warn!("Footprint (id: {}) is not found in local DB", loc_footprint_id);
                             None
                         }
                     }
                 } else {
                     None
                 };
-                let global_history = MysqlHistories::insert_and_find(
-                    global_conn,
+                let glb_history = MysqlHistories::insert_and_find(
+                    glb_conn,
                     &HistoryInsertForm {
-                        group_id: global_group_id,
+                        workspace_id: glb_workspace.id,
+                        group_id: glb_group.id,
                         path,
-                        version: local_history.version,
-                        status: local_history.status,
-                        mtime: local_history.mtime,
-                        footprint_id: global_footprint.as_ref().map(|o| o.id),
-                        digest: global_footprint.as_ref().map(|o| o.digest.as_str()),
-                        created_at: local_history.created_at,
-                        updated_at: local_history.updated_at,
+                        version: loc_history.version,
+                        status: loc_history.status,
+                        mtime: loc_history.mtime,
+                        footprint_id: glb_footprint.as_ref().map(|o| o.id),
+                        digest: glb_footprint.as_ref().map(|o| o.digest.as_str()),
+                        created_at: loc_history.created_at,
+                        updated_at: loc_history.updated_at,
                     },
                 )?;
-                if local_history.version == local_stat.version {
-                    let _global_stat = if let Some(global_stat) = global_stat.as_ref() {
+                if loc_history.version == loc_stat.version {
+                    let _glb_stat = if let Some(glb_stat) = glb_stat.as_ref() {
                         MysqlStats::update_and_find(
-                            global_conn,
-                            global_stat.id,
+                            glb_conn,
+                            glb_stat.id,
                             &StatUpdateForm {
-                                history_id: Some(global_history.id),
-                                version: Some(global_history.version),
-                                status: Some(global_history.status),
-                                mtime: Some(global_history.mtime),
-                                footprint_id: Some(global_history.footprint_id),
-                                digest: Some(global_footprint.as_ref().map(|o| o.digest.as_str())),
-                                size: Some(global_footprint.as_ref().map(|o| o.size)),
-                                fast_digest: Some(global_footprint.as_ref().map(|o| o.fast_digest)),
-                                updated_at: Some(local_stat.updated_at),
+                                history_id: Some(glb_history.id),
+                                version: Some(glb_history.version),
+                                status: Some(glb_history.status),
+                                mtime: Some(glb_history.mtime),
+                                footprint_id: Some(glb_history.footprint_id),
+                                digest: Some(glb_footprint.as_ref().map(|o| o.digest.as_str())),
+                                size: Some(glb_footprint.as_ref().map(|o| o.size)),
+                                fast_digest: Some(glb_footprint.as_ref().map(|o| o.fast_digest)),
+                                updated_at: Some(loc_stat.updated_at),
                             },
                         )?
                     } else {
                         MysqlStats::insert_and_find(
-                            global_conn,
+                            glb_conn,
                             &StatInsertForm {
-                                group_id: global_group_id,
+                                workspace_id: glb_workspace.id,
+                                group_id: glb_group.id,
                                 path,
-                                history_id: global_history.id,
-                                version: global_history.version,
-                                status: global_history.status,
-                                mtime: global_history.mtime,
-                                footprint_id: global_history.footprint_id,
-                                digest: global_footprint.as_ref().map(|o| o.digest.as_str()),
-                                size: global_footprint.as_ref().map(|o| o.size),
-                                fast_digest: global_footprint.as_ref().map(|o| o.fast_digest),
-                                created_at: local_stat.created_at,
-                                updated_at: local_stat.updated_at,
+                                history_id: glb_history.id,
+                                version: glb_history.version,
+                                status: glb_history.status,
+                                mtime: glb_history.mtime,
+                                footprint_id: glb_history.footprint_id,
+                                digest: glb_footprint.as_ref().map(|o| o.digest.as_str()),
+                                size: glb_footprint.as_ref().map(|o| o.size),
+                                fast_digest: glb_footprint.as_ref().map(|o| o.fast_digest),
+                                created_at: loc_stat.created_at,
+                                updated_at: loc_stat.updated_at,
                             },
                         )?
                     };
@@ -253,110 +285,7 @@ fn load_local_db<Tz: TimeZone>(
         }
     }
 
-    let stat = update_metadata(ctx, req, path, meta_stat.as_ref(), &updated_metadata)?;
-    MysqlGroups::update(
-        global_conn,
-        global_group_id,
-        &GroupUpdateForm {
-            url: None,
-            type_: None,
-            history_id: Some(Some(stat.history_id)),
-            version: Some(Some(stat.version)),
-            status: Some(Some(stat.status)),
-            mtime: Some(stat.mtime),
-            footprint_id: Some(stat.footprint_id),
-            digest: Some(stat.digest.as_ref().map(|s| s.as_str())),
-            size: Some(stat.size),
-            fast_digest: Some(stat.fast_digest),
-            updated_at: Some(stat.updated_at),
-        },
-    )?;
+    let group = update_meta_group_stat(glb_conn, glb_workspace, glb_group, path, now)?;
 
     Ok(())
-}
-
-fn update_metadata<Tz: TimeZone>(
-    ctx: &Context,
-    req: &PullRequest<Tz>,
-    path: &Path,
-    meta_stat: Option<&Stat>,
-    metadata: &FileMetadata,
-) -> Result<Stat, Box<dyn Error>> {
-    let conn = ctx.connection;
-    let meta_group_id = META_NAMESPACE_ID;
-    let global_group_id = &req.group_id;
-    let now = req.current_time.naive_utc();
-    let mut footprint = MysqlFootprints::find_by_digest(conn, &metadata.digest)?;
-    if footprint == None {
-        let mut hasher = Sha1::default();
-        treblo::object::blob_from_path(&mut hasher, path)?;
-        let git_object_id = treblo::hex::to_hex_string(hasher.fixed_result().as_slice());
-        footprint = Some(MysqlFootprints::insert_and_find(
-            conn,
-            &FootprintInsertForm {
-                digest: &metadata.digest,
-                size: metadata.size,
-                fast_digest: metadata.fast_digest,
-                git_object_id: &git_object_id,
-            },
-        )?);
-    }
-    let footprint = footprint.unwrap();
-    trace!("- footprint: {:?}", footprint);
-    let last_history = MysqlHistories::find_latest_by_path(conn, meta_group_id, global_group_id)?;
-    let version = match last_history {
-        Some(h) => h.version + 1,
-        None => 1,
-    };
-    let history = MysqlHistories::insert_and_find(
-        conn,
-        &HistoryInsertForm {
-            group_id: meta_group_id,
-            path: global_group_id,
-            version,
-            status: Status::ENABLED as i32,
-            mtime: Some(metadata.mtime),
-            footprint_id: Some(footprint.id),
-            digest: Some(&footprint.digest),
-            created_at: now,
-            updated_at: now,
-        },
-    )?;
-    trace!("- history: {:?}", history);
-    let stat = match meta_stat {
-        Some(old_stat) => MysqlStats::update_and_find(
-            conn,
-            old_stat.id,
-            &StatUpdateForm {
-                history_id: Some(history.id),
-                version: Some(history.version),
-                status: Some(history.status),
-                mtime: Some(history.mtime),
-                footprint_id: Some(history.footprint_id),
-                digest: Some(Some(footprint.digest.as_str())),
-                size: Some(Some(footprint.size)),
-                fast_digest: Some(Some(footprint.fast_digest)),
-                updated_at: Some(now),
-            },
-        )?,
-        None => MysqlStats::insert_and_find(
-            conn,
-            &StatInsertForm {
-                group_id: meta_group_id,
-                path: global_group_id,
-                history_id: history.id,
-                version: history.version,
-                status: history.status,
-                mtime: history.mtime,
-                footprint_id: history.footprint_id,
-                digest: Some(&footprint.digest),
-                size: Some(footprint.size),
-                fast_digest: Some(footprint.fast_digest),
-                created_at: now,
-                updated_at: now,
-            },
-        )?,
-    };
-    trace!("- stat: {:?}", stat);
-    Ok(stat)
 }

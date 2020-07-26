@@ -3,11 +3,12 @@ extern crate log;
 
 use std::{env, error::Error, process::exit};
 
-use chrono::Local;
+use chrono::{Local, Utc};
 use diesel::{Connection, MysqlConnection};
+use ichno::DEFAULT_WORKSPACE_NAME;
 use ichnome::{
     action,
-    action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest},
+    action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
 };
 use structopt::{clap, StructOpt};
 
@@ -18,21 +19,37 @@ use structopt::{clap, StructOpt};
 pub struct Opt {
     #[structopt(subcommand)]
     sub: SubCommands,
+
+    #[structopt(short, long)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, StructOpt)]
 pub enum SubCommands {
+    Setup(Setup),
     Register(Register),
     Pull(Pull),
 }
 
 #[derive(Debug, StructOpt)]
+pub struct Setup {
+    #[structopt(short, long)]
+    pub description: Option<String>,
+
+    #[structopt(short, long)]
+    pub force: bool,
+}
+
+#[derive(Debug, StructOpt)]
 pub struct Register {
-    #[structopt(name = "NAMESPACE")]
-    pub group_id: String,
+    #[structopt(name = "GROUP")]
+    pub group_name: String,
 
     #[structopt(name = "URL")]
     pub url: String,
+
+    #[structopt(short, long)]
+    pub description: Option<String>,
 
     #[structopt(short, long)]
     pub force: bool,
@@ -40,33 +57,41 @@ pub struct Register {
 
 #[derive(Debug, StructOpt)]
 pub struct Pull {
-    #[structopt(name = "NAMESPACE")]
-    pub group_id: String,
+    #[structopt(name = "GROUP")]
+    pub group_name: String,
 }
 
 fn main_with_error() -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
-
     let database_url = env::var("DATABASE_URL").unwrap_or("ichno.db".to_owned());
     let conn = MysqlConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
-    let ctx = action::Context { connection: &conn };
-    let current_time = Local::now();
+    let ctx = action::Context { connection: &conn, timer: Box::new(|| Utc::now()) };
     let opt = Opt::from_args();
+    let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
     match opt.sub {
+        SubCommands::Setup(setup) => {
+            action::setup(
+                &ctx,
+                &SetupRequest {
+                    workspace_name,
+                    options: SetupOptions { force: setup.force, description: setup.description },
+                },
+            )?;
+        }
         SubCommands::Register(register) => {
             action::register(
                 &ctx,
                 &RegisterRequest {
-                    group_id: register.group_id,
+                    workspace_name,
+                    group_name: register.group_name,
                     url: register.url,
-                    current_time,
-                    options: RegisterOptions { force: register.force },
+                    options: RegisterOptions { force: register.force, description: register.description },
                 },
             )?;
         }
         SubCommands::Pull(pull) => {
-            action::pull(&ctx, &PullRequest { group_id: pull.group_id, current_time, options: PullOptions {} })?;
+            action::pull(&ctx, &PullRequest { workspace_name, group_name: pull.group_name, options: PullOptions {} })?;
         }
     }
     Ok(0)

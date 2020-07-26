@@ -1,1 +1,3 @@
-pub use ichno::{GroupType, Status, DEFAULT_NAMESPACE_ID, META_NAMESPACE_ID};
+pub use ichno::{
+    ContentType, GroupType, Status, ATTR_GROUP_NAME, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME, META_GROUP_NAME,
+};

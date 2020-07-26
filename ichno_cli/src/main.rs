@@ -3,14 +3,14 @@ extern crate log;
 
 use std::{collections::HashSet, env, error::Error, ffi::OsStr, path::Path, process::exit};
 
-use chrono::Local;
+use chrono::{Local, Utc};
 use diesel::{connection::Connection, sqlite::SqliteConnection};
 use dotenv;
 use ignore;
 use structopt::{clap, StructOpt};
 use twox_hash::RandomXxHashBuilder64;
 
-use ichno::{db::SqliteStats, file, DEFAULT_NAMESPACE_ID};
+use ichno::{actions, db::SqliteStats, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ichno")]
@@ -41,16 +41,19 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
 
     ichno::db::migrate(&conn)?;
 
-    let group_id = DEFAULT_NAMESPACE_ID;
+    let workspace_name = DEFAULT_WORKSPACE_NAME;
+    let group_name = DEFAULT_GROUP_NAME;
     let opt = Opt::from_args();
     match opt.sub {
         SubCommands::Scan(_) => {
-            let mut ctx = file::Context {
+            let mut ctx = actions::Context {
                 connection: &conn,
                 db_path: &db_path,
-                group_id,
+                workspace_name,
+                workspace: None,
+                group_name,
                 group: None,
-                current_time: Local::now(),
+                timer: Box::new(|| Utc::now()),
             };
             let path = Path::new(".");
             let w = {
@@ -58,14 +61,16 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 wb.filter_entry(|p| p.file_name() != OsStr::new(".git") && p.file_name() != OsStr::new("ichno.db"));
                 wb.build()
             };
-            file::pre_process(&mut ctx)?;
+            actions::pre_process(&mut ctx)?;
+            let group_id = ctx.group.as_ref().unwrap().id;
             let mut path_set: HashSet<_, RandomXxHashBuilder64> = Default::default();
             for result in w {
                 match result {
                     Ok(entry) => {
                         if entry.metadata().unwrap().is_file() {
-                            let path = file::upsert_with_file(&ctx, group_id, entry.path())?.path;
-                            path_set.insert(path);
+                            if let Some(stat) = actions::update_file_stat(&ctx, entry.path())? {
+                                path_set.insert(stat.path);
+                            }
                         }
                     }
                     Err(err) => warn!("{}", err),
@@ -78,10 +83,10 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 }
                 let path = Path::new(&stat.path);
                 if !path.exists() {
-                    file::remove_with_file(&ctx, group_id, path)?;
+                    actions::update_file_stat(&ctx, path);
                 }
             }
-            file::post_process(&mut ctx)?;
+            actions::post_process(&mut ctx)?;
         }
     };
     Ok(0)

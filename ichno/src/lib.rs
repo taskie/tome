@@ -7,14 +7,18 @@ extern crate log;
 #[macro_use]
 extern crate optional_derive;
 
+pub mod actions;
 pub mod db;
-pub mod file;
+
+pub(crate) mod models;
 
 mod constants;
-mod models;
 
-pub use constants::{GroupType, Status, DEFAULT_NAMESPACE_ID, META_NAMESPACE_ID};
+pub use constants::{
+    ContentType, GroupType, Status, ATTR_GROUP_NAME, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME, META_GROUP_NAME,
+};
 pub use models::{
-    Footprint, FootprintInsertForm, Group, GroupInsertForm, GroupUpdateForm, History, HistoryInsertForm, Stat,
-    StatInsertForm, StatUpdateForm,
+    Attr, AttrInsertForm, AttrUpdateForm, Content, ContentInsertForm, Footprint, FootprintInsertForm, Group,
+    GroupInsertForm, GroupUpdateForm, History, HistoryInsertForm, Stat, StatInsertForm, StatUpdateForm, Workspace,
+    WorkspaceInsertForm, WorkspaceUpdateForm,
 };

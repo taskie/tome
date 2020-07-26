@@ -28,8 +28,17 @@ struct FieldOption {
 #[proc_macro_derive(Optional, attributes(optional))]
 pub fn derive_options(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let option = DeriveInputOption::from_derive_input(&input).unwrap();
 
+    let new_struct = new_struct(&input);
+    let expanded = quote! {
+        #new_struct
+    };
+
+    proc_macro::TokenStream::from(expanded)
+}
+
+fn new_struct(input: &DeriveInput) -> TokenStream {
+    let option = DeriveInputOption::from_derive_input(&input).unwrap();
     let name = &input.ident;
     let attrs = &option.attrs;
     let vis = &input.vis;
@@ -44,20 +53,21 @@ pub fn derive_options(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         .collect();
 
     let new_name = option.name.map(|n| syn::Ident::from_string(&n).unwrap()).unwrap_or(format_ident!("{}Opt", name));
-    let new_fields = process_fields(&input.data);
+    let new_fields = process_new_struct_fields(&input.data);
+    let impl_from = impl_from(&input);
 
-    let expanded = quote! {
+    quote! {
         #(#attrs)*
         #[derive(#(#derives, )*)]
         #vis struct #new_name #generics {
             #new_fields
         }
-    };
 
-    proc_macro::TokenStream::from(expanded)
+        #impl_from
+    }
 }
 
-fn process_fields(data: &Data) -> TokenStream {
+fn process_new_struct_fields(data: &Data) -> TokenStream {
     match data {
         Data::Struct(ref data) => match data.fields {
             Fields::Named(ref fields) => {
@@ -110,6 +120,87 @@ fn process_fields(data: &Data) -> TokenStream {
                             #(#attrs)*
                             #vis #new_ty
                         })
+                    })
+                    .filter_map(|x| x);
+                quote! {
+                    #(#new_fields ,)*
+                }
+            }
+            Fields::Unit => {
+                quote! {}
+            }
+        },
+        Data::Enum(_) | Data::Union(_) => unimplemented!(),
+    }
+}
+
+fn impl_from(input: &DeriveInput) -> TokenStream {
+    let option = DeriveInputOption::from_derive_input(&input).unwrap();
+    let generics = &input.generics;
+    let name = &input.ident;
+    let (impl_g, ty_g, where_c) = generics.split_for_impl();
+    let new_name = option.name.map(|n| syn::Ident::from_string(&n).unwrap()).unwrap_or(format_ident!("{}Opt", name));
+    let fields = process_impl_from_fields(&input.data);
+    quote! {
+        impl #impl_g From< #name #generics > for #new_name #ty_g #where_c {
+            fn from(src: #name #generics) -> Self {
+                #new_name {
+                    #fields
+                }
+            }
+        }
+    }
+}
+
+fn process_impl_from_fields(data: &Data) -> TokenStream {
+    match data {
+        Data::Struct(ref data) => match data.fields {
+            Fields::Named(ref fields) => {
+                let new_fields = fields
+                    .named
+                    .iter()
+                    .map(|f| {
+                        let option = FieldOption::from_field(f).unwrap();
+                        if option.skip {
+                            return None;
+                        }
+                        let old_ident = f.ident.as_ref();
+                        let name = &option.name.map(|n| syn::Ident::from_string(&n).unwrap());
+                        let name = name.as_ref().or(old_ident);
+                        if option.required {
+                            Some(quote_spanned! {f.span()=>
+                                #name: src.#old_ident
+                            })
+                        } else {
+                            Some(quote_spanned! {f.span()=>
+                                #name: ::std::option::Option::Some(src.#old_ident)
+                            })
+                        }
+                    })
+                    .filter_map(|x| x);
+                quote! {
+                    #(#new_fields ,)*
+                }
+            }
+            Fields::Unnamed(ref fields) => {
+                let new_fields = fields
+                    .unnamed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| {
+                        let option = FieldOption::from_field(f).unwrap();
+                        if option.skip {
+                            return None;
+                        }
+                        if option.required {
+                            Some(quote_spanned! {f.span()=>
+                                src.#i
+                            })
+                        } else {
+                            Some(quote_spanned! {f.span()=>
+                                ::std::option::Option::Some(src.#i)
+                            })
+                        }
                     })
                     .filter_map(|x| x);
                 quote! {
