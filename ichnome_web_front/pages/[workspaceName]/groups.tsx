@@ -47,7 +47,8 @@ export const GroupPage: NextPage<Props> = (props) => {
 
 GroupPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
-    const path = uria`groups`;
+    const { workspaceName } = (rawQuery as unknown) as Query;
+    const path = uria`${workspaceName}/groups`;
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {

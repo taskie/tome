@@ -6,6 +6,7 @@ import { NextPage } from "next";
 import { GetGroupsResponse } from "@/api/types";
 import GroupLink from "@/components/GroupLink";
 import { useRouter } from "next/router";
+import { uria } from "@/utils/uri";
 
 type Query = {
   workspaceName: string;
@@ -39,7 +40,7 @@ export const HomePage: NextPage<Props> = (props) => {
           ))}
         </ul>
         <p>
-          <Link href="/groups">
+          <Link href={uria`/${workspaceName}/groups`}>
             <a>List</a>
           </Link>
         </p>
