@@ -16,7 +16,7 @@ use diesel::{
 };
 use ichnome::{
     db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces, StatOrder, StatSearchCondition},
-    Footprint, Group, History, Stat, Workspace, META_GROUP_NAME,
+    Footprint, Group, History, Stat, Status, Workspace, META_GROUP_NAME,
 };
 use serde::{Deserialize, Serialize};
 use structopt::{clap, StructOpt};
@@ -48,6 +48,9 @@ fn find_workspace_and_group(
 #[derive(Deserialize)]
 struct GetStatsQuery {
     path_prefix: Option<String>,
+    status: Option<String>,
+    mtime_after: Option<NaiveDateTime>,
+    mtime_before: Option<NaiveDateTime>,
     updated_at_after: Option<NaiveDateTime>,
     updated_at_before: Option<NaiveDateTime>,
     limit: Option<i64>,
@@ -58,6 +61,7 @@ struct GetStatsResponse {
     workspace: Workspace,
     group: Group,
     stats: Vec<Stat>,
+    stats_count: i64,
 }
 
 fn get_stats_impl(
@@ -68,17 +72,32 @@ fn get_stats_impl(
 ) -> Result<Option<GetStatsResponse>, Box<dyn std::error::Error>> {
     let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
     if let Some((workspace, group)) = pair {
+        let status = q
+            .status
+            .as_ref()
+            .map(|s| match s.to_ascii_lowercase().as_str() {
+                "0" | "disabled" => Some(Status::DISABLED),
+                "1" | "enabled" => Some(Status::ENABLED),
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or(Status::ENABLED);
         let cond = StatSearchCondition {
             group_ids: Some(vec![group.id]),
             path_prefix: q.path_prefix.as_ref().map(|s| s.as_ref()),
+            statuses: Some(vec![status]),
+            mtime_after: q.mtime_after,
+            mtime_before: q.mtime_before,
             updated_at_after: q.updated_at_after,
             updated_at_before: q.updated_at_before,
             order: Some(StatOrder::UpdatedAtDesc),
-            limit: q.limit,
+            limit: Some(q.limit.unwrap_or(100)),
             ..Default::default()
         };
+        debug!("search condition: {:?}", &cond);
+        let stats_count = MysqlStats::count(conn, workspace.id, &cond)?;
         let stats = MysqlStats::search(conn, workspace.id, &cond)?;
-        Ok(Some(GetStatsResponse { workspace, group, stats }))
+        Ok(Some(GetStatsResponse { workspace, group, stats, stats_count }))
     } else {
         Ok(None)
     }
