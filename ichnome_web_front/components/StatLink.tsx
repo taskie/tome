@@ -8,7 +8,15 @@ type Props = {
 };
 
 export const StatLink: React.FC<Props> = ({ workspaceName, groupName, path }) => (
-  <Link href={uri`/${workspaceName}/stats/${groupName}/` + path}>
+  <Link
+    href={
+      uri`/${workspaceName}/stats/${groupName}/` +
+      path
+        .split("/")
+        .map((s) => encodeURIComponent(s))
+        .join("/")
+    }
+  >
     <a>{path}</a>
   </Link>
 );

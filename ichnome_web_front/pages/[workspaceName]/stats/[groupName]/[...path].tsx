@@ -78,7 +78,7 @@ export const StatPage: NextPage<Props> = (props) => {
 StatPage.getInitialProps = async ({ query: rawQuery }) => {
   try {
     const { workspaceName, groupName, path: statPath } = (rawQuery as unknown) as Query;
-    const path = uria`${workspaceName}/stats/${groupName}/` + statPath.join("/");
+    const path = uria`${workspaceName}/stats/${groupName}/` + statPath.map((s) => encodeURIComponent(s)).join("/");
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {
