@@ -1,21 +1,21 @@
-pkgname=treblo-git
+pkgname=ichno-git
 pkgver=0.1.1.r43.01dc348
 pkgrel=1
 pkgdesc="Calculate hashes of Git tree and blob, outside working directory."
 arch=('x86_64')
 url="https://github.com/taskie/ichno"
 license=('Apache-2.0')
-provides=("treblo")
+provides=("ichno")
 makedepends=('cargo' 'git')
 optdepends=()
 depends=()
-conflicts=('treblo')
+conflicts=('ichno')
 source=("$pkgname::git+https://github.com/taskie/ichno")
 sha1sums=('SKIP')
 
 build() {
   cd "$pkgname"
-  cd treblo_cli
+  cd ichno_cli
   if command -v rustup > /dev/null 2>&1; then
     RUSTFLAGS="-C target-cpu=native" rustup run nightly \
       cargo build --release
@@ -36,8 +36,8 @@ pkgver() {
 
 package() {
   cd "$pkgname"
-  install -Dm755 "target/release/treblo" "$pkgdir/usr/bin/treblo"
-  install -Dm644 "treblo_cli/README.md" "$pkgdir/usr/share/doc/${pkgname}/README.md"
+  install -Dm755 "target/release/ichno" "$pkgdir/usr/bin/ichno"
+  install -Dm644 "README.md" "$pkgdir/usr/share/doc/${pkgname}/README.md"
 
-  install -Dm644 "treblo_cli/LICENSE" "$pkgdir/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/${pkgname}/LICENSE"
 }
