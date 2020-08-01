@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::{
@@ -95,6 +96,87 @@ impl Stats {
     impl_select!(Connection, stats, Stat; select_by_group_id, group_id: i32);
 
     impl_select!(Connection, stats, Stat; select_by_footprint_id, workspace_id: i32, footprint_id: i32);
+
+    pub fn search(
+        conn: &Connection,
+        workspace_id: i32,
+        cond: &StatSearchCondition,
+    ) -> Result<Vec<Stat>, Box<dyn Error>> {
+        use crate::db::schema::stats::dsl;
+        let mut q = dsl::stats.into_boxed();
+        q = q.filter(dsl::workspace_id.eq(workspace_id));
+        if let Some(ref group_ids) = cond.group_ids {
+            q = q.filter(dsl::group_id.eq_any(group_ids));
+        }
+        if let Some(ref paths) = cond.paths {
+            q = q.filter(dsl::path.eq_any(paths));
+        }
+        if let Some(path_prefix) = cond.path_prefix {
+            q = q.filter(dsl::path.like(format!("{}%", path_prefix)));
+        }
+        if let Some(mtime) = cond.mtime_after {
+            q = q.filter(dsl::mtime.ge(mtime));
+        }
+        if let Some(mtime) = cond.mtime_before {
+            q = q.filter(dsl::mtime.lt(mtime));
+        }
+        if let Some(size) = cond.size_min {
+            q = q.filter(dsl::size.ge(size));
+        }
+        if let Some(size) = cond.size_max {
+            q = q.filter(dsl::size.le(size));
+        }
+        if let Some(updated_at) = cond.updated_at_after {
+            q = q.filter(dsl::updated_at.ge(updated_at));
+        }
+        if let Some(updated_at) = cond.updated_at_before {
+            q = q.filter(dsl::updated_at.lt(updated_at));
+        }
+        if let Some(ref order) = cond.order {
+            q = match order {
+                StatOrder::PathAsc => {
+                    q.order(dsl::path.asc())
+                },
+                StatOrder::PathDesc => {
+                    q.order(dsl::path.desc())
+                },
+                StatOrder::UpdatedAtAsc => {
+                    q.order(dsl::updated_at.asc())
+                },
+                StatOrder::UpdatedAtDesc => {
+                    q.order(dsl::updated_at.desc())
+                },
+            }
+        }
+        let limit = cond.limit.unwrap_or(1000);
+        if limit >= 0 {
+            q = q.limit(limit);
+        }
+        Ok(q.load::<Stat>(conn)?)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct StatSearchCondition<'a> {
+    pub group_ids: Option<Vec<i32>>,
+    pub paths: Option<Vec<&'a str>>,
+    pub path_prefix: Option<&'a str>,
+    pub mtime_after: Option<NaiveDateTime>,
+    pub mtime_before: Option<NaiveDateTime>,
+    pub size_min: Option<i64>,
+    pub size_max: Option<i64>,
+    pub updated_at_after: Option<NaiveDateTime>,
+    pub updated_at_before: Option<NaiveDateTime>,
+    pub order: Option<StatOrder>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug)]
+pub enum StatOrder {
+    PathAsc,
+    PathDesc,
+    UpdatedAtAsc,
+    UpdatedAtDesc,
 }
 
 pub struct Attrs;
