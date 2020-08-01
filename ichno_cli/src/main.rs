@@ -6,7 +6,11 @@ use std::{collections::HashSet, env, error::Error, ffi::OsStr, path::Path, proce
 use chrono::Utc;
 use diesel::{connection::Connection, sqlite::SqliteConnection};
 use dotenv;
-use ichno::{actions, db::SqliteStats, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME};
+use ichno::{
+    actions,
+    db::{SqliteStats, StatSearchCondition},
+    DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME,
+};
 use ignore;
 use itertools::Itertools;
 use structopt::{clap, StructOpt};
@@ -28,6 +32,9 @@ pub enum SubCommands {
 
 #[derive(Debug, StructOpt)]
 pub struct Scan {
+    #[structopt(short = "P", long, name = "DIR")]
+    pub partial: Option<String>,
+
     #[structopt(long, default_value = "100", name = "N")]
     pub commit_interval: usize,
 }
@@ -56,13 +63,14 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 group: None,
                 timer: Box::new(|| Utc::now()),
             };
-            let path = Path::new(".");
+            let path = Path::new(scan.partial.as_ref().map(|s| s.as_str()).unwrap_or("."));
             let w = {
                 let mut wb = ignore::WalkBuilder::new(&path);
                 wb.filter_entry(|p| p.file_name() != OsStr::new(".git") && p.file_name() != OsStr::new("ichno.db"));
                 wb.build()
             };
             actions::pre_process(&mut ctx)?;
+            let workspace_id = ctx.workspace.as_ref().unwrap().id;
             let group_id = ctx.group.as_ref().unwrap().id;
             let mut path_set: HashSet<_, RandomXxHashBuilder64> = Default::default();
             let commit_interval = scan.commit_interval;
@@ -72,6 +80,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                         match result {
                             Ok(entry) => {
                                 if entry.metadata().unwrap().is_file() {
+                                    debug!("present: {:?}", entry.path());
                                     match actions::update_file_stat(&ctx, entry.path()) {
                                         Ok(Some(stat)) => {
                                             path_set.insert(stat.path);
@@ -89,7 +98,18 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                     Ok(())
                 })?;
             }
-            let stats = SqliteStats::select_by_group_id(&conn, group_id)?;
+            let path_prefix =
+                if scan.partial.is_some() { path.strip_prefix(".").ok().unwrap_or(path).to_str() } else { None };
+            let stats = SqliteStats::search(
+                &conn,
+                workspace_id,
+                &StatSearchCondition {
+                    group_ids: Some(vec![group_id]),
+                    path_prefix,
+                    limit: Some(-1),
+                    ..Default::default()
+                },
+            )?;
             for stat_chunk in &stats.iter().chunks(commit_interval) {
                 conn.transaction::<_, Box<dyn Error>, _>(|| {
                     for stat in stat_chunk {
@@ -98,6 +118,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                         }
                         let path = Path::new(&stat.path);
                         if !path.exists() {
+                            debug!("absent: {:?}", path);
                             actions::update_file_stat(&ctx, path)?;
                         }
                     }
