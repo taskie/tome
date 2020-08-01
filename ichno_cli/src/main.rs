@@ -8,6 +8,7 @@ use diesel::{connection::Connection, sqlite::SqliteConnection};
 use dotenv;
 use ichno::{actions, db::SqliteStats, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME};
 use ignore;
+use itertools::Itertools;
 use structopt::{clap, StructOpt};
 use twox_hash::RandomXxHashBuilder64;
 
@@ -27,7 +28,8 @@ pub enum SubCommands {
 
 #[derive(Debug, StructOpt)]
 pub struct Scan {
-    // nop
+    #[structopt(long, default_value = "100", name = "N")]
+    pub commit_interval: usize,
 }
 
 fn main_with_error() -> Result<i32, Box<dyn Error>> {
@@ -44,7 +46,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     let group_name = DEFAULT_GROUP_NAME;
     let opt = Opt::from_args();
     match opt.sub {
-        SubCommands::Scan(_) => {
+        SubCommands::Scan(scan) => {
             let mut ctx = actions::Context {
                 connection: &conn,
                 db_path: &db_path,
@@ -63,33 +65,44 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             actions::pre_process(&mut ctx)?;
             let group_id = ctx.group.as_ref().unwrap().id;
             let mut path_set: HashSet<_, RandomXxHashBuilder64> = Default::default();
-            for result in w {
-                match result {
-                    Ok(entry) => {
-                        if entry.metadata().unwrap().is_file() {
-                            match actions::update_file_stat(&ctx, entry.path()) {
-                                Ok(Some(stat)) => {
-                                    path_set.insert(stat.path);
-                                }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    warn!("{}", e);
+            let commit_interval = scan.commit_interval;
+            for result_chunk in &w.chunks(commit_interval) {
+                conn.transaction::<_, Box<dyn Error>, _>(|| {
+                    for result in result_chunk {
+                        match result {
+                            Ok(entry) => {
+                                if entry.metadata().unwrap().is_file() {
+                                    match actions::update_file_stat(&ctx, entry.path()) {
+                                        Ok(Some(stat)) => {
+                                            path_set.insert(stat.path);
+                                        }
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            warn!("{}", e);
+                                        }
+                                    }
                                 }
                             }
+                            Err(err) => warn!("{}", err),
                         }
                     }
-                    Err(err) => warn!("{}", err),
-                }
+                    Ok(())
+                })?;
             }
             let stats = SqliteStats::select_by_group_id(&conn, group_id)?;
-            for stat in stats.iter() {
-                if path_set.contains(&stat.path) {
-                    continue;
-                }
-                let path = Path::new(&stat.path);
-                if !path.exists() {
-                    actions::update_file_stat(&ctx, path)?;
-                }
+            for stat_chunk in &stats.iter().chunks(commit_interval) {
+                conn.transaction::<_, Box<dyn Error>, _>(|| {
+                    for stat in stat_chunk {
+                        if path_set.contains(&stat.path) {
+                            continue;
+                        }
+                        let path = Path::new(&stat.path);
+                        if !path.exists() {
+                            actions::update_file_stat(&ctx, path)?;
+                        }
+                    }
+                    Ok(())
+                })?;
             }
             actions::post_process(&mut ctx)?;
         }
