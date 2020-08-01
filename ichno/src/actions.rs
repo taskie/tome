@@ -14,6 +14,7 @@ use crate::{
     db::actions::{
         create_group_if_needed, create_workspace_if_needed, update_meta_group_stat, update_stat_with_paths_if_needed,
     },
+    error::DomainError,
     models::{Group, Stat, Workspace},
 };
 
@@ -73,6 +74,10 @@ pub fn update_file_stat<P: AsRef<Path>>(ctx: &Context, path: P) -> Result<Option
     let base_path = ctx.base_directory().unwrap();
     let path = if path.as_ref().is_absolute() { PathBuf::from(path.as_ref()) } else { base_path.join(path) };
     let path_ref = path.strip_prefix(base_path)?;
-    let path_str = path_ref.to_str().expect(&format!("invalid path string"));
+    let path_str = if let Some(s) = path_ref.to_str() {
+        s
+    } else {
+        return Err(Box::new(DomainError::params("path", format!("can't convert to UTF-8: {:?}", path_ref))));
+    };
     update_stat_with_paths_if_needed(conn, group, path_str, path_ref, now)
 }

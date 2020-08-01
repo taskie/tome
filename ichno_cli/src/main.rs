@@ -67,8 +67,14 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 match result {
                     Ok(entry) => {
                         if entry.metadata().unwrap().is_file() {
-                            if let Some(stat) = actions::update_file_stat(&ctx, entry.path())? {
-                                path_set.insert(stat.path);
+                            match actions::update_file_stat(&ctx, entry.path()) {
+                                Ok(Some(stat)) => {
+                                    path_set.insert(stat.path);
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    warn!("{}", e);
+                                }
                             }
                         }
                     }
