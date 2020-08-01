@@ -426,7 +426,7 @@ pub(crate) fn new_updated_file_state_if_needed(
     } else {
         (None, None, None)
     };
-    let not_exists = stat.map_or(false, |s| s.status != Status::DISABLED as i32);
+    let not_exists = stat.map_or(false, |s| s.status == Status::DISABLED as i32);
     if f.is_none() && not_exists {
         return Ok(None);
     }
