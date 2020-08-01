@@ -3,11 +3,13 @@ pub const DEFAULT_GROUP_NAME: &'static str = "default";
 pub const META_GROUP_NAME: &'static str = "__meta";
 pub const ATTR_GROUP_NAME: &'static str = "__attr";
 
+#[derive(Clone, Copy, Debug)]
 pub enum Status {
     DISABLED = 0,
     ENABLED = 1,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum GroupType {
     LOCAL = 0,
     REMOTE = 1,
@@ -15,6 +17,7 @@ pub enum GroupType {
     ATTR = 3,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum ContentType {
     Unknown = 0,
     Json = 1,

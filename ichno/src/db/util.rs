@@ -11,6 +11,7 @@ use crate::{
         GroupInsertForm, GroupUpdateForm, History, HistoryInsertForm, Stat, StatInsertForm, StatUpdateForm, Workspace,
         WorkspaceInsertForm, WorkspaceUpdateForm,
     },
+    Status,
 };
 
 embed_migrations!("migrations");
@@ -113,6 +114,9 @@ impl Stats {
         if let Some(path_prefix) = cond.path_prefix {
             q = q.filter(dsl::path.like(format!("{}%", path_prefix)));
         }
+        if let Some(ref statuses) = cond.statuses {
+            q = q.filter(dsl::status.eq_any(statuses.iter().map(|s| *s as i32)));
+        }
         if let Some(mtime) = cond.mtime_after {
             q = q.filter(dsl::mtime.ge(mtime));
         }
@@ -139,7 +143,7 @@ impl Stats {
                 StatOrder::UpdatedAtDesc => q.order(dsl::updated_at.desc()),
             }
         }
-        let limit = cond.limit.unwrap_or(1000);
+        let limit = cond.limit.unwrap_or(-1);
         if limit >= 0 {
             q = q.limit(limit);
         }
@@ -167,6 +171,7 @@ pub struct StatSearchCondition<'a> {
     pub group_ids: Option<Vec<i32>>,
     pub paths: Option<Vec<&'a str>>,
     pub path_prefix: Option<&'a str>,
+    pub statuses: Option<Vec<Status>>,
     pub mtime_after: Option<NaiveDateTime>,
     pub mtime_before: Option<NaiveDateTime>,
     pub size_min: Option<i64>,
