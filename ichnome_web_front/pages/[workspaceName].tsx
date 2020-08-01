@@ -56,7 +56,7 @@ HomePage.getInitialProps = async ({ query: rawQuery }) => {
     const { data } = await defaultInstance.get(path);
     return { response: data };
   } catch (err) {
-    console.error(err);
+    // console.error(err);
     return { err: err.message };
   }
 };

@@ -159,7 +159,7 @@ StatsPage.getInitialProps = async ({ query: rawQuery }) => {
     const { data } = await defaultInstance.get(path, { params: { path_prefix, updated_at_after, updated_at_before } });
     return { response: data };
   } catch (err) {
-    console.error(err);
+    // console.error(err);
     return { err: err.message };
   }
 };

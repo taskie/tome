@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { uri } from "../utils/uri";
 import { IchGroup } from "@/api/types";
 import GroupLink from "./GroupLink";
 import FootprintLink from "./FootprintLink";
