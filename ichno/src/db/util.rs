@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
 use crate::{
-    db::config::Connection,
+    db::config::{Backend, Connection},
     impl_crud, impl_select,
     models::{
         Attr, AttrInsertForm, AttrUpdateForm, Content, ContentInsertForm, Footprint, FootprintInsertForm, Group,
@@ -97,11 +97,10 @@ impl Stats {
 
     impl_select!(Connection, stats, Stat; select_by_footprint_id, workspace_id: i32, footprint_id: i32);
 
-    pub fn search(
-        conn: &Connection,
+    fn search_condition_to_query<'a>(
         workspace_id: i32,
-        cond: &StatSearchCondition,
-    ) -> Result<Vec<Stat>, Box<dyn Error>> {
+        cond: &'a StatSearchCondition,
+    ) -> crate::db::schema::stats::BoxedQuery<'a, Backend> {
         use crate::db::schema::stats::dsl;
         let mut q = dsl::stats.into_boxed();
         q = q.filter(dsl::workspace_id.eq(workspace_id));
@@ -144,11 +143,26 @@ impl Stats {
         if limit >= 0 {
             q = q.limit(limit);
         }
+        return q;
+    }
+
+    pub fn count(conn: &Connection, workspace_id: i32, cond: &StatSearchCondition) -> Result<i64, Box<dyn Error>> {
+        let cond = StatSearchCondition { limit: Some(-1), ..cond.clone() };
+        let q = Stats::search_condition_to_query(workspace_id, &cond);
+        Ok(q.count().first(conn)?)
+    }
+
+    pub fn search(
+        conn: &Connection,
+        workspace_id: i32,
+        cond: &StatSearchCondition,
+    ) -> Result<Vec<Stat>, Box<dyn Error>> {
+        let q = Stats::search_condition_to_query(workspace_id, cond);
         Ok(q.load::<Stat>(conn)?)
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct StatSearchCondition<'a> {
     pub group_ids: Option<Vec<i32>>,
     pub paths: Option<Vec<&'a str>>,
@@ -163,7 +177,7 @@ pub struct StatSearchCondition<'a> {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatOrder {
     PathAsc,
     PathDesc,
