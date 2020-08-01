@@ -36,6 +36,7 @@ module.exports = {
       },
     ],
     quotes: ["warn", "double"],
-    "react/jsx-uses-react": [1],
+    "react/jsx-uses-react": 1,
+    "react/jsx-uses-vars": 1,
   },
 };
