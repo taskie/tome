@@ -9,6 +9,5 @@ pub mod actions;
 
 pub use util::{
     migrate, Attrs as SqliteAttrs, Contents as SqliteContents, Footprints as SqliteFootprints, Groups as SqliteGroups,
-    Histories as SqliteHistories, Stats as SqliteStats, Workspaces as SqliteWorkspaces,
-    StatSearchCondition, StatOrder,
+    Histories as SqliteHistories, StatOrder, StatSearchCondition, Stats as SqliteStats, Workspaces as SqliteWorkspaces,
 };

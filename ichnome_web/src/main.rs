@@ -3,23 +3,25 @@ extern crate actix_web;
 #[macro_use]
 extern crate log;
 
-use std::{collections::HashMap, env};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+};
 
-use crate::models::{WebHistory, WebStat};
 use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer, Responder};
+use chrono::NaiveDateTime;
 use diesel::{
     r2d2::{self, ConnectionManager},
     MysqlConnection,
 };
 use ichnome::{
-    db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces},
+    db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces, StatOrder, StatSearchCondition},
     Footprint, Group, History, Stat, Workspace, META_GROUP_NAME,
 };
-use serde::{Serialize, Deserialize};
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
 use structopt::{clap, StructOpt};
-use ichnome::db::{StatSearchCondition, StatOrder};
-use chrono::NaiveDateTime;
+
+use crate::models::{WebHistory, WebStat};
 
 type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 
@@ -62,7 +64,7 @@ fn get_stats_impl(
     conn: &MysqlConnection,
     workspace_name: &str,
     group_name: &str,
-    q: &GetStatsQuery
+    q: &GetStatsQuery,
 ) -> Result<Option<GetStatsResponse>, Box<dyn std::error::Error>> {
     let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
     if let Some((workspace, group)) = pair {
@@ -83,7 +85,11 @@ fn get_stats_impl(
 }
 
 #[get("/{workspace_name}/stats/{group_name}")]
-async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<(String, String)>, q: web::Query<GetStatsQuery>) -> Result<impl Responder, Error> {
+async fn get_stats(
+    pool: web::Data<DbPool>,
+    path_params: web::Path<(String, String)>,
+    q: web::Query<GetStatsQuery>,
+) -> Result<impl Responder, Error> {
     let (workspace_name, group_name) = path_params.into_inner();
     let group_name_2 = group_name.clone();
     let q = q.into_inner();

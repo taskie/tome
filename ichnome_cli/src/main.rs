@@ -5,7 +5,6 @@ use std::{env, error::Error, process::exit};
 
 use chrono::Utc;
 use diesel::{Connection, MysqlConnection};
-
 use ichnome::{
     action,
     action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},

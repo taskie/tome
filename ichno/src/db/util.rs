@@ -134,18 +134,10 @@ impl Stats {
         }
         if let Some(ref order) = cond.order {
             q = match order {
-                StatOrder::PathAsc => {
-                    q.order(dsl::path.asc())
-                },
-                StatOrder::PathDesc => {
-                    q.order(dsl::path.desc())
-                },
-                StatOrder::UpdatedAtAsc => {
-                    q.order(dsl::updated_at.asc())
-                },
-                StatOrder::UpdatedAtDesc => {
-                    q.order(dsl::updated_at.desc())
-                },
+                StatOrder::PathAsc => q.order(dsl::path.asc()),
+                StatOrder::PathDesc => q.order(dsl::path.desc()),
+                StatOrder::UpdatedAtAsc => q.order(dsl::updated_at.asc()),
+                StatOrder::UpdatedAtDesc => q.order(dsl::updated_at.desc()),
             }
         }
         let limit = cond.limit.unwrap_or(1000);

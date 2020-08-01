@@ -6,11 +6,10 @@ use std::{collections::HashSet, env, error::Error, ffi::OsStr, path::Path, proce
 use chrono::Utc;
 use diesel::{connection::Connection, sqlite::SqliteConnection};
 use dotenv;
+use ichno::{actions, db::SqliteStats, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME};
 use ignore;
 use structopt::{clap, StructOpt};
 use twox_hash::RandomXxHashBuilder64;
-
-use ichno::{actions, db::SqliteStats, DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ichno")]
