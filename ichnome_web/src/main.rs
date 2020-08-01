@@ -15,9 +15,11 @@ use ichnome::{
     db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces},
     Footprint, Group, History, Stat, Workspace, META_GROUP_NAME,
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::collections::HashSet;
 use structopt::{clap, StructOpt};
+use ichnome::db::{StatSearchCondition, StatOrder};
+use chrono::NaiveDateTime;
 
 type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 
@@ -41,6 +43,14 @@ fn find_workspace_and_group(
     }
 }
 
+#[derive(Deserialize)]
+struct GetStatsQuery {
+    path_prefix: Option<String>,
+    updated_at_after: Option<NaiveDateTime>,
+    updated_at_before: Option<NaiveDateTime>,
+    limit: Option<i64>,
+}
+
 #[derive(Serialize)]
 struct GetStatsResponse {
     workspace: Workspace,
@@ -52,10 +62,20 @@ fn get_stats_impl(
     conn: &MysqlConnection,
     workspace_name: &str,
     group_name: &str,
+    q: &GetStatsQuery
 ) -> Result<Option<GetStatsResponse>, Box<dyn std::error::Error>> {
     let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
     if let Some((workspace, group)) = pair {
-        let stats = MysqlStats::select_by_group_id(conn, group.id)?;
+        let cond = StatSearchCondition {
+            group_ids: Some(vec![group.id]),
+            path_prefix: q.path_prefix.as_ref().map(|s| s.as_ref()),
+            updated_at_after: q.updated_at_after,
+            updated_at_before: q.updated_at_before,
+            order: Some(StatOrder::UpdatedAtDesc),
+            limit: q.limit,
+            ..Default::default()
+        };
+        let stats = MysqlStats::search(conn, workspace.id, &cond)?;
         Ok(Some(GetStatsResponse { workspace, group, stats }))
     } else {
         Ok(None)
@@ -63,12 +83,13 @@ fn get_stats_impl(
 }
 
 #[get("/{workspace_name}/stats/{group_name}")]
-async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<(String, String)>) -> Result<impl Responder, Error> {
+async fn get_stats(pool: web::Data<DbPool>, path_params: web::Path<(String, String)>, q: web::Query<GetStatsQuery>) -> Result<impl Responder, Error> {
     let (workspace_name, group_name) = path_params.into_inner();
     let group_name_2 = group_name.clone();
+    let q = q.into_inner();
     let conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_stats_impl(&conn, &workspace_name, &group_name).map_err(|e| e.to_string()))
+    let resp = web::block(move || get_stats_impl(&conn, &workspace_name, &group_name, &q).map_err(|e| e.to_string()))
         .await
         .map_err(|e| {
             error!("{}", e);
