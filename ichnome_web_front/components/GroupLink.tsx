@@ -8,10 +8,11 @@ type Props = {
 };
 
 export const GroupLink: React.FC<Props> = ({ workspaceName, groupName, family }) => {
-  const href =
+  const href = family === "stats" ? "/[workspaceName]/stats/[groupName]" : "/[workspaceName]/groups/[groupName]";
+  const as =
     family === "stats" ? uri`/${workspaceName}/stats/${groupName}` : uri`/${workspaceName}/groups/${groupName}`;
   return (
-    <Link href={href}>
+    <Link href={href} as={as}>
       <a>{groupName}</a>
     </Link>
   );

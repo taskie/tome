@@ -9,7 +9,7 @@ type Props = {
 };
 
 export const FootprintLink: React.FC<Props> = ({ workspaceName, digest, length }) => (
-  <Link href={uri`/${workspaceName}/footprints/${digest}`}>
+  <Link href="/[workspaceName]/footprints/[digest]" as={uri`/${workspaceName}/footprints/${digest}`}>
     <a>
       <Digest digest={digest} length={length} />
     </a>

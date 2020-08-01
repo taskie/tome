@@ -7,18 +7,16 @@ type Props = {
   path: string;
 };
 
-export const StatLink: React.FC<Props> = ({ workspaceName, groupName, path }) => (
-  <Link
-    href={
-      uri`/${workspaceName}/stats/${groupName}/` +
-      path
-        .split("/")
-        .map((s) => encodeURIComponent(s))
-        .join("/")
-    }
-  >
-    <a>{path}</a>
-  </Link>
-);
+export const StatLink: React.FC<Props> = ({ workspaceName, groupName, path }) => {
+  const encPath = path
+    .split("/")
+    .map((s) => encodeURIComponent(s))
+    .join("/");
+  return (
+    <Link href="/[workspaceName]/stats/[groupName]/[...path]" as={uri`/${workspaceName}/stats/${groupName}/` + encPath}>
+      <a>{path}</a>
+    </Link>
+  );
+};
 
 export default StatLink;

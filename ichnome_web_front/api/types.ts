@@ -52,6 +52,7 @@ export type IchFootprint = {
 export type GetStatsResponse = {
   group: IchGroup;
   stats: IchStat[];
+  stats_count: number;
 };
 
 export type GetStatResponse = {
