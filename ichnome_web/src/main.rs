@@ -49,6 +49,7 @@ fn find_workspace_and_group(
 #[derive(Deserialize)]
 struct GetStatsQuery {
     path_prefix: Option<String>,
+    path_partial: Option<String>,
     status: Option<String>,
     mtime_after: Option<NaiveDateTime>,
     mtime_before: Option<NaiveDateTime>,
@@ -86,6 +87,7 @@ fn get_stats_impl(
         let cond = StatSearchCondition {
             group_ids: Some(vec![group.id]),
             path_prefix: q.path_prefix.as_ref().map(|s| s.as_ref()),
+            path_partial: q.path_partial.as_ref().map(|s| s.as_ref()),
             statuses: Some(vec![status]),
             mtime_after: q.mtime_after,
             mtime_before: q.mtime_before,
