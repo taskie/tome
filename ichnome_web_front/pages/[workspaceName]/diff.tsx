@@ -112,11 +112,6 @@ const ResponseView: React.FC<{ response: Response; workspaceName: string }> = ({
           })}
         </tbody>
       </table>
-      <h2>Groups</h2>
-      <h3>{group1.name}</h3>
-      <Group workspaceName={workspaceName} group={group1} />
-      <h3>{group2.name}</h3>
-      <Group workspaceName={workspaceName} group={group2} />
     </>
   );
 };
