@@ -9,6 +9,7 @@ extern crate optional_derive;
 
 pub mod action;
 pub mod db;
+pub mod error;
 
 pub(crate) mod models;
 

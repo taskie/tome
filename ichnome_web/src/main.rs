@@ -16,6 +16,7 @@ use diesel::{
 };
 use ichnome::{
     db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces, StatOrder, StatSearchCondition},
+    error::DomainError,
     Footprint, Group, History, Stat, Status, Workspace, META_GROUP_NAME,
 };
 use serde::{Deserialize, Serialize};
@@ -434,6 +435,24 @@ struct GetDiffResponse {
     footprints: HashMap<i32, Footprint>,
 }
 
+fn get_diff_impl_search_stats(
+    conn: &MysqlConnection,
+    workspace: &Workspace,
+    group_name: &str,
+    path_prefix: &str,
+) -> Result<Option<(Group, Vec<Stat>)>, Box<dyn std::error::Error>> {
+    let group = MysqlGroups::find_by_name(conn, workspace.id, &group_name)?;
+    let group = if let Some(group) = group { group } else { return Ok(None) };
+    let cond =
+        StatSearchCondition { group_ids: Some(vec![group.id]), path_prefix: Some(path_prefix), ..Default::default() };
+    let stats_count = MysqlStats::count(conn, workspace.id, &cond)?;
+    if stats_count > 1000 {
+        return Err(Box::new(DomainError::params("path_prefix", format!("too many stats: {}", stats_count))));
+    };
+    let stats = MysqlStats::search(conn, workspace.id, &cond)?;
+    Ok(Some((group, stats)))
+}
+
 fn get_diff_impl(
     conn: &MysqlConnection,
     workspace_name: &str,
@@ -441,28 +460,10 @@ fn get_diff_impl(
 ) -> Result<Option<GetDiffResponse>, Box<dyn std::error::Error>> {
     let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
-        let group1 = MysqlGroups::find_by_name(conn, workspace.id, &q.group_name1)?;
-        let group1 = if let Some(group1) = group1 { group1 } else { return Ok(None) };
-        let group2 = MysqlGroups::find_by_name(conn, workspace.id, &q.group_name2)?;
-        let group2 = if let Some(group2) = group2 { group2 } else { return Ok(None) };
-        let stats1 = MysqlStats::search(
-            conn,
-            workspace.id,
-            &StatSearchCondition {
-                group_ids: Some(vec![group1.id]),
-                path_prefix: Some(&q.path_prefix1),
-                ..Default::default()
-            },
-        )?;
-        let stats2 = MysqlStats::search(
-            conn,
-            workspace.id,
-            &StatSearchCondition {
-                group_ids: Some(vec![group2.id]),
-                path_prefix: Some(&q.path_prefix2),
-                ..Default::default()
-            },
-        )?;
+        let result1 = get_diff_impl_search_stats(conn, &workspace, &q.group_name1, &q.path_prefix1)?;
+        let (group1, stats1) = if let Some(x) = result1 { x } else { return Ok(None) };
+        let result2 = get_diff_impl_search_stats(conn, &workspace, &q.group_name2, &q.path_prefix2)?;
+        let (group2, stats2) = if let Some(x) = result2 { x } else { return Ok(None) };
         let stats: HashMap<i32, Stat> = stats1.iter().chain(stats2.iter()).map(|s| (s.id, s.clone())).collect();
         let mut diff = HashMap::<i32, (Vec<i32>, Vec<i32>)>::new();
         for stat1 in stats1.iter() {
