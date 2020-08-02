@@ -114,6 +114,11 @@ impl Stats {
         if let Some(path_prefix) = cond.path_prefix {
             q = q.filter(dsl::path.like(format!("{}%", path_prefix)));
         }
+        if let Some(path_partial) = cond.path_partial {
+            if path_partial.len() >= 2 {
+                q = q.filter(dsl::path.like(format!("%{}%", path_partial)));
+            }
+        }
         if let Some(ref statuses) = cond.statuses {
             q = q.filter(dsl::status.eq_any(statuses.iter().map(|s| *s as i32)));
         }
@@ -171,6 +176,7 @@ pub struct StatSearchCondition<'a> {
     pub group_ids: Option<Vec<i32>>,
     pub paths: Option<Vec<&'a str>>,
     pub path_prefix: Option<&'a str>,
+    pub path_partial: Option<&'a str>,
     pub statuses: Option<Vec<Status>>,
     pub mtime_after: Option<NaiveDateTime>,
     pub mtime_before: Option<NaiveDateTime>,
