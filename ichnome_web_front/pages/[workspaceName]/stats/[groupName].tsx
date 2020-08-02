@@ -96,10 +96,10 @@ function rejectEmpty<K extends string, V extends string | null | undefined, M ex
 }
 
 export const StatsForm: React.FC<StatsFormProps> = ({ onSubmit, formData }) => {
-  const { register, handleSubmit, reset } = useForm<FormData>({ defaultValues: formData });
+  const { register, handleSubmit, reset } = useForm<FormData>();
   useEffect(() => {
     reset(formData);
-  }, [formData]);
+  }, [reset, formData]);
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <dl>
@@ -114,9 +114,7 @@ export const StatsForm: React.FC<StatsFormProps> = ({ onSubmit, formData }) => {
         </dt>
         <dd>
           <select name="status" ref={register}>
-            <option value="" selected>
-              (None)
-            </option>
+            <option value="">(None)</option>
             <option value="disabled">Disabled</option>
             <option value="enabled">Enabled</option>
           </select>
