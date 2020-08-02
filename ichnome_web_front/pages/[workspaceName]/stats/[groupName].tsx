@@ -15,6 +15,7 @@ import GlobalNav from "@/components/GlobalNav";
 
 type FormData = {
   path_prefix?: string;
+  path_partial?: string;
   status?: string;
   mtime_after?: string;
   mtime_before?: string;
@@ -102,6 +103,12 @@ export const StatsForm: React.FC<StatsFormProps> = ({ onSubmit, formData }) => {
           <input type="text" name="path_prefix" placeholder="data/archives" size={80} ref={register} />
         </dd>
         <dt>
+          <label>Path (Partial Match):</label>
+        </dt>
+        <dd>
+          <input type="text" name="path_partial" placeholder="html" ref={register} />
+        </dd>
+        <dt>
           <label>Status:</label>
         </dt>
         <dd>
@@ -140,6 +147,7 @@ export const StatsPage: NextPage<Props> = (props) => {
     workspaceName,
     groupName,
     path_prefix,
+    path_partial,
     status,
     mtime_after,
     mtime_before,
@@ -147,7 +155,15 @@ export const StatsPage: NextPage<Props> = (props) => {
     updated_at_before,
   } = (rawQuery as unknown) as Query;
   const pageTitle = `Group: ${groupName}`;
-  const formData: FormData = { path_prefix, status, mtime_after, mtime_before, updated_at_after, updated_at_before };
+  const formData: FormData = {
+    path_prefix,
+    path_partial,
+    status,
+    mtime_after,
+    mtime_before,
+    updated_at_after,
+    updated_at_before,
+  };
   const changeUrl = (data: FormData) => {
     const query = rejectEmpty(data);
     const href = { pathname: "/[workspaceName]/stats/[groupName]", query };
@@ -184,6 +200,7 @@ StatsPage.getInitialProps = async ({ query: rawQuery }) => {
       workspaceName,
       groupName,
       path_prefix,
+      path_partial,
       status,
       mtime_after,
       mtime_before,
@@ -192,7 +209,7 @@ StatsPage.getInitialProps = async ({ query: rawQuery }) => {
     } = (rawQuery as unknown) as Query;
     const path = uria`${workspaceName}/stats/${groupName}`;
     const { data } = await defaultInstance.get(path, {
-      params: { path_prefix, status, mtime_after, mtime_before, updated_at_after, updated_at_before },
+      params: { path_prefix, path_partial, status, mtime_after, mtime_before, updated_at_after, updated_at_before },
     });
     return { response: data };
   } catch (err) {
