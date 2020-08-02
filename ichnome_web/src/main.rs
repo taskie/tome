@@ -77,12 +77,12 @@ fn get_stats_impl(
             .status
             .as_ref()
             .map(|s| match s.to_ascii_lowercase().as_str() {
-                "0" | "disabled" => Some(Status::DISABLED),
-                "1" | "enabled" => Some(Status::ENABLED),
+                "0" | "disabled" => Some(Status::Disabled),
+                "1" | "enabled" => Some(Status::Enabled),
                 _ => None,
             })
             .flatten()
-            .unwrap_or(Status::ENABLED);
+            .unwrap_or(Status::Enabled);
         let cond = StatSearchCondition {
             group_ids: Some(vec![group.id]),
             path_prefix: q.path_prefix.as_ref().map(|s| s.as_ref()),

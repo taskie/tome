@@ -5,16 +5,16 @@ pub const ATTR_GROUP_NAME: &'static str = "__attr";
 
 #[derive(Clone, Copy, Debug)]
 pub enum Status {
-    DISABLED = 0,
-    ENABLED = 1,
+    Disabled = 0,
+    Enabled = 1,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum GroupType {
-    LOCAL = 0,
-    REMOTE = 1,
-    META = 2,
-    ATTR = 3,
+    Local = 0,
+    Remote = 1,
+    Meta = 2,
+    Attr = 3,
 }
 
 #[derive(Clone, Copy, Debug)]

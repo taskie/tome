@@ -53,7 +53,7 @@ pub fn pre_process(ctx: &mut Context) -> Result<(), Box<dyn Error>> {
     ctx.workspace = Some(workspace.clone());
     let abs_db_path = ctx.db_path.canonicalize()?;
     let url = Url::from_file_path(abs_db_path).unwrap();
-    ctx.group = Some(create_group_if_needed(conn, &workspace, ctx.group_name, &url, GroupType::LOCAL, now)?);
+    ctx.group = Some(create_group_if_needed(conn, &workspace, ctx.group_name, &url, GroupType::Local, now)?);
     Ok(())
 }
 

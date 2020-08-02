@@ -116,7 +116,7 @@ pub fn register(ctx: &Context, req: &RegisterRequest) -> Result<RegisterResponse
             panic!("group {} already exists", group.name)
         }
     }
-    let group = create_group_if_needed(conn, &workspace, &req.group_name, &url, GroupType::REMOTE, now)?;
+    let group = create_group_if_needed(conn, &workspace, &req.group_name, &url, GroupType::Remote, now)?;
     Ok(RegisterResponse { workspace, group })
 }
 

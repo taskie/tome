@@ -35,7 +35,7 @@ pub(crate) fn create_workspace_if_needed(
             &WorkspaceInsertForm {
                 name,
                 description: "",
-                status: Status::ENABLED as i32,
+                status: Status::Enabled as i32,
                 created_at: now,
                 updated_at: now,
             },
@@ -66,7 +66,7 @@ pub(crate) fn create_group_if_needed(
                 url: url.as_str(),
                 type_: type_ as i32,
                 description: "",
-                status: Status::ENABLED as i32,
+                status: Status::Enabled as i32,
                 group_stat_id: None,
                 created_at: now,
                 updated_at: now,
@@ -86,7 +86,7 @@ pub(crate) fn create_meta_group_if_needed(
     let group_name = META_GROUP_NAME;
     let url = format!("ichno://{}/{}", workspace.name, group_name);
     let url = Url::parse(&url)?;
-    create_group_if_needed(conn, workspace, group_name, &url, GroupType::META, now)
+    create_group_if_needed(conn, workspace, group_name, &url, GroupType::Meta, now)
 }
 
 #[allow(dead_code)]
@@ -98,7 +98,7 @@ pub(crate) fn create_attr_group_if_needed(
     let group_name = ATTR_GROUP_NAME;
     let url = format!("ichno://{}/groups/{}", workspace.name, group_name);
     let url = Url::parse(&url)?;
-    create_group_if_needed(conn, workspace, group_name, &url, GroupType::ATTR, now)
+    create_group_if_needed(conn, workspace, group_name, &url, GroupType::Attr, now)
 }
 
 pub(crate) fn create_history_with_footprint_if_needed(
@@ -131,7 +131,7 @@ pub(crate) fn create_history_with_footprint_if_needed(
             group_id: group.id,
             path,
             version,
-            status: Status::ENABLED as i32,
+            status: Status::Enabled as i32,
             mtime: Some(mtime),
             footprint_id: Some(footprint.id),
             digest: Some(&footprint.digest),
@@ -152,7 +152,7 @@ pub(crate) fn create_disabled_history_if_needed(
 ) -> Result<History, Box<dyn Error>> {
     let last_history = Histories::find_latest_by_path(conn, group.id, path)?;
     let last_history = if let Some(last_history) = last_history {
-        if last_history.status == Status::DISABLED as i32 {
+        if last_history.status == Status::Disabled as i32 {
             return Ok(last_history);
         }
         Some(last_history)
@@ -170,7 +170,7 @@ pub(crate) fn create_disabled_history_if_needed(
             group_id: group.id,
             path,
             version,
-            status: Status::DISABLED as i32,
+            status: Status::Disabled as i32,
             mtime: None,
             footprint_id: None,
             digest: None,
@@ -370,7 +370,7 @@ pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
                     value_digest: Some(&footprint.digest),
                     value_content_type: Some(value_content_type),
                     value_summary: Some(value_summary),
-                    status: Some(Status::ENABLED as i32),
+                    status: Some(Status::Enabled as i32),
                     attr_stat_id: Some(Some(stat.id)),
                     updated_at: Some(now),
                 },
@@ -388,7 +388,7 @@ pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
                 value_digest: &footprint.digest,
                 value_content_type,
                 value_summary,
-                status: Status::ENABLED as i32,
+                status: Status::Enabled as i32,
                 attr_stat_id: Some(stat.id),
                 created_at: now,
                 updated_at: now,
@@ -426,7 +426,7 @@ pub(crate) fn new_updated_file_state_if_needed(
     } else {
         (None, None, None)
     };
-    let not_exists = stat.map_or(false, |s| s.status == Status::DISABLED as i32);
+    let not_exists = stat.map_or(false, |s| s.status == Status::Disabled as i32);
     if f.is_none() && not_exists {
         return Ok(None);
     }
