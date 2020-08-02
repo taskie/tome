@@ -10,6 +10,7 @@ import StatGroup from "@/components/StatGroup";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { useEffect } from "react";
+import { rejectEmpty } from "@/utils/record";
 
 type FormData = {
   path_prefix?: string;
@@ -85,16 +86,6 @@ type StatsFormProps = {
   onSubmit: (form: FormData) => void;
 };
 
-function rejectEmpty<K extends string, V extends string | null | undefined, M extends Record<K, V>>(m: M): Partial<M> {
-  const result: Partial<M> = {};
-  for (const [k, v] of Object.entries(m) as [K, V][]) {
-    if (v != null && v.length !== 0) {
-      (result[k] as V) = v;
-    }
-  }
-  return result;
-}
-
 export const StatsForm: React.FC<StatsFormProps> = ({ onSubmit, formData }) => {
   const { register, handleSubmit, reset } = useForm<FormData>();
   useEffect(() => {
@@ -107,7 +98,7 @@ export const StatsForm: React.FC<StatsFormProps> = ({ onSubmit, formData }) => {
           <label>Path Prefix:</label>
         </dt>
         <dd>
-          <input type="text" name="path_prefix" placeholder="data/archives" ref={register} />
+          <input type="text" name="path_prefix" placeholder="data/archives" size={80} ref={register} />
         </dd>
         <dt>
           <label>Status:</label>

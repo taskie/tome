@@ -80,3 +80,11 @@ export type GetGroupResponse = {
   histories?: IchHistory[];
   footprints?: { [k: string]: IchFootprint };
 };
+
+export type GetDiffResponse = {
+  group1: IchGroup;
+  group2: IchGroup;
+  diff: { [k: string]: [number[], number[]] };
+  stats: { [k: string]: IchStat };
+  footprints: { [k: string]: IchFootprint };
+};

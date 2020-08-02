@@ -45,7 +45,12 @@ const ResponseView: React.FC<{ response: Response; workspaceName: string; groupN
       {eq_stats != null ? (
         <>
           <h2>Same Stats</h2>
-          <StatGroup workspaceName={workspaceName} groupName={groupName} stats={eq_stats} />
+          <StatGroup
+            workspaceName={workspaceName}
+            groupName={groupName}
+            stats={eq_stats}
+            diffSource={{ groupName, pathPrefix: stat.path }}
+          />
         </>
       ) : undefined}
     </>
