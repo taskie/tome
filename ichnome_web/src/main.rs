@@ -136,7 +136,25 @@ struct GetStatResponse {
     stat: Stat,
     histories: Option<Vec<History>>,
     footprints: Option<HashMap<i32, Footprint>>,
-    eq_stats: Option<Vec<Stat>>,
+    eq_stats: Option<Vec<WebStat>>,
+}
+
+fn to_web_stats(workspace: &Workspace, group_map: &HashMap<i32, &Group>, stats: &Vec<Stat>) -> Vec<WebStat> {
+    stats
+        .iter()
+        .map(|s| (s, group_map.get(&s.group_id)))
+        .filter(|(_, g)| g.is_some())
+        .map(|(s, g)| WebStat::from(&workspace, *g.unwrap(), s))
+        .collect()
+}
+
+fn to_web_histories(workspace: &Workspace, group_map: &HashMap<i32, &Group>, stats: &Vec<History>) -> Vec<WebHistory> {
+    stats
+        .iter()
+        .map(|h| (h, group_map.get(&h.group_id)))
+        .filter(|(_, g)| g.is_some())
+        .map(|(h, g)| WebHistory::from(&workspace, *g.unwrap(), h))
+        .collect()
 }
 
 fn get_stat_impl(
@@ -171,7 +189,11 @@ fn get_stat_impl(
             });
             let eq_stats = Some({
                 if let Some(footprint_id) = stat.footprint_id {
-                    MysqlStats::select_by_footprint_id(conn, group.workspace_id, footprint_id)?
+                    let stats = MysqlStats::select_by_footprint_id(conn, group.workspace_id, footprint_id)?;
+                    let group_ids: Vec<i32> = stats.iter().map(|s| s.group_id).collect();
+                    let groups = MysqlGroups::select(conn, &group_ids)?;
+                    let group_map = groups.iter().map(|g| (g.id, g)).collect();
+                    to_web_stats(&workspace, &group_map, &stats)
                 } else {
                     vec![]
                 }
@@ -248,22 +270,9 @@ fn get_footprint_impl(
         }
         let group_ids: Vec<i32> = group_ids.into_iter().collect();
         let groups = MysqlGroups::select(conn, &group_ids)?;
-        let mut group_map = HashMap::new();
-        for g in groups.iter() {
-            group_map.insert(g.id, g);
-        }
-        let stats: Vec<WebStat> = stats
-            .iter()
-            .map(|s| (s, group_map.get(&s.group_id)))
-            .filter(|(_, g)| g.is_some())
-            .map(|(s, g)| WebStat::from(&workspace, *g.unwrap(), s))
-            .collect();
-        let histories: Vec<WebHistory> = histories
-            .iter()
-            .map(|h| (h, group_map.get(&h.group_id)))
-            .filter(|(_, g)| g.is_some())
-            .map(|(h, g)| WebHistory::from(&workspace, *g.unwrap(), h))
-            .collect();
+        let group_map = groups.iter().map(|g| (g.id, g)).collect();
+        let stats = to_web_stats(&workspace, &group_map, &stats);
+        let histories = to_web_histories(&workspace, &group_map, &histories);
         Ok(Some(GetFootprintResponse {
             workspace,
             footprint,
