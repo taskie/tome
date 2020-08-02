@@ -10,6 +10,7 @@ import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
 import GlobalNav from "@/components/GlobalNav";
+import GroupLink from "@/components/GroupLink";
 
 type Query = {
   workspaceName: string;
@@ -31,6 +32,20 @@ const ResponseView: React.FC<{ response: Response; workspaceName: string; groupN
     <>
       <h2>Stat</h2>
       <Stat workspaceName={workspaceName} groupName={groupName} stat={stat} />
+      {stat.path.includes("/")
+        ? (() => {
+            const splitted = stat.path.split("/");
+            splitted.pop();
+            const path_prefix = splitted.join("/");
+            return (
+              <GroupLink workspaceName={workspaceName} groupName={groupName} query={{ path_prefix }}>
+                <a>
+                  Group: {groupName} (Path Prefix: {path_prefix})
+                </a>
+              </GroupLink>
+            );
+          })()
+        : undefined}
       {histories != null ? (
         <>
           <h2>Histories</h2>
