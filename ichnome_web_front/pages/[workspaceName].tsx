@@ -33,9 +33,9 @@ export const HomePage: NextPage<Props> = (props) => {
         </h1>
         <h2>Groups</h2>
         <ul>
-          {props.response?.groups.map((n) => (
-            <li>
-              <GroupLink key={n.id} workspaceName={workspaceName} groupName={n.name} family="stats" />
+          {props.response?.groups.map((g) => (
+            <li key={g.id}>
+              <GroupLink workspaceName={workspaceName} groupName={g.name} family="stats" />
             </li>
           ))}
         </ul>
