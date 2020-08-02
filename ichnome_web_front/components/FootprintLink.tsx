@@ -8,11 +8,15 @@ type Props = {
   length?: number;
 };
 
-export const FootprintLink: React.FC<Props> = ({ workspaceName, digest, length }) => (
+export const FootprintLink: React.FC<Props> = ({ workspaceName, digest, length, children }) => (
   <Link href="/[workspaceName]/footprints/[digest]" as={uri`/${workspaceName}/footprints/${digest}`}>
-    <a>
-      <Digest digest={digest} length={length} />
-    </a>
+    {children != null ? (
+      children
+    ) : (
+      <a>
+        <Digest digest={digest} length={length} />
+      </a>
+    )}
   </Link>
 );
 

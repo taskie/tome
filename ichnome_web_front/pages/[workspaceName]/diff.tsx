@@ -5,12 +5,13 @@ import { uria } from "@/utils/uri";
 import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
 import { GetDiffResponse } from "@/api/types";
-import Group from "@/components/Group";
 import Digest from "@/components/Digest";
 import StatGroup from "@/components/StatGroup";
 import { useForm } from "react-hook-form";
 import { useEffect } from "react";
 import { rejectEmpty } from "@/utils/record";
+import GlobalNav from "@/components/GlobalNav";
+import FootprintLink from "@/components/FootprintLink";
 
 type FormData = {
   group_name1?: string;
@@ -99,7 +100,7 @@ const ResponseView: React.FC<{ response: Response; workspaceName: string }> = ({
             return (
               <tr key={footprint.id}>
                 <td>
-                  <Digest digest={footprint.digest} length={8} />
+                  <FootprintLink workspaceName={workspaceName} digest={footprint.digest} length={8} />
                 </td>
                 <td>
                   <StatGroup workspaceName={workspaceName} groupName={group1.name} stats={srcStats} mode="diff" />
@@ -121,6 +122,7 @@ export const DiffPage: NextPage<Props> = (props) => {
   const { query: rawQuery } = router;
   const { workspaceName, group_name1, path_prefix1, group_name2, path_prefix2 } = (rawQuery as unknown) as Query;
   const formData: FormData = { group_name1, path_prefix1, group_name2, path_prefix2 };
+  const pageTitle = "Diff";
   const changeUrl = (data: FormData) => {
     const query = rejectEmpty(data);
     const href = { pathname: "/[workspaceName]/diff", query };
@@ -130,9 +132,12 @@ export const DiffPage: NextPage<Props> = (props) => {
   return (
     <div className="container">
       <Head>
-        <title>Diff - {applicationName}</title>
+        <title>
+          {pageTitle} - {applicationName}
+        </title>
       </Head>
-      <h1>Diff</h1>
+      <GlobalNav workspaceName={workspaceName} />
+      <h1>{pageTitle}</h1>
       <DiffForm formData={formData} onSubmit={changeUrl} />
       {props.response != null ? (
         <ResponseView response={props.response} workspaceName={workspaceName} />

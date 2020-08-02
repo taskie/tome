@@ -8,6 +8,7 @@ import { GetFootprintResponse } from "@/api/types";
 import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
+import GlobalNav from "@/components/GlobalNav";
 
 type Query = {
   workspaceName: string;
@@ -45,15 +46,17 @@ const ResponseView: React.FC<{ response: Response }> = ({ response: { footprint,
 export const FootprintPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
-  const { digest } = (rawQuery as unknown) as Query;
+  const { workspaceName, digest } = (rawQuery as unknown) as Query;
+  const pageTitle = `Footprint: ${digest.slice(0, 8)}`;
   return (
     <div className="container">
       <Head>
         <title>
-          Footprint: {digest} - {applicationName}
+          {pageTitle} - {applicationName}
         </title>
       </Head>
-      <h1>Footprint: {digest.slice(0, 8)}</h1>
+      <GlobalNav workspaceName={workspaceName} />
+      <h1>{pageTitle}</h1>
       {props.response != null ? <ResponseView response={props.response} /> : <p>Some error occured: {props.err}</p>}
     </div>
   );

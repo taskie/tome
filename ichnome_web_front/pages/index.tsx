@@ -1,9 +1,6 @@
 import Head from "next/head";
 import { applicationName } from "../config";
 import { NextPage } from "next";
-import { GetGroupsResponse } from "@/api/types";
-
-type Response = GetGroupsResponse;
 
 export const HomePage: NextPage = () => {
   return (
@@ -11,6 +8,7 @@ export const HomePage: NextPage = () => {
       <Head>
         <title>{applicationName}</title>
       </Head>
+      <h1>{applicationName}</h1>
     </div>
   );
 };

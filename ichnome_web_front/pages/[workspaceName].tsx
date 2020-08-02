@@ -7,6 +7,7 @@ import { GetGroupsResponse } from "@/api/types";
 import GroupLink from "@/components/GroupLink";
 import { useRouter } from "next/router";
 import { uria } from "@/utils/uri";
+import GroupsLink from "@/components/GroupsLink";
 
 type Query = {
   workspaceName: string;
@@ -20,17 +21,16 @@ export const HomePage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
   const { workspaceName } = (rawQuery as unknown) as Query;
+  const pageTitle = `Workspace: ${workspaceName}`;
   return (
     <div className="container">
       <Head>
         <title>
-          {workspaceName} - {applicationName}
+          {pageTitle} - {applicationName}
         </title>
       </Head>
       <main>
-        <h1 className="title">
-          {workspaceName} - {applicationName}
-        </h1>
+        <h1 className="title">{pageTitle}</h1>
         <h2>Groups</h2>
         <ul>
           {props.response?.groups.map((g) => (
@@ -40,9 +40,9 @@ export const HomePage: NextPage<Props> = (props) => {
           ))}
         </ul>
         <p>
-          <Link href={uria`/${workspaceName}/groups`}>
-            <a>List</a>
-          </Link>
+          <GroupsLink workspaceName={workspaceName}>
+            <a>Group Definitions</a>
+          </GroupsLink>
         </p>
       </main>
     </div>

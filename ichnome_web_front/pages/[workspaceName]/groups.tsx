@@ -6,6 +6,7 @@ import { defaultInstance } from "@/api/apiClient";
 import { applicationName } from "@/config";
 import { GetGroupsResponse } from "@/api/types";
 import Group from "@/components/Group";
+import GlobalNav from "@/components/GlobalNav";
 
 type Query = { workspaceName: string };
 
@@ -30,12 +31,16 @@ export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
   const { workspaceName } = (rawQuery as unknown) as Query;
+  const pageTitle = `Group Definitions: ${workspaceName}`;
   return (
     <div className="container">
       <Head>
-        <title>Groups - {applicationName}</title>
+        <title>
+          {pageTitle} - {applicationName}
+        </title>
       </Head>
-      <h1>Groups</h1>
+      <GlobalNav workspaceName={workspaceName} />
+      <h1>{pageTitle}</h1>
       {props.response != null ? (
         <ResponseView response={props.response} workspaceName={workspaceName} />
       ) : (

@@ -9,6 +9,7 @@ import Group from "@/components/Group";
 import Stat from "@/components/Stat";
 import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
+import GlobalNav from "@/components/GlobalNav";
 
 type Query = {
   workspaceName: string;
@@ -51,16 +52,18 @@ export const GroupPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
   const { workspaceName, groupName } = (rawQuery as unknown) as Query;
+  const pageTitle = `Group Definition: ${groupName}`;
   return (
     <div className="container">
       <Head>
         <title>
-          {groupName} - {applicationName}
+          {pageTitle} - {applicationName}
         </title>
       </Head>
-      <h1>{groupName}</h1>
+      <GlobalNav workspaceName={workspaceName} groupName={groupName} />
+      <h1>{pageTitle}</h1>
       {props.response != null ? (
-        <ResponseView response={props.response} workspaceName={workspaceName} groupName={groupName} />
+        <ResponseView response={props.response} workspaceName={workspaceName} groupName="__meta" />
       ) : (
         <p>Some error occured: {props.err}</p>
       )}

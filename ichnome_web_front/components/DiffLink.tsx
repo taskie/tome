@@ -9,7 +9,14 @@ type Props = {
   pathPrefix2: string;
 };
 
-export const DiffLink: React.FC<Props> = ({ workspaceName, groupName1, pathPrefix1, groupName2, pathPrefix2 }) => {
+export const DiffLink: React.FC<Props> = ({
+  workspaceName,
+  groupName1,
+  pathPrefix1,
+  groupName2,
+  pathPrefix2,
+  children,
+}) => {
   const query = {
     group_name1: groupName1,
     path_prefix1: pathPrefix1,
@@ -20,7 +27,7 @@ export const DiffLink: React.FC<Props> = ({ workspaceName, groupName1, pathPrefi
   const as = { pathname: uri`/${workspaceName}/diff`, query };
   return (
     <Link href={href} as={as}>
-      <a>Diff</a>
+      {children != null ? children : <a>Diff</a>}
     </Link>
   );
 };

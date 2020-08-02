@@ -14,8 +14,8 @@ export const Group: React.FC<Props> = ({
   return (
     <ul>
       <li>
-        ID: <GroupLink workspaceName={workspaceName} groupName={name} /> (Stats:{" "}
-        <GroupLink workspaceName={workspaceName} groupName={name} family={"stats"} />)
+        ID: <GroupLink workspaceName={workspaceName} groupName={name} /> (Definition:{" "}
+        <GroupLink workspaceName={workspaceName} groupName={name} family="groups" />)
       </li>
       <li>Type: {type}</li>
       <li>URL: {url}</li>

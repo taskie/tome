@@ -7,13 +7,14 @@ type Props = {
   family?: string;
 };
 
-export const GroupLink: React.FC<Props> = ({ workspaceName, groupName, family }) => {
-  const href = family === "stats" ? "/[workspaceName]/stats/[groupName]" : "/[workspaceName]/groups/[groupName]";
-  const as =
-    family === "stats" ? uri`/${workspaceName}/stats/${groupName}` : uri`/${workspaceName}/groups/${groupName}`;
+export const GroupLink: React.FC<Props> = ({ workspaceName, groupName, family, children }) => {
+  const def =
+    family === "groups"
+      ? { href: "/[workspaceName]/groups/[groupName]", as: uri`/${workspaceName}/groups/${groupName}` }
+      : { href: "/[workspaceName]/stats/[groupName]", as: uri`/${workspaceName}/stats/${groupName}` };
   return (
-    <Link href={href} as={as}>
-      <a>{groupName}</a>
+    <Link href={def.href} as={def.as}>
+      {children != null ? children : <a>{groupName}</a>}
     </Link>
   );
 };

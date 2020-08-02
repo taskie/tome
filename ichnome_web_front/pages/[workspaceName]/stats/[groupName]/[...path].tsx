@@ -9,6 +9,7 @@ import Stat from "@/components/Stat";
 import FootprintView from "@/components/Footprint";
 import HistoryGroup from "@/components/HistoryGroup";
 import StatGroup from "@/components/StatGroup";
+import GlobalNav from "@/components/GlobalNav";
 
 type Query = {
   workspaceName: string;
@@ -61,16 +62,16 @@ export const StatPage: NextPage<Props> = (props) => {
   const router = useRouter();
   const { query: rawQuery } = router;
   const { workspaceName, groupName, path: statPath } = (rawQuery as unknown) as Query;
+  const pageTitle = `Stat: ${statPath.join("/")}`;
   return (
     <div className="container">
       <Head>
         <title>
-          {groupName}/{statPath.join("/")} - {applicationName}
+          {pageTitle} - {applicationName}
         </title>
       </Head>
-      <h1>
-        {groupName}/{statPath.join("/")}
-      </h1>
+      <GlobalNav workspaceName={workspaceName} groupName={groupName} />
+      <h1>{pageTitle}</h1>
       {props.response != null ? (
         <ResponseView response={props.response} workspaceName={workspaceName} groupName={groupName} />
       ) : (

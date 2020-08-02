@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { useEffect } from "react";
 import { rejectEmpty } from "@/utils/record";
+import GlobalNav from "@/components/GlobalNav";
 
 type FormData = {
   path_prefix?: string;
@@ -145,6 +146,7 @@ export const StatsPage: NextPage<Props> = (props) => {
     updated_at_after,
     updated_at_before,
   } = (rawQuery as unknown) as Query;
+  const pageTitle = `Group: ${groupName}`;
   const formData: FormData = { path_prefix, status, mtime_after, mtime_before, updated_at_after, updated_at_before };
   const changeUrl = (data: FormData) => {
     const query = rejectEmpty(data);
@@ -156,10 +158,11 @@ export const StatsPage: NextPage<Props> = (props) => {
     <div className="container">
       <Head>
         <title>
-          Stats of {groupName} - {applicationName}
+          {pageTitle} - {applicationName}
         </title>
       </Head>
-      <h1>Stats of {groupName}</h1>
+      <GlobalNav workspaceName={workspaceName} />
+      <h1>{pageTitle}</h1>
       <StatsForm formData={formData} onSubmit={changeUrl} />
       {props.response != null ? (
         <ResponseView
