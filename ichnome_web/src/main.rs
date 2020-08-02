@@ -416,6 +416,99 @@ async fn get_group(pool: web::Data<DbPool>, path_params: web::Path<(String, Stri
     }
 }
 
+#[derive(Deserialize)]
+struct GetDiffQuery {
+    group_name1: String,
+    path_prefix1: String,
+    group_name2: String,
+    path_prefix2: String,
+}
+
+#[derive(Serialize)]
+struct GetDiffResponse {
+    workspace: Workspace,
+    group1: Group,
+    group2: Group,
+    diff: HashMap<i32, (Vec<i32>, Vec<i32>)>,
+    stats: HashMap<i32, Stat>,
+    footprints: HashMap<i32, Footprint>,
+}
+
+fn get_diff_impl(
+    conn: &MysqlConnection,
+    workspace_name: &str,
+    q: &GetDiffQuery,
+) -> Result<Option<GetDiffResponse>, Box<dyn std::error::Error>> {
+    let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
+    if let Some(workspace) = workspace {
+        let group1 = MysqlGroups::find_by_name(conn, workspace.id, &q.group_name1)?;
+        let group1 = if let Some(group1) = group1 { group1 } else { return Ok(None) };
+        let group2 = MysqlGroups::find_by_name(conn, workspace.id, &q.group_name2)?;
+        let group2 = if let Some(group2) = group2 { group2 } else { return Ok(None) };
+        let stats1 = MysqlStats::search(
+            conn,
+            workspace.id,
+            &StatSearchCondition {
+                group_ids: Some(vec![group1.id]),
+                path_prefix: Some(&q.path_prefix1),
+                ..Default::default()
+            },
+        )?;
+        let stats2 = MysqlStats::search(
+            conn,
+            workspace.id,
+            &StatSearchCondition {
+                group_ids: Some(vec![group2.id]),
+                path_prefix: Some(&q.path_prefix2),
+                ..Default::default()
+            },
+        )?;
+        let stats: HashMap<i32, Stat> = stats1.iter().chain(stats2.iter()).map(|s| (s.id, s.clone())).collect();
+        let mut diff = HashMap::<i32, (Vec<i32>, Vec<i32>)>::new();
+        for stat1 in stats1.iter() {
+            if let Some(footprint_id) = stat1.footprint_id {
+                let v = diff.entry(footprint_id).or_insert_with(|| (vec![], vec![]));
+                v.0.push(stat1.id);
+            }
+        }
+        for stat2 in stats2.iter() {
+            if let Some(footprint_id) = stat2.footprint_id {
+                let v = diff.entry(footprint_id).or_insert_with(|| (vec![], vec![]));
+                v.1.push(stat2.id);
+            }
+        }
+        let footprints: HashMap<i32, Footprint> =
+            MysqlFootprints::select(conn, &diff.keys().map(|i| *i).collect())?.into_iter().map(|f| (f.id, f)).collect();
+        Ok(Some(GetDiffResponse { workspace, group1, group2, diff, stats, footprints }))
+    } else {
+        Ok(None)
+    }
+}
+
+#[get("/{workspace_name}/diff")]
+async fn get_diff(
+    pool: web::Data<DbPool>,
+    path_params: web::Path<(String,)>,
+    q: web::Query<GetDiffQuery>,
+) -> Result<impl Responder, Error> {
+    let (workspace_name,) = path_params.into_inner();
+    let q = q.into_inner();
+    let conn = pool.get().expect("couldn't get db connection from pool");
+    let resp = web::block(move || get_diff_impl(&conn, &workspace_name, &q).map_err(|e| e.to_string())).await.map_err(
+        |e| {
+            error!("{}", e);
+            HttpResponse::InternalServerError().finish()
+        },
+    )?;
+    match resp {
+        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
+        None => {
+            let res = HttpResponse::NotFound().body(format!("Not found"));
+            Ok(res)
+        }
+    }
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ichnome-web")]
 #[structopt(long_version(option_env!("LONG_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))))]
@@ -444,6 +537,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_footprint)
             .service(get_groups)
             .service(get_group)
+            .service(get_diff)
     })
     .bind(&opt.address)?
     .run()
