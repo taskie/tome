@@ -64,14 +64,14 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
     let database_url = env::var("DATABASE_URL").unwrap_or("ichno.db".to_owned());
-    let conn = MysqlConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
-    let ctx = action::Context { connection: &conn, timer: Box::new(|| Utc::now()) };
+    let mut conn = MysqlConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
+    let mut ctx = action::Context { connection: &mut conn, timer: Box::new(|| Utc::now()) };
     let opt = Opt::from_args();
     let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
     match opt.sub {
         SubCommands::Setup(setup) => {
             action::setup(
-                &ctx,
+                &mut ctx,
                 &SetupRequest {
                     workspace_name,
                     options: SetupOptions { force: setup.force, description: setup.description },
@@ -80,7 +80,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
         }
         SubCommands::Register(register) => {
             action::register(
-                &ctx,
+                &mut ctx,
                 &RegisterRequest {
                     workspace_name,
                     group_name: register.group_name,
@@ -90,7 +90,10 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             )?;
         }
         SubCommands::Pull(pull) => {
-            action::pull(&ctx, &PullRequest { workspace_name, group_name: pull.group_name, options: PullOptions {} })?;
+            action::pull(
+                &mut ctx,
+                &PullRequest { workspace_name, group_name: pull.group_name, options: PullOptions {} },
+            )?;
         }
     }
     Ok(0)

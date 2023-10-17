@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub struct Context<'c, 'a> {
-    pub connection: &'c SqliteConnection,
+    pub connection: &'c mut SqliteConnection,
     pub db_path: &'a Path,
     pub workspace_name: &'a str,
     pub workspace: Option<Workspace>,
@@ -47,28 +47,25 @@ impl<'c, 'a> Context<'c, 'a> {
 }
 
 pub fn pre_process(ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-    let conn = ctx.connection;
     let now = ctx.naive_current_time();
-    let workspace = create_workspace_if_needed(conn, ctx.workspace_name, now)?;
+    let workspace = create_workspace_if_needed(ctx.connection, ctx.workspace_name, now)?;
     ctx.workspace = Some(workspace.clone());
     let abs_db_path = ctx.db_path.canonicalize()?;
     let url = Url::from_file_path(abs_db_path).unwrap();
-    ctx.group = Some(create_group_if_needed(conn, &workspace, ctx.group_name, &url, GroupType::Local, now)?);
+    ctx.group = Some(create_group_if_needed(ctx.connection, &workspace, ctx.group_name, &url, GroupType::Local, now)?);
     Ok(())
 }
 
 pub fn post_process(ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-    let conn = ctx.connection;
     let now = ctx.naive_current_time();
     let workspace = ctx.workspace.as_ref().unwrap();
     let target_group = ctx.group.as_ref().unwrap();
-    let group = update_meta_group_stat(conn, workspace, target_group, ctx.db_path, now)?;
+    let group = update_meta_group_stat(ctx.connection, workspace, target_group, ctx.db_path, now)?;
     ctx.group = Some(group);
     Ok(())
 }
 
-pub fn update_file_stat<P: AsRef<Path>>(ctx: &Context, path: P) -> Result<Option<Stat>, Box<dyn Error>> {
-    let conn = ctx.connection;
+pub fn update_file_stat<P: AsRef<Path>>(ctx: &mut Context, path: P) -> Result<Option<Stat>, Box<dyn Error>> {
     let group = ctx.group.as_ref().unwrap();
     let now = ctx.naive_current_time();
     let base_path = ctx.base_directory().unwrap();
@@ -79,5 +76,5 @@ pub fn update_file_stat<P: AsRef<Path>>(ctx: &Context, path: P) -> Result<Option
     } else {
         return Err(Box::new(DomainError::params("path", format!("can't convert to UTF-8: {:?}", path_ref))));
     };
-    update_stat_with_paths_if_needed(conn, group, path_str, path_ref, now)
+    update_stat_with_paths_if_needed(ctx.connection, group, path_str, path_ref, now)
 }

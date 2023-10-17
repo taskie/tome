@@ -8,7 +8,7 @@ use std::{
     env,
 };
 
-use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer, Responder};
+use actix_web::{error, middleware, web, App, HttpResponse, HttpServer, Responder};
 use chrono::NaiveDateTime;
 use diesel::{
     r2d2::{self, ConnectionManager},
@@ -29,7 +29,7 @@ type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
 mod models;
 
 fn find_workspace_and_group(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<(Workspace, Group)>, Box<dyn std::error::Error>> {
@@ -67,7 +67,7 @@ struct GetStatsResponse {
 }
 
 fn get_stats_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     group_name: &str,
     q: &GetStatsQuery,
@@ -111,18 +111,16 @@ async fn get_stats(
     pool: web::Data<DbPool>,
     path_params: web::Path<(String, String)>,
     q: web::Query<GetStatsQuery>,
-) -> Result<impl Responder, Error> {
+) -> actix_web::Result<impl Responder> {
     let (workspace_name, group_name) = path_params.into_inner();
     let group_name_2 = group_name.clone();
     let q = q.into_inner();
-    let conn = pool.get().expect("couldn't get db connection from pool");
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_stats_impl(&conn, &workspace_name, &group_name, &q).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp =
+        web::block(move || get_stats_impl(&mut conn, &workspace_name, &group_name, &q).map_err(|e| e.to_string()))
+            .await?
+            .map_err(error::ErrorInternalServerError)?;
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
@@ -161,7 +159,7 @@ fn to_web_histories(workspace: &Workspace, group_map: &HashMap<i32, &Group>, sta
 }
 
 fn get_stat_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     group_name: &str,
     path: &str,
@@ -214,18 +212,16 @@ fn get_stat_impl(
 async fn get_stat(
     pool: web::Data<DbPool>,
     path_params: web::Path<(String, String, String)>,
-) -> Result<impl Responder, Error> {
+) -> actix_web::Result<impl Responder> {
     let (workspace_name, group_name, path) = path_params.into_inner();
     let group_name_2 = group_name.clone();
     let path_2 = path.clone();
-    let conn = pool.get().expect("couldn't get db connection from pool");
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_stat_impl(&conn, &workspace_name, &group_name, &path).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp =
+        web::block(move || get_stat_impl(&mut conn, &workspace_name, &group_name, &path).map_err(|e| e.to_string()))
+            .await?
+            .map_err(error::ErrorInternalServerError)?;
 
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
@@ -246,7 +242,7 @@ struct GetFootprintResponse {
 }
 
 fn get_footprint_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     digest: &str,
 ) -> Result<Option<GetFootprintResponse>, Box<dyn std::error::Error>> {
@@ -292,17 +288,14 @@ fn get_footprint_impl(
 async fn get_footprint(
     pool: web::Data<DbPool>,
     path_params: web::Path<(String, String)>,
-) -> Result<impl Responder, Error> {
+) -> actix_web::Result<impl Responder> {
     let (workspace_name, digest) = path_params.into_inner();
     let digest_2 = digest.clone();
-    let conn = pool.get().expect("couldn't get db connection from pool");
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_footprint_impl(&conn, &workspace_name, &digest).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp = web::block(move || get_footprint_impl(&mut conn, &workspace_name, &digest).map_err(|e| e.to_string()))
+        .await?
+        .map_err(error::ErrorInternalServerError)?;
 
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
@@ -320,7 +313,7 @@ struct GetGroupsResponse {
 }
 
 fn get_groups_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
 ) -> Result<Option<GetGroupsResponse>, Box<dyn std::error::Error>> {
     let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
@@ -333,15 +326,14 @@ fn get_groups_impl(
 }
 
 #[get("/{workspace_name}/groups")]
-async fn get_groups(pool: web::Data<DbPool>, path_params: web::Path<(String,)>) -> Result<impl Responder, Error> {
+async fn get_groups(pool: web::Data<DbPool>, path_params: web::Path<(String,)>) -> actix_web::Result<impl Responder> {
     let (workspace_name,) = path_params.into_inner();
-    let conn = pool.get().expect("couldn't get db connection from pool");
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp =
-        web::block(move || get_groups_impl(&conn, &workspace_name).map_err(|e| e.to_string())).await.map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp = web::block(move || get_groups_impl(&mut conn, &workspace_name).map_err(|e| e.to_string()))
+        .await?
+        .map_err(error::ErrorInternalServerError)?;
+
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
@@ -361,7 +353,7 @@ struct GetGroupResponse {
 }
 
 fn get_group_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<GetGroupResponse>, Box<dyn std::error::Error>> {
@@ -399,17 +391,18 @@ fn get_group_impl(
 }
 
 #[get("/{workspace_name}/groups/{group_name}")]
-async fn get_group(pool: web::Data<DbPool>, path_params: web::Path<(String, String)>) -> Result<impl Responder, Error> {
+async fn get_group(
+    pool: web::Data<DbPool>,
+    path_params: web::Path<(String, String)>,
+) -> actix_web::Result<impl Responder> {
     let (workspace_name, group_name) = path_params.into_inner();
     let group_name_2 = group_name.clone();
-    let conn = pool.get().expect("couldn't get db connection from pool");
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_group_impl(&conn, &workspace_name, &group_name).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        })?;
+    let resp = web::block(move || get_group_impl(&mut conn, &workspace_name, &group_name).map_err(|e| e.to_string()))
+        .await?
+        .map_err(error::ErrorInternalServerError)?;
+
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
@@ -438,7 +431,7 @@ struct GetDiffResponse {
 }
 
 fn get_diff_impl_search_stats(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace: &Workspace,
     group_name: &str,
     path_prefix: &str,
@@ -456,7 +449,7 @@ fn get_diff_impl_search_stats(
 }
 
 fn get_diff_impl(
-    conn: &MysqlConnection,
+    conn: &mut MysqlConnection,
     workspace_name: &str,
     q: &GetDiffQuery,
 ) -> Result<Option<GetDiffResponse>, Box<dyn std::error::Error>> {
@@ -493,16 +486,15 @@ async fn get_diff(
     pool: web::Data<DbPool>,
     path_params: web::Path<(String,)>,
     q: web::Query<GetDiffQuery>,
-) -> Result<impl Responder, Error> {
+) -> actix_web::Result<impl Responder> {
     let (workspace_name,) = path_params.into_inner();
     let q = q.into_inner();
-    let conn = pool.get().expect("couldn't get db connection from pool");
-    let resp = web::block(move || get_diff_impl(&conn, &workspace_name, &q).map_err(|e| e.to_string())).await.map_err(
-        |e| {
-            error!("{}", e);
-            HttpResponse::InternalServerError().finish()
-        },
-    )?;
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+    let resp = web::block(move || get_diff_impl(&mut conn, &workspace_name, &q).map_err(|e| e.to_string()))
+        .await?
+        .map_err(error::ErrorInternalServerError)?;
+
     match resp {
         Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
         None => {
@@ -533,7 +525,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .data(pool.clone())
+            .app_data(Data::new(pool.clone()))
             .wrap(middleware::Logger::default())
             .service(get_stats)
             .service(get_stat)

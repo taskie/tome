@@ -2,6 +2,7 @@ use std::error::Error;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
 use crate::{
     db::config::{Backend, Connection},
@@ -14,10 +15,10 @@ use crate::{
     Status,
 };
 
-embed_migrations!("migrations");
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-pub fn migrate(conn: &Connection) -> Result<(), Box<dyn Error>> {
-    embedded_migrations::run(conn)?;
+pub fn migrate(conn: &mut Connection) -> Result<(), Box<dyn Error>> {
+    conn.run_pending_migrations(MIGRATIONS).unwrap();
     Ok(())
 }
 
@@ -72,7 +73,7 @@ impl Histories {
     impl_select!(Connection, histories, History; select_by_footprint_id, workspace_id: i32, footprint_id: i32);
 
     pub fn find_latest_by_path(
-        conn: &Connection,
+        conn: &mut Connection,
         group_id: i32,
         path: &str,
     ) -> Result<Option<History>, Box<dyn Error>> {
@@ -155,14 +156,14 @@ impl Stats {
         return q;
     }
 
-    pub fn count(conn: &Connection, workspace_id: i32, cond: &StatSearchCondition) -> Result<i64, Box<dyn Error>> {
+    pub fn count(conn: &mut Connection, workspace_id: i32, cond: &StatSearchCondition) -> Result<i64, Box<dyn Error>> {
         let cond = StatSearchCondition { limit: Some(-1), ..cond.clone() };
         let q = Stats::search_condition_to_query(workspace_id, &cond);
         Ok(q.count().first(conn)?)
     }
 
     pub fn search(
-        conn: &Connection,
+        conn: &mut Connection,
         workspace_id: i32,
         cond: &StatSearchCondition,
     ) -> Result<Vec<Stat>, Box<dyn Error>> {

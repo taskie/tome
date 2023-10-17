@@ -20,8 +20,7 @@ pub trait Hasher: Write {
 
 impl Hasher for Sha1 {
     fn result_vec(&mut self) -> Vec<u8> {
-        use sha1::digest::FixedOutput;
-        self.clone().fixed_result().to_vec()
+        self.clone().finalize().to_vec()
     }
 }
 
@@ -89,7 +88,7 @@ impl TrebloWalk {
                                 warn!("{}", err);
                                 continue;
                             } else {
-                                panic!(err)
+                                panic!("{}", err)
                             }
                         }
                         let digest = hasher.result_vec();
@@ -107,7 +106,7 @@ impl TrebloWalk {
                     if self.no_error {
                         warn!("{}", err)
                     } else {
-                        panic!(err)
+                        panic!("{}", err)
                     }
                 }
             }

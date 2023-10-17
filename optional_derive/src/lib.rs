@@ -4,7 +4,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields};
 
 #[derive(FromDeriveInput)]
-#[darling(attributes(optional), forward_attrs(allow, doc, cfg, table_name))]
+#[darling(attributes(optional), forward_attrs(allow, doc, cfg, diesel))]
 struct DeriveInputOption {
     #[darling(default)]
     name: Option<String>,
@@ -14,7 +14,7 @@ struct DeriveInputOption {
 }
 
 #[derive(FromField)]
-#[darling(attributes(optional), forward_attrs(allow, doc, cfg, table_name))]
+#[darling(attributes(optional), forward_attrs(allow, doc, cfg, diesel))]
 struct FieldOption {
     #[darling(default)]
     name: Option<String>,
@@ -57,8 +57,8 @@ fn new_struct(input: &DeriveInput) -> TokenStream {
     let impl_from = impl_from(&input);
 
     quote! {
-        #(#attrs)*
         #[derive(#(#derives, )*)]
+        #(#attrs)*
         #vis struct #new_name #generics {
             #new_fields
         }

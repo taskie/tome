@@ -1,14 +1,14 @@
 #[macro_export]
 macro_rules! impl_find {
     ( $conn: ty, $table: ident, $t: ty ) => {
-        pub fn find(conn: &$conn, id: i32) -> Result<::std::option::Option<$t>, Box<dyn ::std::error::Error>> {
+        pub fn find(conn: &mut $conn, id: i32) -> Result<::std::option::Option<$t>, Box<dyn ::std::error::Error>> {
             use crate::db::schema::$table::dsl;
             let q = dsl::$table.find(id);
             Ok(q.first::<$t>(conn).optional()?)
         }
     };
     ( $conn: ty, $table: ident, $t: ty; $n: ident, $( $arg: ident : $arg_t: ty ),+ ) => {
-        pub fn $n(conn: &$conn, $($arg: $arg_t ,)+) -> Result<::std::option::Option<$t>, Box<dyn ::std::error::Error>> {
+        pub fn $n(conn: &mut $conn, $($arg: $arg_t ,)+) -> Result<::std::option::Option<$t>, Box<dyn ::std::error::Error>> {
             use crate::db::schema::$table::dsl;
             let q = dsl::$table
             $(
@@ -23,14 +23,14 @@ macro_rules! impl_find {
 #[macro_export]
 macro_rules! impl_select {
     ( $conn: ty, $table: ident, $t: ty ) => {
-        pub fn select(conn: &$conn, ids: &Vec<i32>) -> Result<::std::vec::Vec<$t>, Box<dyn Error>> {
+        pub fn select(conn: &mut $conn, ids: &Vec<i32>) -> Result<::std::vec::Vec<$t>, Box<dyn Error>> {
             use crate::db::schema::$table::dsl;
             let q = dsl::$table.filter(dsl::id.eq_any(ids));
             Ok(q.load::<$t>(conn)?)
         }
     };
     ( $conn: ty, $table: ident, $t: ty; $n: ident, $( $arg: ident : $arg_t: ty ),+ ) => {
-        pub fn $n(conn: &$conn, $($arg: $arg_t ,)+) -> Result<::std::vec::Vec<$t>, Box<dyn Error>> {
+        pub fn $n(conn: &mut $conn, $($arg: $arg_t ,)+) -> Result<::std::vec::Vec<$t>, Box<dyn Error>> {
             use crate::db::schema::$table::dsl;
             let q = dsl::$table
             $(
@@ -45,7 +45,7 @@ macro_rules! impl_select {
 #[macro_export]
 macro_rules! impl_insert {
     ( $conn: ty, $table: ident, $t: ty ) => {
-        pub fn insert(conn: &$conn, insert_form: &$t) -> Result<(), Box<dyn Error>> {
+        pub fn insert(conn: &mut $conn, insert_form: &$t) -> Result<(), Box<dyn Error>> {
             use crate::db::schema::$table::dsl;
             let q = ::diesel::insert_into(dsl::$table).values(insert_form);
             q.execute(conn)?;
@@ -57,7 +57,7 @@ macro_rules! impl_insert {
 #[macro_export]
 macro_rules! impl_insert_and_find {
     ( $conn: ty, $table: ident, $t: ty, $r: ty; $n: ident, $( $arg: ident ),+ ) => {
-        pub fn insert_and_find(conn: &$conn, insert_form: &$t) -> Result<$r, Box<dyn Error>> {
+        pub fn insert_and_find(conn: &mut $conn, insert_form: &$t) -> Result<$r, Box<dyn Error>> {
             Self::insert(conn, insert_form)?;
             let inserted = Self::$n(conn, $(insert_form.$arg),+)?;
             Ok(inserted.unwrap())
@@ -71,7 +71,7 @@ macro_rules! impl_insert_and_find {
 #[macro_export]
 macro_rules! impl_update {
     ( $conn: ty, $table: ident, $t: ty ) => {
-        pub fn update(conn: &$conn, id: i32, update_form: &$t) -> Result<(), Box<dyn Error>> {
+        pub fn update(conn: &mut $conn, id: i32, update_form: &$t) -> Result<(), Box<dyn Error>> {
             use crate::db::schema::$table::dsl;
             let q = ::diesel::update(dsl::$table.find(id)).set(update_form);
             let n = q.execute(conn)?;
@@ -84,7 +84,7 @@ macro_rules! impl_update {
 #[macro_export]
 macro_rules! impl_update_and_find {
     ( $conn: ty, $table: ident, $t: ty, $r: ty ) => {
-        pub fn update_and_find(conn: &$conn, id: i32, update_form: &$t) -> Result<$r, Box<dyn Error>> {
+        pub fn update_and_find(conn: &mut $conn, id: i32, update_form: &$t) -> Result<$r, Box<dyn Error>> {
             Self::update(conn, id, update_form)?;
             let updated = Self::find(conn, id)?;
             Ok(updated.unwrap())

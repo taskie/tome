@@ -76,8 +76,8 @@ impl Write for Sha256Holder {
 
 impl Hasher for Sha256Holder {
     fn result_vec(&mut self) -> Vec<u8> {
-        use sha2::digest::FixedOutput;
-        self.0.clone().fixed_result().to_vec()
+        use sha2::Digest;
+        self.0.clone().finalize().to_vec()
     }
 }
 

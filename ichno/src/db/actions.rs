@@ -7,7 +7,7 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sha2::{digest::FixedOutput, Sha256};
+use sha2::{Digest as _, Sha256};
 use twox_hash::XxHash64;
 use url::Url;
 
@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) fn create_workspace_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     name: &str,
     now: NaiveDateTime,
 ) -> Result<Workspace, Box<dyn Error>> {
@@ -47,7 +47,7 @@ pub(crate) fn create_workspace_if_needed(
 }
 
 pub(crate) fn create_group_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     workspace: &Workspace,
     name: &str,
     url: &Url,
@@ -59,7 +59,7 @@ pub(crate) fn create_group_if_needed(
         group
     } else {
         let group = Groups::insert_and_find(
-            &conn,
+            conn,
             &GroupInsertForm {
                 workspace_id: workspace.id,
                 name,
@@ -79,7 +79,7 @@ pub(crate) fn create_group_if_needed(
 }
 
 pub(crate) fn create_meta_group_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     workspace: &Workspace,
     now: NaiveDateTime,
 ) -> Result<Group, Box<dyn Error>> {
@@ -91,7 +91,7 @@ pub(crate) fn create_meta_group_if_needed(
 
 #[allow(dead_code)]
 pub(crate) fn create_attr_group_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     workspace: &Workspace,
     now: NaiveDateTime,
 ) -> Result<Group, Box<dyn Error>> {
@@ -102,7 +102,7 @@ pub(crate) fn create_attr_group_if_needed(
 }
 
 pub(crate) fn create_history_with_footprint_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     path: &str,
     footprint: &Footprint,
@@ -145,7 +145,7 @@ pub(crate) fn create_history_with_footprint_if_needed(
 }
 
 pub(crate) fn create_disabled_history_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     path: &str,
     now: NaiveDateTime,
@@ -184,7 +184,7 @@ pub(crate) fn create_disabled_history_if_needed(
 }
 
 pub(crate) fn update_stat_with_footprint_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     path: &str,
     footprint: &Footprint,
@@ -232,7 +232,7 @@ pub(crate) fn update_stat_with_footprint_if_needed(
 }
 
 pub(crate) fn update_disabled_stat_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     path: &str,
     now: NaiveDateTime,
@@ -292,11 +292,11 @@ pub(crate) fn calc_digest<R: Read>(r: &mut R) -> Result<String, Box<dyn Error>> 
         }
         hasher.write(&buf[0..n])?;
     }
-    Ok(treblo::hex::to_hex_string(hasher.fixed_result().as_slice()))
+    Ok(treblo::hex::to_hex_string(hasher.finalize().as_slice()))
 }
 
 pub(crate) fn create_footprint_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     digest: &str,
     size: i64,
     fast_digest: i64,
@@ -318,7 +318,7 @@ pub(crate) fn create_footprint_if_needed(
 
 #[allow(dead_code)]
 pub(crate) fn create_content_with_bytes_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     bytes: &[u8],
     now: NaiveDateTime,
 ) -> Result<(Content, Footprint), Box<dyn Error>> {
@@ -344,7 +344,7 @@ pub(crate) fn create_content_with_bytes_if_needed(
 
 #[allow(dead_code)]
 pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     workspace: &Workspace,
     target: &Footprint,
     key: &str,
@@ -458,7 +458,7 @@ pub(crate) fn new_updated_file_state_if_needed(
 }
 
 pub(crate) fn update_stat_with_paths_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     stat_path: &str,
     file_path: &Path,
@@ -482,7 +482,7 @@ pub(crate) fn update_stat_with_paths_if_needed(
 }
 
 pub(crate) fn update_stat_with_present_paths_if_needed(
-    conn: &Connection,
+    conn: &mut Connection,
     group: &Group,
     stat_path: &str,
     file_path: &Path,
@@ -492,7 +492,7 @@ pub(crate) fn update_stat_with_present_paths_if_needed(
 }
 
 pub(crate) fn update_meta_group_stat(
-    conn: &Connection,
+    conn: &mut Connection,
     workspace: &Workspace,
     group: &Group,
     db_path: &Path,
