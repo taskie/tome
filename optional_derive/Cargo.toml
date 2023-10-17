@@ -2,14 +2,14 @@
 name = "optional_derive"
 version = "0.1.0"
 authors = ["taskie <t@skie.jp>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [lib]
 proc-macro = true
 
 [dependencies]
-darling = "0.10.2"
+darling = "0.20.3"
 proc-macro2 = "1.0.19"
 quote = "1.0"
-syn = "1.0.35"
+syn = "2.0.38"

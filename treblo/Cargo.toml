@@ -2,11 +2,11 @@
 name = "treblo"
 version = "0.1.0"
 authors = ["taskie <t@skie.jp>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]
-digest = "0.8"
-ignore = "0.4.15"
-log = "0.4.8"
-sha-1 = "0.8"
+digest = "0.10.7"
+ignore = "0.4.20"
+log = "0.4.20"
+sha-1 = "0.10.1"

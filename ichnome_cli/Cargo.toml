@@ -2,7 +2,7 @@
 name = "ichnome_cli"
 version = "0.1.0"
 authors = ["taskie <t@skie.jp>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [[bin]]
@@ -11,14 +11,14 @@ name = "ichnome"
 doc = false
 
 [dependencies]
-chrono = { version = "0.4.1", features = ["serde"] }
-diesel = { version = "1.4.5", features = ["extras", "mysql", "sqlite"] }
+chrono = { version = "0.4.31", features = ["serde"] }
+diesel = { version = "2.1.3", features = ["extras", "mysql", "sqlite"] }
 dotenv = "0.15.0"
-env_logger = "0.7.1"
+env_logger = "0.10.0"
 ichno = { path = "../ichno" }
 ichnome = { path = "../ichnome" }
-ignore = "0.4.15"
-log = "0.4.8"
-ssh2 = "0.8.2"
-structopt = "0.3.14"
-twox-hash = "1.5.0"
+ignore = "0.4.20"
+log = "0.4.20"
+ssh2 = "0.9.4"
+structopt = "0.3.26"
+twox-hash = "1.6.3"

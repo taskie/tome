@@ -9,3 +9,4 @@ members = [
     "ichnome_cli",
     "ichnome_web",
 ]
+resolver = "2"
