@@ -26,10 +26,14 @@ pub struct Opt {
 
 #[derive(Debug, StructOpt)]
 pub enum SubCommands {
+    Migrate(Migrate),
     Setup(Setup),
     Register(Register),
     Pull(Pull),
 }
+
+#[derive(Debug, StructOpt)]
+pub struct Migrate {}
 
 #[derive(Debug, StructOpt)]
 pub struct Setup {
@@ -70,6 +74,9 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     let opt = Opt::from_args();
     let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
     match opt.sub {
+        SubCommands::Migrate(_) => {
+            ichnome::db::migrate(&mut ctx.connection)?;
+        }
         SubCommands::Setup(setup) => {
             action::setup(
                 &mut ctx,
