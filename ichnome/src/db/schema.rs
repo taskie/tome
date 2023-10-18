@@ -1,3 +1,8 @@
+#[cfg(feature = "postgres")]
+type OmTimestamp = diesel::sql_types::Timestamptz;
+#[cfg(feature = "mysql")]
+type OmTimestamp = diesel::sql_types::Datetime;
+
 table! {
     attrs (id) {
         id -> Integer,
@@ -11,8 +16,8 @@ table! {
         value_summary -> Nullable<Varchar>,
         status -> Integer,
         attr_stat_id -> Nullable<Integer>,
-        created_at -> Datetime,
-        updated_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
+        updated_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -21,7 +26,7 @@ table! {
         id -> Integer,
         footprint_id -> Integer,
         body -> Blob,
-        created_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -31,7 +36,7 @@ table! {
         digest -> Char,
         size -> Bigint,
         fast_digest -> Bigint,
-        created_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -46,8 +51,8 @@ table! {
         description -> Varchar,
         status -> Integer,
         group_stat_id -> Nullable<Integer>,
-        created_at -> Datetime,
-        updated_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
+        updated_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -59,11 +64,11 @@ table! {
         path -> Varchar,
         version -> Integer,
         status -> Integer,
-        mtime -> Nullable<Datetime>,
+        mtime -> Nullable<crate::db::schema::OmTimestamp>,
         footprint_id -> Nullable<Integer>,
         digest -> Nullable<Char>,
-        created_at -> Datetime,
-        updated_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
+        updated_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -76,13 +81,13 @@ table! {
         history_id -> Integer,
         version -> Integer,
         status -> Integer,
-        mtime -> Nullable<Datetime>,
+        mtime -> Nullable<crate::db::schema::OmTimestamp>,
         footprint_id -> Nullable<Integer>,
         digest -> Nullable<Char>,
         size -> Nullable<Bigint>,
         fast_digest -> Nullable<Bigint>,
-        created_at -> Datetime,
-        updated_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
+        updated_at -> crate::db::schema::OmTimestamp,
     }
 }
 
@@ -92,8 +97,8 @@ table! {
         name -> Varchar,
         description -> Varchar,
         status -> Integer,
-        created_at -> Datetime,
-        updated_at -> Datetime,
+        created_at -> crate::db::schema::OmTimestamp,
+        updated_at -> crate::db::schema::OmTimestamp,
     }
 }
 

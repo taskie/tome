@@ -2,7 +2,6 @@ use std::error::Error;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
 use crate::{
     db::config::{Backend, Connection},
@@ -14,13 +13,6 @@ use crate::{
     },
     Status,
 };
-
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
-
-pub fn migrate(conn: &mut Connection) -> Result<(), Box<dyn Error>> {
-    conn.run_pending_migrations(MIGRATIONS).unwrap();
-    Ok(())
-}
 
 pub struct Footprints;
 

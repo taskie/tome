@@ -8,14 +8,16 @@ use std::{
     env,
 };
 
-use actix_web::{error, middleware, web, App, HttpResponse, HttpServer, Responder};
-use chrono::NaiveDateTime;
-use diesel::{
-    r2d2::{self, ConnectionManager},
-    MysqlConnection,
+use actix_web::{
+    error, middleware,
+    web::{self, Data},
+    App, HttpResponse, HttpServer, Responder,
 };
+use chrono::NaiveDateTime;
+use diesel::r2d2::{self, ConnectionManager};
 use ichnome::{
-    db::{MysqlFootprints, MysqlGroups, MysqlHistories, MysqlStats, MysqlWorkspaces, StatOrder, StatSearchCondition},
+    db::Connection,
+    db::{OmFootprints, OmGroups, OmHistories, OmStats, OmWorkspaces, StatOrder, StatSearchCondition},
     error::DomainError,
     Footprint, Group, History, Stat, Status, Workspace, META_GROUP_NAME,
 };
@@ -24,18 +26,18 @@ use structopt::{clap, StructOpt};
 
 use crate::models::{WebHistory, WebStat};
 
-type DbPool = r2d2::Pool<ConnectionManager<MysqlConnection>>;
+type DbPool = r2d2::Pool<ConnectionManager<Connection>>;
 
 mod models;
 
 fn find_workspace_and_group(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<(Workspace, Group)>, Box<dyn std::error::Error>> {
-    let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
+    let workspace = OmWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
-        let group = MysqlGroups::find_by_name(conn, workspace.id, group_name)?;
+        let group = OmGroups::find_by_name(conn, workspace.id, group_name)?;
         if let Some(group) = group {
             Ok(Some((workspace, group)))
         } else {
@@ -67,7 +69,7 @@ struct GetStatsResponse {
 }
 
 fn get_stats_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     group_name: &str,
     q: &GetStatsQuery,
@@ -84,7 +86,7 @@ fn get_stats_impl(
             })
             .flatten()
             .unwrap_or(Status::Enabled);
-        let cond = StatSearchCondition {
+        let count_cond = StatSearchCondition {
             group_ids: Some(vec![group.id]),
             path_prefix: q.path_prefix.as_ref().map(|s| s.as_ref()),
             path_partial: q.path_partial.as_ref().map(|s| s.as_ref()),
@@ -93,13 +95,16 @@ fn get_stats_impl(
             mtime_before: q.mtime_before,
             updated_at_after: q.updated_at_after,
             updated_at_before: q.updated_at_before,
-            order: Some(StatOrder::UpdatedAtDesc),
-            limit: Some(q.limit.unwrap_or(100)),
             ..Default::default()
         };
+        let stats_count = OmStats::count(conn, workspace.id, &count_cond)?;
+        let cond = StatSearchCondition {
+            order: Some(StatOrder::UpdatedAtDesc),
+            limit: Some(q.limit.unwrap_or(100)),
+            ..count_cond
+        };
         debug!("search condition: {:?}", &cond);
-        let stats_count = MysqlStats::count(conn, workspace.id, &cond)?;
-        let stats = MysqlStats::search(conn, workspace.id, &cond)?;
+        let stats = OmStats::search(conn, workspace.id, &cond)?;
         Ok(Some(GetStatsResponse { workspace, group, stats, stats_count }))
     } else {
         Ok(None)
@@ -159,16 +164,16 @@ fn to_web_histories(workspace: &Workspace, group_map: &HashMap<i32, &Group>, sta
 }
 
 fn get_stat_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     group_name: &str,
     path: &str,
 ) -> Result<Option<GetStatResponse>, Box<dyn std::error::Error>> {
     let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
     if let Some((workspace, group)) = pair {
-        let stat = MysqlStats::find_by_path(conn, group.id, path)?;
+        let stat = OmStats::find_by_path(conn, group.id, path)?;
         if let Some(stat) = stat {
-            let histories = Some(MysqlHistories::select_by_path(conn, group.id, path)?);
+            let histories = Some(OmHistories::select_by_path(conn, group.id, path)?);
             let footprints = Some({
                 let mut footprint_ids = vec![];
                 if let Some(footprint_id) = stat.footprint_id {
@@ -181,7 +186,7 @@ fn get_stat_impl(
                         }
                     }
                 }
-                let footprint_list = MysqlFootprints::select(conn, &footprint_ids)?;
+                let footprint_list = OmFootprints::select(conn, &footprint_ids)?;
                 let mut footprints = HashMap::new();
                 for footprint in footprint_list {
                     footprints.insert(footprint.id, footprint);
@@ -190,9 +195,9 @@ fn get_stat_impl(
             });
             let eq_stats = Some({
                 if let Some(footprint_id) = stat.footprint_id {
-                    let stats = MysqlStats::select_by_footprint_id(conn, group.workspace_id, footprint_id)?;
+                    let stats = OmStats::select_by_footprint_id(conn, group.workspace_id, footprint_id)?;
                     let group_ids: Vec<i32> = stats.iter().map(|s| s.group_id).collect();
-                    let groups = MysqlGroups::select(conn, &group_ids)?;
+                    let groups = OmGroups::select(conn, &group_ids)?;
                     let group_map = groups.iter().map(|g| (g.id, g)).collect();
                     to_web_stats(&workspace, &group_map, &stats)
                 } else {
@@ -242,22 +247,22 @@ struct GetFootprintResponse {
 }
 
 fn get_footprint_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     digest: &str,
 ) -> Result<Option<GetFootprintResponse>, Box<dyn std::error::Error>> {
-    let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
+    let workspace = OmWorkspaces::find_by_name(conn, workspace_name)?;
     let workspace = if let Some(workspace) = workspace {
         workspace
     } else {
         return Ok(None);
     };
-    let footprint = MysqlFootprints::find_by_digest(conn, digest)?;
+    let footprint = OmFootprints::find_by_digest(conn, digest)?;
     let group_name: Option<String> = None;
     if let Some(footprint) = footprint {
         let mut group_ids = HashSet::new();
-        let stats = MysqlStats::select_by_footprint_id(conn, workspace.id, footprint.id)?;
-        let histories = MysqlHistories::select_by_footprint_id(conn, workspace.id, footprint.id)?;
+        let stats = OmStats::select_by_footprint_id(conn, workspace.id, footprint.id)?;
+        let histories = OmHistories::select_by_footprint_id(conn, workspace.id, footprint.id)?;
         if stats.is_empty() && histories.is_empty() {
             return Ok(None);
         }
@@ -268,7 +273,7 @@ fn get_footprint_impl(
             group_ids.insert(h.group_id);
         }
         let group_ids: Vec<i32> = group_ids.into_iter().collect();
-        let groups = MysqlGroups::select(conn, &group_ids)?;
+        let groups = OmGroups::select(conn, &group_ids)?;
         let group_map = groups.iter().map(|g| (g.id, g)).collect();
         let stats = to_web_stats(&workspace, &group_map, &stats);
         let histories = to_web_histories(&workspace, &group_map, &histories);
@@ -313,12 +318,12 @@ struct GetGroupsResponse {
 }
 
 fn get_groups_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
 ) -> Result<Option<GetGroupsResponse>, Box<dyn std::error::Error>> {
-    let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
+    let workspace = OmWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
-        let groups = MysqlGroups::select_all(conn, workspace.id)?;
+        let groups = OmGroups::select_all(conn, workspace.id)?;
         Ok(Some(GetGroupsResponse { workspace, groups }))
     } else {
         Ok(None)
@@ -353,16 +358,16 @@ struct GetGroupResponse {
 }
 
 fn get_group_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     group_name: &str,
 ) -> Result<Option<GetGroupResponse>, Box<dyn std::error::Error>> {
     let pair = find_workspace_and_group(conn, workspace_name, group_name)?;
     if let Some((workspace, group)) = pair {
-        let meta_group = MysqlGroups::find_by_name(conn, group.workspace_id, META_GROUP_NAME)?;
+        let meta_group = OmGroups::find_by_name(conn, group.workspace_id, META_GROUP_NAME)?;
         let meta_group = if let Some(meta_group) = meta_group { meta_group } else { return Ok(None) };
-        let stat = MysqlStats::find_by_path(conn, meta_group.id, group_name)?;
-        let histories = Some(MysqlHistories::select_by_path(conn, meta_group.id, group_name)?);
+        let stat = OmStats::find_by_path(conn, meta_group.id, group_name)?;
+        let histories = Some(OmHistories::select_by_path(conn, meta_group.id, group_name)?);
         let footprints = Some({
             let mut footprint_ids = vec![];
             if let Some(stat) = stat.as_ref() {
@@ -377,7 +382,7 @@ fn get_group_impl(
                     }
                 }
             }
-            let footprint_list = MysqlFootprints::select(conn, &footprint_ids)?;
+            let footprint_list = OmFootprints::select(conn, &footprint_ids)?;
             let mut footprints = HashMap::new();
             for footprint in footprint_list {
                 footprints.insert(footprint.id, footprint);
@@ -431,29 +436,29 @@ struct GetDiffResponse {
 }
 
 fn get_diff_impl_search_stats(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace: &Workspace,
     group_name: &str,
     path_prefix: &str,
 ) -> Result<Option<(Group, Vec<Stat>)>, Box<dyn std::error::Error>> {
-    let group = MysqlGroups::find_by_name(conn, workspace.id, &group_name)?;
+    let group = OmGroups::find_by_name(conn, workspace.id, &group_name)?;
     let group = if let Some(group) = group { group } else { return Ok(None) };
     let cond =
         StatSearchCondition { group_ids: Some(vec![group.id]), path_prefix: Some(path_prefix), ..Default::default() };
-    let stats_count = MysqlStats::count(conn, workspace.id, &cond)?;
+    let stats_count = OmStats::count(conn, workspace.id, &cond)?;
     if stats_count > 1000 {
         return Err(Box::new(DomainError::params("path_prefix", format!("too many stats: {}", stats_count))));
     };
-    let stats = MysqlStats::search(conn, workspace.id, &cond)?;
+    let stats = OmStats::search(conn, workspace.id, &cond)?;
     Ok(Some((group, stats)))
 }
 
 fn get_diff_impl(
-    conn: &mut MysqlConnection,
+    conn: &mut Connection,
     workspace_name: &str,
     q: &GetDiffQuery,
 ) -> Result<Option<GetDiffResponse>, Box<dyn std::error::Error>> {
-    let workspace = MysqlWorkspaces::find_by_name(conn, workspace_name)?;
+    let workspace = OmWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
         let result1 = get_diff_impl_search_stats(conn, &workspace, &q.group_name1, &q.path_prefix1)?;
         let (group1, stats1) = if let Some(x) = result1 { x } else { return Ok(None) };
@@ -474,7 +479,7 @@ fn get_diff_impl(
             }
         }
         let footprints: HashMap<i32, Footprint> =
-            MysqlFootprints::select(conn, &diff.keys().map(|i| *i).collect())?.into_iter().map(|f| (f.id, f)).collect();
+            OmFootprints::select(conn, &diff.keys().map(|i| *i).collect())?.into_iter().map(|f| (f.id, f)).collect();
         Ok(Some(GetDiffResponse { workspace, group1, group2, diff, stats, footprints }))
     } else {
         Ok(None)
@@ -520,7 +525,7 @@ async fn main() -> std::io::Result<()> {
     let opt = Opt::from_args();
 
     let database_url = env::var("DATABASE_URL").unwrap();
-    let manager = ConnectionManager::<MysqlConnection>::new(database_url);
+    let manager = ConnectionManager::<Connection>::new(database_url);
     let pool = r2d2::Pool::builder().build(manager).expect("Failed to create pool.");
 
     HttpServer::new(move || {

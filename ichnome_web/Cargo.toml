@@ -24,6 +24,6 @@ structopt = "0.3.26"
 url = "2.4.1"
 
 [features]
-default = ["mysql"]
+default = ["postgres"]
 postgres = ["diesel/postgres", "ichnome/postgres"]
 mysql = ["diesel/mysql", "ichnome/mysql"]

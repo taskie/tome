@@ -24,6 +24,6 @@ structopt = "0.3.26"
 twox-hash = "1.6.3"
 
 [features]
-default = ["mysql"]
+default = ["postgres"]
 postgres = ["diesel/postgres", "ichnome/postgres"]
 mysql = ["diesel/mysql", "ichnome/mysql"]

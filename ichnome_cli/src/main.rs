@@ -4,10 +4,11 @@ extern crate log;
 use std::{env, error::Error, process::exit};
 
 use chrono::Utc;
-use diesel::{Connection, MysqlConnection};
+use diesel::Connection;
 use ichnome::{
     action,
     action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
+    db::Connection as OmConnection,
 };
 use structopt::{clap, StructOpt};
 
@@ -64,7 +65,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
     let database_url = env::var("DATABASE_URL").unwrap_or("ichno.db".to_owned());
-    let mut conn = MysqlConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
+    let mut conn = OmConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
     let mut ctx = action::Context { connection: &mut conn, timer: Box::new(|| Utc::now()) };
     let opt = Opt::from_args();
     let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
