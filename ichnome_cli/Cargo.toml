@@ -26,4 +26,3 @@ twox-hash = "1.6.3"
 [features]
 default = ["postgres"]
 postgres = ["diesel/postgres", "ichnome/postgres"]
-mysql = ["diesel/mysql", "ichnome/mysql"]

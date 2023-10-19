@@ -35,8 +35,8 @@ fn test_complex() {
 
 #[test]
 fn test_complex_default() {
-    assert_eq!(S2 { x: 0, y: None, z: false, w: "hello" }, Default::default());
-    assert_eq!(OptionalS2 { x: false, z: None, w: Some("hello") }, Default::default());
+    assert_eq!(S2 { x: 0, y: None, z: false, w: "" }, Default::default());
+    assert_eq!(OptionalS2 { x: false, z: None, w: None }, Default::default());
 }
 
 #[test]

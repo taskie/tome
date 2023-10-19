@@ -9,6 +9,7 @@ use dotenv;
 use ichno::{
     actions,
     db::{SqliteStats, StatSearchCondition},
+    id::IdGenerator,
     DEFAULT_GROUP_NAME, DEFAULT_WORKSPACE_NAME,
 };
 use ignore;
@@ -43,11 +44,14 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
 
-    let database_url = env::var("DATABASE_URL").unwrap_or("ichno.db".to_owned());
+    let database_url = env::var("ICHNO_DATABASE_URL").unwrap_or("ichno.db".to_owned());
     let mut conn = SqliteConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
     let db_path = Path::new(&database_url).canonicalize()?;
 
     ichno::db::migrate(&mut conn)?;
+
+    let machine_id = env::var("ICHNO_MACHINE_ID").map(|s| u16::from_str_radix(&s, 10).unwrap()).ok();
+    let id_generator = IdGenerator::new(machine_id);
 
     let workspace_name = DEFAULT_WORKSPACE_NAME;
     let group_name = DEFAULT_GROUP_NAME;
@@ -56,6 +60,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
         SubCommands::Scan(scan) => {
             let mut ctx = actions::Context {
                 connection: &mut conn,
+                id_generator: &id_generator,
                 db_path: &db_path,
                 workspace_name,
                 workspace: None,
@@ -80,6 +85,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 ctx.connection.transaction::<_, Box<dyn Error>, _>(|conn| {
                     let mut new_ctx = actions::Context {
                         connection: conn,
+                        id_generator: &id_generator,
                         db_path: &db_path,
                         workspace_name,
                         workspace: Some(workspace.clone()),
@@ -125,6 +131,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 ctx.connection.transaction::<_, Box<dyn Error>, _>(|conn| {
                     let mut new_ctx = actions::Context {
                         connection: conn,
+                        id_generator: &id_generator,
                         db_path: &db_path,
                         workspace_name,
                         workspace: Some(workspace.clone()),

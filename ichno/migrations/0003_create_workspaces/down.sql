@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS `workspaces`;
+DROP TABLE `workspaces`;

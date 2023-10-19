@@ -1,8 +1,11 @@
 use std::{error::Error, path::Path};
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use diesel::{Connection, SqliteConnection};
-use ichno::db::{SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats, SqliteWorkspaces};
+use ichno::{
+    db::{IdGenerate, SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats, SqliteWorkspaces},
+    id::IdGenerator,
+};
 
 use url::Url;
 
@@ -23,16 +26,13 @@ use crate::{
 
 pub struct Context<'c> {
     pub connection: &'c mut OmConnection,
+    pub id_generator: &'c IdGenerator,
     pub timer: Box<dyn Fn() -> DateTime<Utc>>,
 }
 
 impl<'c> Context<'c> {
     pub fn current_time(&self) -> DateTime<Utc> {
         (self.timer)()
-    }
-
-    pub fn naive_current_time(&self) -> NaiveDateTime {
-        self.current_time().naive_utc()
     }
 }
 
@@ -54,7 +54,7 @@ pub struct SetupResponse {
 }
 
 pub fn setup(ctx: &mut Context, req: &SetupRequest) -> Result<SetupResponse, Box<dyn Error>> {
-    let now = ctx.naive_current_time();
+    let now = ctx.current_time();
     let workspace = OmWorkspaces::find_by_name(ctx.connection, &req.workspace_name)?;
     if let Some(workspace) = workspace {
         if req.options.force {
@@ -70,7 +70,7 @@ pub fn setup(ctx: &mut Context, req: &SetupRequest) -> Result<SetupResponse, Box
             panic!("workspae {} already exists", workspace.name)
         }
     }
-    let workspace = create_workspace_if_needed(ctx.connection, &req.workspace_name, now)?;
+    let workspace = create_workspace_if_needed(ctx.connection, ctx.id_generator, &req.workspace_name, now)?;
     Ok(SetupResponse { workspace })
 }
 
@@ -95,7 +95,7 @@ pub struct RegisterResponse {
 }
 
 pub fn register(ctx: &mut Context, req: &RegisterRequest) -> Result<RegisterResponse, Box<dyn Error>> {
-    let now = ctx.naive_current_time();
+    let now = ctx.current_time();
     let workspace = OmWorkspaces::find_by_name(ctx.connection, &req.workspace_name)?.unwrap();
     let url = Url::parse(&req.url)?;
     let group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.group_name)?;
@@ -114,7 +114,15 @@ pub fn register(ctx: &mut Context, req: &RegisterRequest) -> Result<RegisterResp
             panic!("group {} already exists", group.name)
         }
     }
-    let group = create_group_if_needed(ctx.connection, &workspace, &req.group_name, &url, GroupType::Remote, now)?;
+    let group = create_group_if_needed(
+        ctx.connection,
+        ctx.id_generator,
+        &workspace,
+        &req.group_name,
+        &url,
+        GroupType::Remote,
+        now,
+    )?;
     Ok(RegisterResponse { workspace, group })
 }
 
@@ -164,8 +172,8 @@ fn load_local_db(
     glb_group: &Group,
     path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let now = ctx.naive_current_time();
-    let meta_group = create_meta_group_if_needed(ctx.connection, glb_workspace, now)?;
+    let now = ctx.current_time();
+    let meta_group = create_meta_group_if_needed(ctx.connection, ctx.id_generator, glb_workspace, now)?;
     let meta_stat = OmStats::find_by_path(ctx.connection, meta_group.id, &glb_group.name)?;
     let _updated_metadata = if let Some(FileState::Enabled(updated_metadata)) =
         new_updated_file_state_if_needed(meta_stat.as_ref(), path)?
@@ -204,7 +212,8 @@ fn load_local_db(
                         if let Some(loc_footprint) = loc_footprint {
                             Some(create_footprint_if_needed(
                                 ctx.connection,
-                                loc_footprint.digest.as_str(),
+                                ctx.id_generator,
+                                loc_footprint.digest.as_slice(),
                                 loc_footprint.size,
                                 loc_footprint.fast_digest,
                                 now,
@@ -220,6 +229,7 @@ fn load_local_db(
                 let glb_history = OmHistories::insert_and_find(
                     ctx.connection,
                     &HistoryInsertForm {
+                        id: ctx.id_generator.generate_i64(),
                         workspace_id: glb_workspace.id,
                         group_id: glb_group.id,
                         path,
@@ -227,7 +237,7 @@ fn load_local_db(
                         status: loc_history.status,
                         mtime: loc_history.mtime,
                         footprint_id: glb_footprint.as_ref().map(|o| o.id),
-                        digest: glb_footprint.as_ref().map(|o| o.digest.as_str()),
+                        digest: glb_footprint.as_ref().map(|o| o.digest.as_slice()),
                         created_at: loc_history.created_at,
                         updated_at: loc_history.updated_at,
                     },
@@ -243,7 +253,7 @@ fn load_local_db(
                                 status: Some(glb_history.status),
                                 mtime: Some(glb_history.mtime),
                                 footprint_id: Some(glb_history.footprint_id),
-                                digest: Some(glb_footprint.as_ref().map(|o| o.digest.as_str())),
+                                digest: Some(glb_footprint.as_ref().map(|o| o.digest.as_slice())),
                                 size: Some(glb_footprint.as_ref().map(|o| o.size)),
                                 fast_digest: Some(glb_footprint.as_ref().map(|o| o.fast_digest)),
                                 updated_at: Some(loc_stat.updated_at),
@@ -253,6 +263,7 @@ fn load_local_db(
                         OmStats::insert_and_find(
                             ctx.connection,
                             &StatInsertForm {
+                                id: ctx.id_generator.generate_i64(),
                                 workspace_id: glb_workspace.id,
                                 group_id: glb_group.id,
                                 path,
@@ -261,7 +272,7 @@ fn load_local_db(
                                 status: glb_history.status,
                                 mtime: glb_history.mtime,
                                 footprint_id: glb_history.footprint_id,
-                                digest: glb_footprint.as_ref().map(|o| o.digest.as_str()),
+                                digest: glb_footprint.as_ref().map(|o| o.digest.as_slice()),
                                 size: glb_footprint.as_ref().map(|o| o.size),
                                 fast_digest: glb_footprint.as_ref().map(|o| o.fast_digest),
                                 created_at: loc_stat.created_at,
@@ -274,7 +285,7 @@ fn load_local_db(
         }
     }
 
-    let _group = update_meta_group_stat(ctx.connection, glb_workspace, glb_group, path, now)?;
+    let _group = update_meta_group_stat(ctx.connection, ctx.id_generator, glb_workspace, glb_group, path, now)?;
 
     Ok(())
 }

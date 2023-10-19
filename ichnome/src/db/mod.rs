@@ -14,3 +14,5 @@ pub use util::{
     Attrs as OmAttrs, Contents as OmContents, Footprints as OmFootprints, Groups as OmGroups, Histories as OmHistories,
     StatOrder, StatSearchCondition, Stats as OmStats, Workspaces as OmWorkspaces,
 };
+
+pub use ichno::db::{Id, IdGenerate};

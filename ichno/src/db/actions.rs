@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use sha2::{Digest as _, Sha256};
 use twox_hash::XxHash64;
 use url::Url;
@@ -15,16 +15,18 @@ use crate::{
     db::{
         config::Connection,
         util::{Attrs, Contents, Footprints, Groups, Histories, Stats, Workspaces},
+        IdGenerate,
     },
     Attr, AttrInsertForm, AttrUpdateForm, Content, ContentInsertForm, Footprint, FootprintInsertForm, Group,
     GroupInsertForm, GroupType, GroupUpdateForm, History, HistoryInsertForm, Stat, StatInsertForm, StatUpdateForm,
     Status, Workspace, WorkspaceInsertForm, ATTR_GROUP_NAME, META_GROUP_NAME,
 };
 
-pub(crate) fn create_workspace_if_needed(
+pub(crate) fn create_workspace_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     name: &str,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Workspace, Box<dyn Error>> {
     let workspace = Workspaces::find_by_name(conn, name)?;
     Ok(if let Some(workspace) = workspace {
@@ -33,6 +35,7 @@ pub(crate) fn create_workspace_if_needed(
         let workspace = Workspaces::insert_and_find(
             conn,
             &WorkspaceInsertForm {
+                id: id_generator.generate_i64(),
                 name,
                 description: "",
                 status: Status::Enabled as i32,
@@ -46,13 +49,14 @@ pub(crate) fn create_workspace_if_needed(
     })
 }
 
-pub(crate) fn create_group_if_needed(
+pub(crate) fn create_group_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     workspace: &Workspace,
     name: &str,
     url: &Url,
     type_: GroupType,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Group, Box<dyn Error>> {
     let group = Groups::find_by_name(conn, workspace.id, name)?;
     Ok(if let Some(group) = group {
@@ -61,6 +65,7 @@ pub(crate) fn create_group_if_needed(
         let group = Groups::insert_and_find(
             conn,
             &GroupInsertForm {
+                id: id_generator.generate_i64(),
                 workspace_id: workspace.id,
                 name,
                 url: url.as_str(),
@@ -78,36 +83,39 @@ pub(crate) fn create_group_if_needed(
     })
 }
 
-pub(crate) fn create_meta_group_if_needed(
+pub(crate) fn create_meta_group_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     workspace: &Workspace,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Group, Box<dyn Error>> {
     let group_name = META_GROUP_NAME;
     let url = format!("ichno://{}/{}", workspace.name, group_name);
     let url = Url::parse(&url)?;
-    create_group_if_needed(conn, workspace, group_name, &url, GroupType::Meta, now)
+    create_group_if_needed(conn, id_generator, workspace, group_name, &url, GroupType::Meta, now)
 }
 
 #[allow(dead_code)]
-pub(crate) fn create_attr_group_if_needed(
+pub(crate) fn create_attr_group_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     workspace: &Workspace,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Group, Box<dyn Error>> {
     let group_name = ATTR_GROUP_NAME;
     let url = format!("ichno://{}/groups/{}", workspace.name, group_name);
     let url = Url::parse(&url)?;
-    create_group_if_needed(conn, workspace, group_name, &url, GroupType::Attr, now)
+    create_group_if_needed(conn, id_generator, workspace, group_name, &url, GroupType::Attr, now)
 }
 
-pub(crate) fn create_history_with_footprint_if_needed(
+pub(crate) fn create_history_with_footprint_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     path: &str,
     footprint: &Footprint,
-    mtime: NaiveDateTime,
-    now: NaiveDateTime,
+    mtime: DateTime<Utc>,
+    now: DateTime<Utc>,
 ) -> Result<History, Box<dyn Error>> {
     let last_history = Histories::find_latest_by_path(conn, group.id, path)?;
     let last_history = if let Some(last_history) = last_history {
@@ -127,6 +135,7 @@ pub(crate) fn create_history_with_footprint_if_needed(
     let history = Histories::insert_and_find(
         conn,
         &HistoryInsertForm {
+            id: id_generator.generate_i64(),
             workspace_id: group.workspace_id,
             group_id: group.id,
             path,
@@ -144,11 +153,12 @@ pub(crate) fn create_history_with_footprint_if_needed(
     Ok(history)
 }
 
-pub(crate) fn create_disabled_history_if_needed(
+pub(crate) fn create_disabled_history_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     path: &str,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<History, Box<dyn Error>> {
     let last_history = Histories::find_latest_by_path(conn, group.id, path)?;
     let last_history = if let Some(last_history) = last_history {
@@ -166,6 +176,7 @@ pub(crate) fn create_disabled_history_if_needed(
     let history = Histories::insert_and_find(
         conn,
         &HistoryInsertForm {
+            id: id_generator.generate_i64(),
             workspace_id: group.workspace_id,
             group_id: group.id,
             path,
@@ -183,15 +194,16 @@ pub(crate) fn create_disabled_history_if_needed(
     Ok(history)
 }
 
-pub(crate) fn update_stat_with_footprint_if_needed(
+pub(crate) fn update_stat_with_footprint_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     path: &str,
     footprint: &Footprint,
-    mtime: NaiveDateTime,
-    now: NaiveDateTime,
+    mtime: DateTime<Utc>,
+    now: DateTime<Utc>,
 ) -> Result<Stat, Box<dyn Error>> {
-    let history = create_history_with_footprint_if_needed(conn, group, path, footprint, mtime, now)?;
+    let history = create_history_with_footprint_if_needed(conn, id_generator, group, path, footprint, mtime, now)?;
     let old_stat = Stats::find_by_path(conn, group.id, path)?;
     let old_stat = if let Some(old_stat) = old_stat {
         if old_stat.history_id == history.id {
@@ -202,6 +214,7 @@ pub(crate) fn update_stat_with_footprint_if_needed(
         None
     };
     let insert_form = StatInsertForm {
+        id: id_generator.generate_i64(),
         workspace_id: group.workspace_id,
         group_id: group.id,
         path,
@@ -231,13 +244,14 @@ pub(crate) fn update_stat_with_footprint_if_needed(
     Ok(stat)
 }
 
-pub(crate) fn update_disabled_stat_if_needed(
+pub(crate) fn update_disabled_stat_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     path: &str,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Option<Stat>, Box<dyn Error>> {
-    let history = create_disabled_history_if_needed(conn, group, path, now)?;
+    let history = create_disabled_history_if_needed(conn, id_generator, group, path, now)?;
     let old_stat = Stats::find_by_path(conn, group.id, path)?;
     let old_stat = if let Some(old_stat) = old_stat {
         if old_stat.history_id == history.id {
@@ -248,6 +262,7 @@ pub(crate) fn update_disabled_stat_if_needed(
         return Ok(None);
     };
     let insert_form = StatInsertForm {
+        id: id_generator.generate_i64(),
         workspace_id: group.workspace_id,
         group_id: group.id,
         path,
@@ -282,7 +297,7 @@ pub(crate) fn calc_fast_digest<R: Read>(r: &mut R) -> Result<i64, Box<dyn Error>
     Ok(Hasher::finish(&fast_hasher) as i64)
 }
 
-pub(crate) fn calc_digest<R: Read>(r: &mut R) -> Result<String, Box<dyn Error>> {
+pub(crate) fn calc_digest<R: Read>(r: &mut R) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut buf = [0u8; 8192];
     let mut hasher = Sha256::default();
     loop {
@@ -292,15 +307,16 @@ pub(crate) fn calc_digest<R: Read>(r: &mut R) -> Result<String, Box<dyn Error>> 
         }
         hasher.write(&buf[0..n])?;
     }
-    Ok(treblo::hex::to_hex_string(hasher.finalize().as_slice()))
+    Ok(hasher.finalize().to_vec())
 }
 
-pub(crate) fn create_footprint_if_needed(
+pub(crate) fn create_footprint_if_needed<I: IdGenerate>(
     conn: &mut Connection,
-    digest: &str,
+    id_generator: &I,
+    digest: &[u8],
     size: i64,
     fast_digest: i64,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Footprint, Box<dyn Error>> {
     let footprint = Footprints::find_by_digest(conn, &digest)?;
     Ok(if let Some(footprint) = footprint {
@@ -308,32 +324,44 @@ pub(crate) fn create_footprint_if_needed(
     } else {
         let footprint = Footprints::insert_and_find(
             conn,
-            &FootprintInsertForm { digest: &digest, size, fast_digest, created_at: now },
+            &FootprintInsertForm {
+                id: id_generator.generate_i64(),
+                digest: &digest,
+                size,
+                fast_digest,
+                created_at: now,
+            },
         )?;
-        info!("footprint created: {}: {}", footprint.id, &footprint.digest);
+        info!("footprint created: {}: {}", footprint.id, &footprint.digest_string());
         trace!("footprint created: {:?}", &footprint);
         footprint
     })
 }
 
 #[allow(dead_code)]
-pub(crate) fn create_content_with_bytes_if_needed(
+pub(crate) fn create_content_with_bytes_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     bytes: &[u8],
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<(Content, Footprint), Box<dyn Error>> {
     let mut slice = &bytes[..];
     let digest = calc_digest(&mut slice)?;
     let mut slice = &bytes[..];
     let fast_digest = calc_fast_digest(&mut slice)?;
-    let footprint = create_footprint_if_needed(conn, &digest, bytes.len() as i64, fast_digest, now)?;
+    let footprint = create_footprint_if_needed(conn, id_generator, &digest, bytes.len() as i64, fast_digest, now)?;
     let content = Contents::find_by_footprint_id(conn, footprint.id)?;
     let content = if let Some(content) = content {
         content
     } else {
         let content = Contents::insert_and_find(
             conn,
-            &ContentInsertForm { footprint_id: footprint.id, body: bytes, created_at: now },
+            &ContentInsertForm {
+                id: id_generator.generate_i64(),
+                footprint_id: footprint.id,
+                body: bytes,
+                created_at: now,
+            },
         )?;
         info!("content created: {}", content.id);
         trace!("content created: {:?}", &content);
@@ -343,20 +371,21 @@ pub(crate) fn create_content_with_bytes_if_needed(
 }
 
 #[allow(dead_code)]
-pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
+pub(crate) fn create_attr_and_stat_with_bytes_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     workspace: &Workspace,
     target: &Footprint,
     key: &str,
+    value_type: i32,
     value: &[u8],
-    value_content_type: i32,
-    value_summary: Option<&str>,
-    now: NaiveDateTime,
+    value_text: Option<&str>,
+    now: DateTime<Utc>,
 ) -> Result<(Attr, Content, Stat), Box<dyn Error>> {
-    let group = create_attr_group_if_needed(conn, workspace, now)?;
-    let (content, footprint) = create_content_with_bytes_if_needed(conn, value, now)?;
-    let path = format!("{}/{}", footprint.digest, key);
-    let stat = update_stat_with_footprint_if_needed(conn, &group, &path, &footprint, now, now)?;
+    let group = create_attr_group_if_needed(conn, id_generator, workspace, now)?;
+    let (content, footprint) = create_content_with_bytes_if_needed(conn, id_generator, value, now)?;
+    let path = format!("{}/{}", footprint.digest_string(), key);
+    let stat = update_stat_with_footprint_if_needed(conn, id_generator, &group, &path, &footprint, now, now)?;
     let attr = Attrs::find_by_target_footprint_id_and_key(conn, workspace.id, target.id, key)?;
     let attr = if let Some(attr) = attr {
         if attr.attr_stat_id.map_or(false, |i| i == stat.id) {
@@ -366,10 +395,10 @@ pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
                 conn,
                 attr.id,
                 &AttrUpdateForm {
+                    value_type: Some(value_type),
                     value_footprint_id: Some(footprint.id),
                     value_digest: Some(&footprint.digest),
-                    value_content_type: Some(value_content_type),
-                    value_summary: Some(value_summary),
+                    value_text: Some(value_text),
                     status: Some(Status::Enabled as i32),
                     attr_stat_id: Some(Some(stat.id)),
                     updated_at: Some(now),
@@ -380,14 +409,15 @@ pub(crate) fn create_attr_and_stat_with_bytes_if_needed(
         Attrs::insert_and_find(
             conn,
             &AttrInsertForm {
+                id: id_generator.generate_i64(),
                 workspace_id: workspace.id,
                 target_footprint_id: target.id,
                 target_digest: &target.digest,
                 key,
                 value_footprint_id: footprint.id,
                 value_digest: &footprint.digest,
-                value_content_type,
-                value_summary,
+                value_type,
+                value_text,
                 status: Status::Enabled as i32,
                 attr_stat_id: Some(stat.id),
                 created_at: now,
@@ -409,9 +439,9 @@ pub(crate) enum FileState {
 #[derive(Debug)]
 pub(crate) struct FileMetadata {
     pub size: i64,
-    pub mtime: NaiveDateTime,
+    pub mtime: DateTime<Utc>,
     pub fast_digest: i64,
-    pub digest: String,
+    pub digest: Vec<u8>,
 }
 
 pub(crate) fn new_updated_file_state_if_needed(
@@ -420,7 +450,7 @@ pub(crate) fn new_updated_file_state_if_needed(
 ) -> Result<Option<FileState>, Box<dyn Error>> {
     let (f, mtime, size) = if let Ok(f) = File::open(path) {
         let md = f.metadata()?;
-        let mtime = DateTime::<Utc>::from(md.modified()?).naive_utc();
+        let mtime = DateTime::<Utc>::from(md.modified()?);
         let size = md.len() as i64;
         (Some(f), Some(mtime), Some(size))
     } else {
@@ -457,23 +487,25 @@ pub(crate) fn new_updated_file_state_if_needed(
     }
 }
 
-pub(crate) fn update_stat_with_paths_if_needed(
+pub(crate) fn update_stat_with_paths_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     stat_path: &str,
     file_path: &Path,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Option<Stat>, Box<dyn Error>> {
     let old_stat = Stats::find_by_path(conn, group.id, stat_path)?;
     let file_state = new_updated_file_state_if_needed(old_stat.as_ref(), file_path)?;
     trace!("updated file state: {:?}", file_state);
     if let Some(file_state) = file_state {
         if let FileState::Enabled(md) = file_state {
-            let footprint = create_footprint_if_needed(conn, &md.digest, md.size, md.fast_digest, now)?;
-            let stat = update_stat_with_footprint_if_needed(conn, group, stat_path, &footprint, md.mtime, now)?;
+            let footprint = create_footprint_if_needed(conn, id_generator, &md.digest, md.size, md.fast_digest, now)?;
+            let stat =
+                update_stat_with_footprint_if_needed(conn, id_generator, group, stat_path, &footprint, md.mtime, now)?;
             Ok(Some(stat))
         } else {
-            let stat = update_disabled_stat_if_needed(conn, group, stat_path, now)?;
+            let stat = update_disabled_stat_if_needed(conn, id_generator, group, stat_path, now)?;
             Ok(stat)
         }
     } else {
@@ -481,26 +513,28 @@ pub(crate) fn update_stat_with_paths_if_needed(
     }
 }
 
-pub(crate) fn update_stat_with_present_paths_if_needed(
+pub(crate) fn update_stat_with_present_paths_if_needed<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     group: &Group,
     stat_path: &str,
     file_path: &Path,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Stat, Box<dyn Error>> {
-    update_stat_with_paths_if_needed(conn, group, stat_path, file_path, now).map(|s| s.unwrap())
+    update_stat_with_paths_if_needed(conn, id_generator, group, stat_path, file_path, now).map(|s| s.unwrap())
 }
 
-pub(crate) fn update_meta_group_stat(
+pub(crate) fn update_meta_group_stat<I: IdGenerate>(
     conn: &mut Connection,
+    id_generator: &I,
     workspace: &Workspace,
     group: &Group,
     db_path: &Path,
-    now: NaiveDateTime,
+    now: DateTime<Utc>,
 ) -> Result<Group, Box<dyn Error>> {
     let stat_path = &group.name;
-    let meta_group = create_meta_group_if_needed(conn, &workspace, now)?;
-    let stat = update_stat_with_present_paths_if_needed(conn, &meta_group, stat_path, db_path, now)?;
+    let meta_group = create_meta_group_if_needed(conn, id_generator, &workspace, now)?;
+    let stat = update_stat_with_present_paths_if_needed(conn, id_generator, &meta_group, stat_path, db_path, now)?;
     let group = Groups::update_and_find(
         conn,
         meta_group.id,

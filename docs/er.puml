@@ -1,0 +1,100 @@
+@startuml er_puml
+
+entity footprints {
+    + id [PK]
+    --
+    + digest
+    + size
+    + fast_digest
+}
+
+entity contents {
+    + id [PK]
+    + footprint_id [UQ1, FK1]
+    --
+    + body
+}
+
+contents |o--|| footprints
+
+entity workspaces {
+    + id [PK]
+    + name [UQ1]
+    --
+    + description
+    + status
+}
+
+entity groups {
+    + id [PK, UQ1.2]
+    + workspace_id [FK1, UQ1.1, UQ2.1]
+    + name [UQ2.2]
+    --
+    + url
+    + type
+    + description
+    + status
+      group_stat_id
+}
+
+groups }o--|| workspaces
+
+entity histories {
+    + id [PK]
+    + workspace_id [FK1.1]
+    + group_id [UQ1.1, FK1.2]
+    + path [UQ1.2]
+    + version [UQ1.3]
+    --
+    + status
+      mtime
+      footprint_id [FK2]
+      digest
+}
+
+histories }o--|| groups
+histories }o--o| footprints
+
+entity stats {
+    + id [PK]
+    + workspace_id [FK1.1]
+    + group_id [UQ1.1, FK1.2]
+    + path [UQ1.2]
+    --
+    + history_id [FK2]
+    + version
+    + status
+      mtime
+      footprint_id [FK3]
+      digest
+      size
+      fast_digest
+}
+
+stats }o--|| groups
+stats }o--|| histories
+stats }o--o| footprints
+
+groups }o-ri-|| stats
+
+entity attrs {
+    + id [PK]
+    + workspace_id [UQ1.1, FK1]
+    + target_footprint_id [UQ1.2, FK2]
+    + key [UQ1.3]
+    --
+    + target_digest
+    + value_type
+    + value_footprint_id [FK3]
+    + value_digest
+      value_text
+    + status
+      attr_stat_id [FK4]
+}
+
+attrs }o--|| workspaces
+attrs }o--|| footprints
+attrs }o--|| footprints
+attrs }o--o| stats
+
+@enduml

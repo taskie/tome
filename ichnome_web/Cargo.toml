@@ -21,9 +21,9 @@ ichnome = { path = "../ichnome" }
 log = "0.4.20"
 serde = { version = "1.0.189", features = ["derive"] }
 structopt = "0.3.26"
+treblo = { path = "../treblo" }
 url = "2.4.1"
 
 [features]
 default = ["postgres"]
 postgres = ["diesel/postgres", "ichnome/postgres"]
-mysql = ["diesel/mysql", "ichnome/mysql"]

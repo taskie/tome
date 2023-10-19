@@ -49,9 +49,9 @@ impl From<Box<dyn std::error::Error>> for DomainError {
 
 #[derive(Debug)]
 pub struct ErrorDetail {
-    code: &'static str,
-    message: String,
-    user_info: Option<HashMap<String, Box<dyn Any>>>,
+    pub code: &'static str,
+    pub message: String,
+    pub user_info: Option<HashMap<String, Box<dyn Any>>>,
 }
 
 impl Display for ErrorDetail {

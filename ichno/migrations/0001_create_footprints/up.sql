@@ -1,13 +1,11 @@
-CREATE TABLE IF NOT EXISTS `footprints` (
-    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    `digest` CHAR(64) NOT NULL,
+CREATE TABLE `footprints` (
+    `id` BIGINT NOT NULL PRIMARY KEY,
+    `digest` BLOB NOT NULL,
     `size` BIGINT NOT NULL,
     `fast_digest` BIGINT NOT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (`digest`)
 )
--- DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin
 ;
 
 CREATE INDEX `ix_footprints_created_at` ON `footprints` (`created_at`);
-

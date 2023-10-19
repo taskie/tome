@@ -1,1 +1,1 @@
-DROP TABLE IF EXISTS "attrs";
+DROP TABLE "attrs";

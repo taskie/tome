@@ -5,6 +5,7 @@ use std::{env, error::Error, process::exit};
 
 use chrono::Utc;
 use diesel::Connection;
+use ichno::id::{IdGenerator};
 use ichnome::{
     action,
     action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
@@ -68,9 +69,14 @@ pub struct Pull {
 fn main_with_error() -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
-    let database_url = env::var("DATABASE_URL").unwrap_or("ichno.db".to_owned());
+    let database_url = env::var("ICHNOME_DATABASE_URL").unwrap_or("ichno.db".to_owned());
     let mut conn = OmConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url));
-    let mut ctx = action::Context { connection: &mut conn, timer: Box::new(|| Utc::now()) };
+
+    let machine_id = env::var("ICHNOME_MACHINE_ID").map(|s| u16::from_str_radix(&s, 10).unwrap()).ok();
+    let id_generator = IdGenerator::new(machine_id);
+
+    let mut ctx =
+        action::Context { connection: &mut conn, id_generator: &id_generator, timer: Box::new(|| Utc::now()) };
     let opt = Opt::from_args();
     let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
     match opt.sub {

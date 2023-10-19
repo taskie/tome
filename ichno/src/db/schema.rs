@@ -1,99 +1,99 @@
 table! {
     attrs (id) {
-        id -> Integer,
-        workspace_id -> Integer,
-        target_footprint_id -> Integer,
-        target_digest -> Text,
+        id -> BigInt,
+        workspace_id -> BigInt,
+        target_footprint_id -> BigInt,
+        target_digest -> Binary,
         key -> Text,
-        value_footprint_id -> Integer,
-        value_digest -> Text,
-        value_content_type -> Integer,
-        value_summary -> Nullable<Text>,
+        value_type -> Integer,
+        value_footprint_id -> BigInt,
+        value_digest -> Binary,
+        value_text -> Nullable<Text>,
         status -> Integer,
-        attr_stat_id -> Nullable<Integer>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        attr_stat_id -> Nullable<BigInt>,
+        created_at -> TimestamptzSqlite,
+        updated_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     contents (id) {
-        id -> Integer,
-        footprint_id -> Integer,
+        id -> BigInt,
+        footprint_id -> BigInt,
         body -> Binary,
-        created_at -> Timestamp,
+        created_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     footprints (id) {
-        id -> Integer,
-        digest -> Text,
+        id -> BigInt,
+        digest -> Binary,
         size -> BigInt,
         fast_digest -> BigInt,
-        created_at -> Timestamp,
+        created_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     groups (id) {
-        id -> Integer,
-        workspace_id -> Integer,
+        id -> BigInt,
+        workspace_id -> BigInt,
         name -> Text,
         url -> Text,
         #[sql_name = "type"]
         type_ -> Integer,
         description -> Text,
         status -> Integer,
-        group_stat_id -> Nullable<Integer>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        group_stat_id -> Nullable<BigInt>,
+        created_at -> TimestamptzSqlite,
+        updated_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     histories (id) {
-        id -> Integer,
-        workspace_id -> Integer,
-        group_id -> Integer,
+        id -> BigInt,
+        workspace_id -> BigInt,
+        group_id -> BigInt,
         path -> Text,
         version -> Integer,
         status -> Integer,
-        mtime -> Nullable<Timestamp>,
-        footprint_id -> Nullable<Integer>,
-        digest -> Nullable<Text>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        mtime -> Nullable<TimestamptzSqlite>,
+        footprint_id -> Nullable<BigInt>,
+        digest -> Nullable<Binary>,
+        created_at -> TimestamptzSqlite,
+        updated_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     stats (id) {
-        id -> Integer,
-        workspace_id -> Integer,
-        group_id -> Integer,
+        id -> BigInt,
+        workspace_id -> BigInt,
+        group_id -> BigInt,
         path -> Text,
-        history_id -> Integer,
+        history_id -> BigInt,
         version -> Integer,
         status -> Integer,
-        mtime -> Nullable<Timestamp>,
-        footprint_id -> Nullable<Integer>,
-        digest -> Nullable<Text>,
+        mtime -> Nullable<TimestamptzSqlite>,
+        footprint_id -> Nullable<BigInt>,
+        digest -> Nullable<Binary>,
         size -> Nullable<BigInt>,
         fast_digest -> Nullable<BigInt>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        created_at -> TimestamptzSqlite,
+        updated_at -> TimestamptzSqlite,
     }
 }
 
 table! {
     workspaces (id) {
-        id -> Integer,
+        id -> BigInt,
         name -> Text,
         description -> Text,
         status -> Integer,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
+        created_at -> TimestamptzSqlite,
+        updated_at -> TimestamptzSqlite,
     }
 }
 

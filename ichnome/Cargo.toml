@@ -15,6 +15,7 @@ optional_derive = { path = "../optional_derive" }
 serde = { version = "1.0.189", features = ["derive"] }
 sha-1 = "0.10.1"
 sha2 = "0.10.8"
+sonyflake = "0.2.0"
 ssh2 = "0.9.4"
 tempfile = "3.1.0"
 treblo = { path = "../treblo" }
@@ -24,4 +25,3 @@ url = "2.4.1"
 [features]
 default = ["postgres"]
 postgres = ["diesel/postgres"]
-mysql = ["diesel/mysql"]

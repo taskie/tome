@@ -13,7 +13,7 @@ use actix_web::{
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use diesel::r2d2::{self, ConnectionManager};
 use ichnome::{
     db::Connection,
@@ -21,6 +21,7 @@ use ichnome::{
     error::DomainError,
     Footprint, Group, History, Stat, Status, Workspace, META_GROUP_NAME,
 };
+use models::{WebFootprint, WebGroup, WebWorkspace};
 use serde::{Deserialize, Serialize};
 use structopt::{clap, StructOpt};
 
@@ -53,19 +54,19 @@ struct GetStatsQuery {
     path_prefix: Option<String>,
     path_partial: Option<String>,
     status: Option<String>,
-    mtime_after: Option<NaiveDateTime>,
-    mtime_before: Option<NaiveDateTime>,
-    updated_at_after: Option<NaiveDateTime>,
-    updated_at_before: Option<NaiveDateTime>,
+    mtime_after: Option<DateTime<Utc>>,
+    mtime_before: Option<DateTime<Utc>>,
+    updated_at_after: Option<DateTime<Utc>>,
+    updated_at_before: Option<DateTime<Utc>>,
     limit: Option<i64>,
 }
 
 #[derive(Serialize)]
 struct GetStatsResponse {
-    workspace: Workspace,
-    group: Group,
-    stats: Vec<Stat>,
-    stats_count: i64,
+    workspace: WebWorkspace,
+    group: WebGroup,
+    stats: Vec<WebStat>,
+    stats_count: i32,
 }
 
 fn get_stats_impl(
@@ -97,7 +98,7 @@ fn get_stats_impl(
             updated_at_before: q.updated_at_before,
             ..Default::default()
         };
-        let stats_count = OmStats::count(conn, workspace.id, &count_cond)?;
+        let stats_count = OmStats::count(conn, workspace.id, &count_cond)? as i32;
         let cond = StatSearchCondition {
             order: Some(StatOrder::UpdatedAtDesc),
             limit: Some(q.limit.unwrap_or(100)),
@@ -105,7 +106,12 @@ fn get_stats_impl(
         };
         debug!("search condition: {:?}", &cond);
         let stats = OmStats::search(conn, workspace.id, &cond)?;
-        Ok(Some(GetStatsResponse { workspace, group, stats, stats_count }))
+        Ok(Some(GetStatsResponse {
+            workspace: WebWorkspace::from(&workspace),
+            group: WebGroup::from(&workspace, &group),
+            stats: stats.iter().map(|s| WebStat::from(&workspace, &group, &s)).collect(),
+            stats_count,
+        }))
     } else {
         Ok(None)
     }
@@ -137,15 +143,15 @@ async fn get_stats(
 
 #[derive(Serialize)]
 struct GetStatResponse {
-    workspace: Workspace,
-    group: Group,
-    stat: Stat,
-    histories: Option<Vec<History>>,
-    footprints: Option<HashMap<i32, Footprint>>,
+    workspace: WebWorkspace,
+    group: WebGroup,
+    stat: WebStat,
+    histories: Option<Vec<WebHistory>>,
+    footprints: Option<HashMap<String, WebFootprint>>,
     eq_stats: Option<Vec<WebStat>>,
 }
 
-fn to_web_stats(workspace: &Workspace, group_map: &HashMap<i32, &Group>, stats: &Vec<Stat>) -> Vec<WebStat> {
+fn to_web_stats(workspace: &Workspace, group_map: &HashMap<i64, &Group>, stats: &Vec<Stat>) -> Vec<WebStat> {
     stats
         .iter()
         .map(|s| (s, group_map.get(&s.group_id)))
@@ -154,7 +160,7 @@ fn to_web_stats(workspace: &Workspace, group_map: &HashMap<i32, &Group>, stats: 
         .collect()
 }
 
-fn to_web_histories(workspace: &Workspace, group_map: &HashMap<i32, &Group>, stats: &Vec<History>) -> Vec<WebHistory> {
+fn to_web_histories(workspace: &Workspace, group_map: &HashMap<i64, &Group>, stats: &Vec<History>) -> Vec<WebHistory> {
     stats
         .iter()
         .map(|h| (h, group_map.get(&h.group_id)))
@@ -196,7 +202,7 @@ fn get_stat_impl(
             let eq_stats = Some({
                 if let Some(footprint_id) = stat.footprint_id {
                     let stats = OmStats::select_by_footprint_id(conn, group.workspace_id, footprint_id)?;
-                    let group_ids: Vec<i32> = stats.iter().map(|s| s.group_id).collect();
+                    let group_ids: Vec<i64> = stats.iter().map(|s| s.group_id).collect();
                     let groups = OmGroups::select(conn, &group_ids)?;
                     let group_map = groups.iter().map(|g| (g.id, g)).collect();
                     to_web_stats(&workspace, &group_map, &stats)
@@ -204,7 +210,15 @@ fn get_stat_impl(
                     vec![]
                 }
             });
-            Ok(Some(GetStatResponse { workspace, group, stat, histories, footprints, eq_stats }))
+            Ok(Some(GetStatResponse {
+                workspace: WebWorkspace::from(&workspace),
+                group: WebGroup::from(&workspace, &group),
+                stat: WebStat::from(&workspace, &group, &stat),
+                histories: histories.map(|h| h.iter().map(|h| WebHistory::from(&workspace, &group, h)).collect()),
+                footprints: footprints
+                    .map(|f| f.into_iter().map(|(k, v)| (k.to_string(), WebFootprint::from(&v))).collect()),
+                eq_stats,
+            }))
         } else {
             Ok(None)
         }
@@ -239,8 +253,8 @@ async fn get_stat(
 
 #[derive(Serialize)]
 struct GetFootprintResponse {
-    workspace: Workspace,
-    footprint: Footprint,
+    workspace: WebWorkspace,
+    footprint: WebFootprint,
     group_name: Option<String>,
     stats: Option<Vec<WebStat>>,
     histories: Option<Vec<WebHistory>>,
@@ -257,7 +271,8 @@ fn get_footprint_impl(
     } else {
         return Ok(None);
     };
-    let footprint = OmFootprints::find_by_digest(conn, digest)?;
+    let digest = treblo::hex::from_hex_string(digest).unwrap();
+    let footprint = OmFootprints::find_by_digest(conn, &digest)?;
     let group_name: Option<String> = None;
     if let Some(footprint) = footprint {
         let mut group_ids = HashSet::new();
@@ -272,14 +287,14 @@ fn get_footprint_impl(
         for h in histories.iter() {
             group_ids.insert(h.group_id);
         }
-        let group_ids: Vec<i32> = group_ids.into_iter().collect();
+        let group_ids: Vec<i64> = group_ids.into_iter().collect();
         let groups = OmGroups::select(conn, &group_ids)?;
         let group_map = groups.iter().map(|g| (g.id, g)).collect();
         let stats = to_web_stats(&workspace, &group_map, &stats);
         let histories = to_web_histories(&workspace, &group_map, &histories);
         Ok(Some(GetFootprintResponse {
-            workspace,
-            footprint,
+            workspace: WebWorkspace::from(&workspace),
+            footprint: WebFootprint::from(&footprint),
             group_name,
             stats: Some(stats),
             histories: Some(histories),
@@ -313,8 +328,8 @@ async fn get_footprint(
 
 #[derive(Serialize)]
 struct GetGroupsResponse {
-    workspace: Workspace,
-    groups: Vec<Group>,
+    workspace: WebWorkspace,
+    groups: Vec<WebGroup>,
 }
 
 fn get_groups_impl(
@@ -324,7 +339,10 @@ fn get_groups_impl(
     let workspace = OmWorkspaces::find_by_name(conn, workspace_name)?;
     if let Some(workspace) = workspace {
         let groups = OmGroups::select_all(conn, workspace.id)?;
-        Ok(Some(GetGroupsResponse { workspace, groups }))
+        Ok(Some(GetGroupsResponse {
+            workspace: WebWorkspace::from(&workspace),
+            groups: groups.iter().map(|g| WebGroup::from(&workspace, g)).collect(),
+        }))
     } else {
         Ok(None)
     }
@@ -350,11 +368,11 @@ async fn get_groups(pool: web::Data<DbPool>, path_params: web::Path<(String,)>) 
 
 #[derive(Serialize)]
 struct GetGroupResponse {
-    workspace: Workspace,
-    group: Group,
-    stat: Option<Stat>,
-    histories: Option<Vec<History>>,
-    footprints: Option<HashMap<i32, Footprint>>,
+    workspace: WebWorkspace,
+    group: WebGroup,
+    stat: Option<WebStat>,
+    histories: Option<Vec<WebHistory>>,
+    footprints: Option<HashMap<String, WebFootprint>>,
 }
 
 fn get_group_impl(
@@ -389,7 +407,14 @@ fn get_group_impl(
             }
             footprints
         });
-        Ok(Some(GetGroupResponse { workspace, group, stat, histories, footprints }))
+        Ok(Some(GetGroupResponse {
+            workspace: WebWorkspace::from(&workspace),
+            group: WebGroup::from(&workspace, &group),
+            stat: stat.map(|s| WebStat::from(&workspace, &group, &s)),
+            histories: histories.map(|h| h.iter().map(|h| WebHistory::from(&workspace, &group, h)).collect()),
+            footprints: footprints
+                .map(|f| f.into_iter().map(|(k, v)| (k.to_string(), WebFootprint::from(&v))).collect()),
+        }))
     } else {
         Ok(None)
     }
@@ -427,12 +452,12 @@ struct GetDiffQuery {
 
 #[derive(Serialize)]
 struct GetDiffResponse {
-    workspace: Workspace,
-    group1: Group,
-    group2: Group,
-    diff: HashMap<i32, (Vec<i32>, Vec<i32>)>,
-    stats: HashMap<i32, Stat>,
-    footprints: HashMap<i32, Footprint>,
+    workspace: WebWorkspace,
+    group1: WebGroup,
+    group2: WebGroup,
+    diff: HashMap<String, (Vec<String>, Vec<String>)>,
+    stats: HashMap<String, WebStat>,
+    footprints: HashMap<String, WebFootprint>,
 }
 
 fn get_diff_impl_search_stats(
@@ -464,8 +489,8 @@ fn get_diff_impl(
         let (group1, stats1) = if let Some(x) = result1 { x } else { return Ok(None) };
         let result2 = get_diff_impl_search_stats(conn, &workspace, &q.group_name2, &q.path_prefix2)?;
         let (group2, stats2) = if let Some(x) = result2 { x } else { return Ok(None) };
-        let stats: HashMap<i32, Stat> = stats1.iter().chain(stats2.iter()).map(|s| (s.id, s.clone())).collect();
-        let mut diff = HashMap::<i32, (Vec<i32>, Vec<i32>)>::new();
+        let stats: HashMap<i64, Stat> = stats1.iter().chain(stats2.iter()).map(|s| (s.id, s.clone())).collect();
+        let mut diff = HashMap::<i64, (Vec<i64>, Vec<i64>)>::new();
         for stat1 in stats1.iter() {
             if let Some(footprint_id) = stat1.footprint_id {
                 let v = diff.entry(footprint_id).or_insert_with(|| (vec![], vec![]));
@@ -478,9 +503,30 @@ fn get_diff_impl(
                 v.1.push(stat2.id);
             }
         }
-        let footprints: HashMap<i32, Footprint> =
+        let footprints: HashMap<i64, Footprint> =
             OmFootprints::select(conn, &diff.keys().map(|i| *i).collect())?.into_iter().map(|f| (f.id, f)).collect();
-        Ok(Some(GetDiffResponse { workspace, group1, group2, diff, stats, footprints }))
+        Ok(Some(GetDiffResponse {
+            workspace: WebWorkspace::from(&workspace),
+            group1: WebGroup::from(&workspace, &group1),
+            group2: WebGroup::from(&workspace, &group2),
+            diff: diff
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_string(),
+                        (v.0.iter().map(|i| i.to_string()).collect(), v.1.iter().map(|i| i.to_string()).collect()),
+                    )
+                })
+                .collect(),
+            stats: stats
+                .iter()
+                .map(|(k, v)| {
+                    let group = if v.group_id == group2.id { &group2 } else { &group1 };
+                    (k.to_string(), WebStat::from(&workspace, group, v))
+                })
+                .collect(),
+            footprints: footprints.iter().map(|(k, v)| (k.to_string(), WebFootprint::from(&v))).collect(),
+        }))
     } else {
         Ok(None)
     }
@@ -524,7 +570,7 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     let opt = Opt::from_args();
 
-    let database_url = env::var("DATABASE_URL").unwrap();
+    let database_url = env::var("ICHNOME_DATABASE_URL").unwrap();
     let manager = ConnectionManager::<Connection>::new(database_url);
     let pool = r2d2::Pool::builder().build(manager).expect("Failed to create pool.");
 

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
 use crate::{
@@ -19,7 +19,7 @@ pub struct Footprints;
 impl Footprints {
     impl_crud!(
         Connection, footprints, Footprint, FootprintInsertForm;
-        find_by_digest, digest: &str
+        find_by_digest, digest: &[u8]
     );
 }
 
@@ -28,7 +28,7 @@ pub struct Contents;
 impl Contents {
     impl_crud!(
         Connection, contents, Content, ContentInsertForm;
-        find_by_footprint_id, footprint_id: i32
+        find_by_footprint_id, footprint_id: i64
     );
 }
 
@@ -46,10 +46,10 @@ pub struct Groups;
 impl Groups {
     impl_crud!(
         Connection, groups, Group, GroupInsertForm, GroupUpdateForm;
-        find_by_name, workspace_id: i32, name: &str
+        find_by_name, workspace_id: i64, name: &str
     );
 
-    impl_select!(Connection, groups, Group; select_all, workspace_id: i32);
+    impl_select!(Connection, groups, Group; select_all, workspace_id: i64);
 }
 
 pub struct Histories;
@@ -57,16 +57,16 @@ pub struct Histories;
 impl Histories {
     impl_crud!(
         Connection, histories, History, HistoryInsertForm;
-        find_by_path_and_version, group_id: i32, path: &str, version: i32
+        find_by_path_and_version, group_id: i64, path: &str, version: i32
     );
 
-    impl_select!(Connection, histories, History; select_by_path, group_id: i32, path: &str);
+    impl_select!(Connection, histories, History; select_by_path, group_id: i64, path: &str);
 
-    impl_select!(Connection, histories, History; select_by_footprint_id, workspace_id: i32, footprint_id: i32);
+    impl_select!(Connection, histories, History; select_by_footprint_id, workspace_id: i64, footprint_id: i64);
 
     pub fn find_latest_by_path(
         conn: &mut Connection,
-        group_id: i32,
+        group_id: i64,
         path: &str,
     ) -> Result<Option<History>, Box<dyn Error>> {
         use crate::db::schema::histories::dsl;
@@ -84,15 +84,15 @@ pub struct Stats;
 impl Stats {
     impl_crud!(
         Connection, stats, Stat, StatInsertForm, StatUpdateForm;
-        find_by_path, group_id: i32, path: &str
+        find_by_path, group_id: i64, path: &str
     );
 
-    impl_select!(Connection, stats, Stat; select_by_group_id, group_id: i32);
+    impl_select!(Connection, stats, Stat; select_by_group_id, group_id: i64);
 
-    impl_select!(Connection, stats, Stat; select_by_footprint_id, workspace_id: i32, footprint_id: i32);
+    impl_select!(Connection, stats, Stat; select_by_footprint_id, workspace_id: i64, footprint_id: i64);
 
     fn search_condition_to_query<'a>(
-        workspace_id: i32,
+        workspace_id: i64,
         cond: &'a StatSearchCondition,
     ) -> crate::db::schema::stats::BoxedQuery<'a, Backend> {
         use crate::db::schema::stats::dsl;
@@ -148,7 +148,7 @@ impl Stats {
         return q;
     }
 
-    pub fn count(conn: &mut Connection, workspace_id: i32, cond: &StatSearchCondition) -> Result<i64, Box<dyn Error>> {
+    pub fn count(conn: &mut Connection, workspace_id: i64, cond: &StatSearchCondition) -> Result<i64, Box<dyn Error>> {
         let cond = StatSearchCondition { limit: Some(-1), ..cond.clone() };
         let q = Stats::search_condition_to_query(workspace_id, &cond);
         Ok(q.count().first(conn)?)
@@ -156,7 +156,7 @@ impl Stats {
 
     pub fn search(
         conn: &mut Connection,
-        workspace_id: i32,
+        workspace_id: i64,
         cond: &StatSearchCondition,
     ) -> Result<Vec<Stat>, Box<dyn Error>> {
         let q = Stats::search_condition_to_query(workspace_id, cond);
@@ -166,17 +166,17 @@ impl Stats {
 
 #[derive(Default, Debug, Clone)]
 pub struct StatSearchCondition<'a> {
-    pub group_ids: Option<Vec<i32>>,
+    pub group_ids: Option<Vec<i64>>,
     pub paths: Option<Vec<&'a str>>,
     pub path_prefix: Option<&'a str>,
     pub path_partial: Option<&'a str>,
     pub statuses: Option<Vec<Status>>,
-    pub mtime_after: Option<NaiveDateTime>,
-    pub mtime_before: Option<NaiveDateTime>,
+    pub mtime_after: Option<DateTime<Utc>>,
+    pub mtime_before: Option<DateTime<Utc>>,
     pub size_min: Option<i64>,
     pub size_max: Option<i64>,
-    pub updated_at_after: Option<NaiveDateTime>,
-    pub updated_at_before: Option<NaiveDateTime>,
+    pub updated_at_after: Option<DateTime<Utc>>,
+    pub updated_at_before: Option<DateTime<Utc>>,
     pub order: Option<StatOrder>,
     pub limit: Option<i64>,
 }
@@ -194,12 +194,12 @@ pub struct Attrs;
 impl Attrs {
     impl_crud!(
         Connection, attrs, Attr, AttrInsertForm, AttrUpdateForm;
-        find_by_target_footprint_id_and_key, workspace_id: i32, target_footprint_id: i32, key: &str
+        find_by_target_footprint_id_and_key, workspace_id: i64, target_footprint_id: i64, key: &str
     );
 
-    impl_select!(Connection, attrs, Attr; select_by_value_footprint_id, workspace_id: i32, value_footprint_id: i32);
+    impl_select!(Connection, attrs, Attr; select_by_value_footprint_id, workspace_id: i64, value_footprint_id: i64);
 
-    impl_select!(Connection, attrs, Attr; select_by_key_and_value_summary, workspace_id: i32, key: &str, value_summary: &str);
+    impl_select!(Connection, attrs, Attr; select_by_key_and_value_text, workspace_id: i64, key: &str, value_text: &str);
 
-    impl_select!(Connection, attrs, Attr; select_by_target_footprint_id, workspace_id: i32, target_footprint_id: i32);
+    impl_select!(Connection, attrs, Attr; select_by_target_footprint_id, workspace_id: i64, target_footprint_id: i64);
 }
