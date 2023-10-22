@@ -1,5 +1,4 @@
 NAME := ichnome-web
-BIN := ../target/release/$(NAME)
 
 .PHONY: build
 
@@ -10,5 +9,5 @@ PREFIX := $(HOME)/.local
 
 .PHONY: install
 
-install: build
-	install -m755 $(BIN) $(PREFIX)/bin/$(NAME)
+install:
+	cargo install --path .
