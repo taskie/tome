@@ -1,33 +1,30 @@
-#[macro_use]
-extern crate actix_web;
-#[macro_use]
-extern crate log;
-
 use std::{
     collections::{HashMap, HashSet},
     env,
 };
 
-use actix_web::{
-    error, middleware,
-    web::{self, Data},
-    App, HttpResponse, HttpServer, Responder,
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
 };
 use chrono::{DateTime, Utc};
-use diesel::r2d2::{self, ConnectionManager};
+use deadpool_diesel::postgres::{Manager, Pool};
 use ichnome::{
     db::Connection,
     db::{OmFootprints, OmGroups, OmHistories, OmStats, OmWorkspaces, StatOrder, StatSearchCondition},
     error::DomainError,
     Footprint, Group, History, Stat, Status, Workspace, META_GROUP_NAME,
 };
-use models::{WebFootprint, WebGroup, WebWorkspace};
 use serde::{Deserialize, Serialize};
 use structopt::{clap, StructOpt};
+use tower_http::trace::TraceLayer;
+use tracing::{debug, error};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::models::{WebHistory, WebStat};
-
-type DbPool = r2d2::Pool<ConnectionManager<Connection>>;
+use crate::models::{WebFootprint, WebGroup, WebHistory, WebStat, WebWorkspace};
 
 mod models;
 
@@ -117,28 +114,21 @@ fn get_stats_impl(
     }
 }
 
-#[get("/{workspace_name}/stats/{group_name}")]
 async fn get_stats(
-    pool: web::Data<DbPool>,
-    path_params: web::Path<(String, String)>,
-    q: web::Query<GetStatsQuery>,
-) -> actix_web::Result<impl Responder> {
-    let (workspace_name, group_name) = path_params.into_inner();
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String, String)>,
+    Query(q): Query<GetStatsQuery>,
+) -> Result<Json<GetStatsResponse>, AppError> {
+    let (workspace_name, group_name) = path_params;
     let group_name_2 = group_name.clone();
-    let q = q.into_inner();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp =
-        web::block(move || get_stats_impl(&mut conn, &workspace_name, &group_name, &q).map_err(|e| e.to_string()))
-            .await?
-            .map_err(error::ErrorInternalServerError)?;
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body(format!("No group: {}", &group_name_2));
-            Ok(res)
-        }
-    }
+    conn.interact(move |conn| get_stats_impl(conn, &workspace_name, &group_name, &q).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, format!("No group: {}", &group_name_2)))
 }
 
 #[derive(Serialize)]
@@ -227,28 +217,21 @@ fn get_stat_impl(
     }
 }
 
-#[get("/{workspace_name}/stats/{group_name}/{path:.*}")]
 async fn get_stat(
-    pool: web::Data<DbPool>,
-    path_params: web::Path<(String, String, String)>,
-) -> actix_web::Result<impl Responder> {
-    let (workspace_name, group_name, path) = path_params.into_inner();
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String, String, String)>,
+) -> Result<Json<GetStatResponse>, AppError> {
+    let (workspace_name, group_name, path) = path_params;
     let group_name_2 = group_name.clone();
     let path_2 = path.clone();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp =
-        web::block(move || get_stat_impl(&mut conn, &workspace_name, &group_name, &path).map_err(|e| e.to_string()))
-            .await?
-            .map_err(error::ErrorInternalServerError)?;
-
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body(format!("No stat: {}/{}", &group_name_2, &path_2));
-            Ok(res)
-        }
-    }
+    conn.interact(move |conn| get_stat_impl(conn, &workspace_name, &group_name, &path).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, format!("No stat: {}/{}", &group_name_2, &path_2)))
 }
 
 #[derive(Serialize)]
@@ -304,26 +287,20 @@ fn get_footprint_impl(
     }
 }
 
-#[get("/{workspace_name}/footprints/{digest}")]
 async fn get_footprint(
-    pool: web::Data<DbPool>,
-    path_params: web::Path<(String, String)>,
-) -> actix_web::Result<impl Responder> {
-    let (workspace_name, digest) = path_params.into_inner();
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String, String)>,
+) -> Result<Json<GetFootprintResponse>, AppError> {
+    let (workspace_name, digest) = path_params;
     let digest_2 = digest.clone();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_footprint_impl(&mut conn, &workspace_name, &digest).map_err(|e| e.to_string()))
-        .await?
-        .map_err(error::ErrorInternalServerError)?;
-
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body(format!("No footprint: {}", digest_2));
-            Ok(res)
-        }
-    }
+    conn.interact(move |conn| get_footprint_impl(conn, &workspace_name, &digest).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, format!("No footprint: {}", digest_2)))
 }
 
 #[derive(Serialize)]
@@ -348,22 +325,19 @@ fn get_groups_impl(
     }
 }
 
-#[get("/{workspace_name}/groups")]
-async fn get_groups(pool: web::Data<DbPool>, path_params: web::Path<(String,)>) -> actix_web::Result<impl Responder> {
-    let (workspace_name,) = path_params.into_inner();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+async fn get_groups(
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String,)>,
+) -> Result<Json<GetGroupsResponse>, AppError> {
+    let (workspace_name,) = path_params;
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_groups_impl(&mut conn, &workspace_name).map_err(|e| e.to_string()))
-        .await?
-        .map_err(error::ErrorInternalServerError)?;
-
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body("No groups");
-            Ok(res)
-        }
-    }
+    conn.interact(move |conn| get_groups_impl(conn, &workspace_name).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, "No groups".to_string()))
 }
 
 #[derive(Serialize)]
@@ -420,26 +394,20 @@ fn get_group_impl(
     }
 }
 
-#[get("/{workspace_name}/groups/{group_name}")]
 async fn get_group(
-    pool: web::Data<DbPool>,
-    path_params: web::Path<(String, String)>,
-) -> actix_web::Result<impl Responder> {
-    let (workspace_name, group_name) = path_params.into_inner();
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String, String)>,
+) -> Result<Json<GetGroupResponse>, AppError> {
+    let (workspace_name, group_name) = path_params;
     let group_name_2 = group_name.clone();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_group_impl(&mut conn, &workspace_name, &group_name).map_err(|e| e.to_string()))
-        .await?
-        .map_err(error::ErrorInternalServerError)?;
-
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body(format!("No group: {}", &group_name_2));
-            Ok(res)
-        }
-    }
+    conn.interact(move |conn| get_group_impl(conn, &workspace_name, &group_name).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, format!("No group: {}", &group_name_2)))
 }
 
 #[derive(Deserialize)]
@@ -532,27 +500,24 @@ fn get_diff_impl(
     }
 }
 
-#[get("/{workspace_name}/diff")]
 async fn get_diff(
-    pool: web::Data<DbPool>,
-    path_params: web::Path<(String,)>,
-    q: web::Query<GetDiffQuery>,
-) -> actix_web::Result<impl Responder> {
-    let (workspace_name,) = path_params.into_inner();
-    let q = q.into_inner();
-    let mut conn = pool.get().expect("couldn't get db connection from pool");
+    State(AppState { pool }): State<AppState>,
+    Path(path_params): Path<(String,)>,
+    Query(q): Query<GetDiffQuery>,
+) -> Result<Json<GetDiffResponse>, AppError> {
+    let (workspace_name,) = path_params;
+    let conn = pool.get().await.expect("couldn't get db connection from pool");
 
-    let resp = web::block(move || get_diff_impl(&mut conn, &workspace_name, &q).map_err(|e| e.to_string()))
-        .await?
-        .map_err(error::ErrorInternalServerError)?;
+    conn.interact(move |conn| get_diff_impl(conn, &workspace_name, &q).map_err(|e| e.to_string()))
+        .await
+        .map_err(internal_server_error)?
+        .map_err(|e| AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .map(Json)
+        .ok_or_else(|| AppError::Simple(StatusCode::NOT_FOUND, "Not found".to_string()))
+}
 
-    match resp {
-        Some(resp) => Ok(HttpResponse::Ok().json(&resp)),
-        None => {
-            let res = HttpResponse::NotFound().body(format!("Not found"));
-            Ok(res)
-        }
-    }
+async fn handler_404() -> (StatusCode, &'static str) {
+    (StatusCode::NOT_FOUND, "The requested resource was not found")
 }
 
 #[derive(Debug, StructOpt)]
@@ -564,28 +529,74 @@ pub struct Opt {
     pub address: String,
 }
 
-#[actix_rt::main]
-async fn main() -> std::io::Result<()> {
-    env_logger::init();
+#[derive(Clone)]
+pub struct AppState {
+    pool: Pool,
+}
+
+enum AppError {
+    Simple(StatusCode, String),
+    Any(anyhow::Error),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        match self {
+            AppError::Simple(status, body) => (status, body).into_response(),
+            AppError::Any(err) => {
+                error!("Internal server error: {}", err);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
+            }
+        }
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self::Any(err.into())
+    }
+}
+
+fn internal_server_error(e: impl std::error::Error) -> AppError {
+    error!("Internal server error: {}", e);
+    AppError::Simple(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "ichnome_web=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     let opt = Opt::from_args();
 
     let database_url = env::var("ICHNOME_DATABASE_URL").unwrap();
-    let manager = ConnectionManager::<Connection>::new(database_url);
-    let pool = r2d2::Pool::builder().build(manager).expect("Failed to create pool.");
+    let manager = Manager::new(database_url, deadpool_diesel::Runtime::Tokio1);
+    let pool = Pool::builder(manager).build()?;
 
-    HttpServer::new(move || {
-        App::new()
-            .app_data(Data::new(pool.clone()))
-            .wrap(middleware::Logger::default())
-            .service(get_stats)
-            .service(get_stat)
-            .service(get_footprint)
-            .service(get_groups)
-            .service(get_group)
-            .service(get_diff)
-    })
-    .bind(&opt.address)?
-    .run()
-    .await
+    let state = AppState { pool };
+
+    let router = Router::new()
+        .route("/:workspace_name/stats/:group_name", get(get_stats))
+        .route("/:workspace_name/stats/:group_name/*path", get(get_stat))
+        .route("/:workspace_name/footprints/:digest", get(get_footprint))
+        .route("/:workspace_name/groups", get(get_groups))
+        .route("/:workspace_name/groups/:group_name", get(get_group))
+        .route("/:workspace_name/diff", get(get_diff))
+        .fallback(handler_404)
+        .layer(TraceLayer::new_for_http());
+    let app = router.with_state(state);
+
+    let addr = opt.address.parse()?;
+    axum::Server::bind(&addr).serve(app.into_make_service()).await?;
+
+    Ok(())
 }
