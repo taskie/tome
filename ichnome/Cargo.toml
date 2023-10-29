@@ -6,6 +6,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
+async-trait = "0.1.74"
+aws-config = "0.56.1"
+aws-sdk-s3 = "0.34.0"
 chrono = { version = "0.4.31", features = ["serde"] }
 diesel = { version = "2.1.3", features = ["extras", "sqlite"] }
 diesel_migrations = "2.1.0"
@@ -18,6 +21,8 @@ sha2 = "0.10.8"
 sonyflake = "0.2.0"
 ssh2 = "0.9.4"
 tempfile = "3.1.0"
+thiserror = "1.0.50"
+tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread", "macros"] }
 treblo = { path = "../treblo" }
 twox-hash = "1.6.3"
 url = "2.4.1"

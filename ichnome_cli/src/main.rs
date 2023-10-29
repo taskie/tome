@@ -12,6 +12,7 @@ use ichnome::{
     db::Connection as OmConnection,
 };
 use structopt::{clap, StructOpt};
+use tokio::runtime::Handle;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ichnome")]
@@ -76,7 +77,7 @@ pub struct Copy {
     pub dst: String,
 }
 
-fn main_with_error() -> Result<i32, Box<dyn Error>> {
+fn main_with_error(handle: Handle) -> Result<i32, Box<dyn Error>> {
     dotenv::dotenv().ok();
     env_logger::init();
     let database_url = env::var("ICHNOME_DATABASE_URL").unwrap_or("ichno.db".to_owned());
@@ -86,7 +87,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     let id_generator = IdGenerator::new(machine_id);
 
     let mut ctx =
-        action::Context { connection: &mut conn, id_generator: &id_generator, timer: Box::new(|| Utc::now()) };
+        action::Context { handle, connection: &mut conn, id_generator: &id_generator, timer: Box::new(|| Utc::now()) };
     let opt = Opt::from_args();
     let workspace_name = opt.workspace.or_else(|| env::var("ICHNOME_WORKSPACE").ok()).unwrap();
     match opt.sub {
@@ -134,10 +135,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                     options: Default::default(),
                 },
             )?;
-            let error_count = results.paths.iter()
-                .map(|r| !r.0 as i32)
-                .reduce(|acc, e| acc + e)
-                .unwrap_or_default();
+            let error_count = results.paths.iter().map(|r| !r.0 as i32).reduce(|acc, e| acc + e).unwrap_or_default();
             if error_count > 0 {
                 return Err(format!("{} errors occured.", error_count).into());
             }
@@ -147,7 +145,9 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
 }
 
 fn main() {
-    match main_with_error() {
+    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("failed to create runtime");
+    let handle = runtime.handle().clone();
+    match main_with_error(handle) {
         Ok(code) => exit(code),
         Err(e) => error!("{}", e),
     }

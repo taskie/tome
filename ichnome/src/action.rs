@@ -1,7 +1,4 @@
-use std::{
-    error::Error,
-    path::Path,
-};
+use std::{error::Error, path::Path};
 
 use chrono::{DateTime, Utc};
 use diesel::{Connection, SqliteConnection};
@@ -12,6 +9,7 @@ use ichno::{
 };
 
 use tempfile::NamedTempFile;
+use tokio::runtime::Handle;
 use url::Url;
 
 use crate::{
@@ -24,7 +22,7 @@ use crate::{
         Connection as OmConnection, OmFootprints, OmGroups, OmHistories, OmStats, OmWorkspaces,
         StatSearchCondition as OmStatSearchCondition,
     },
-    fs::{Filesystem, LocalFilesystem, SshFilesystem},
+    fs::{Filesystem, LocalFilesystem, S3Filesystem, SshFilesystem},
     models::{
         Group, GroupUpdateForm, HistoryInsertForm, StatInsertForm, StatUpdateForm, Workspace, WorkspaceUpdateForm,
     },
@@ -32,6 +30,7 @@ use crate::{
 };
 
 pub struct Context<'c> {
+    pub handle: Handle,
     pub connection: &'c mut OmConnection,
     pub id_generator: &'c IdGenerator,
     pub timer: Box<dyn Fn() -> DateTime<Utc>>,
@@ -322,12 +321,12 @@ pub struct CopyResponse {
     pub paths: Vec<(bool, String, Option<String>)>,
 }
 
-pub fn copy(ctx: &mut Context, req: &CopyRequest) -> Result<CopyResponse, Box<dyn Error>> {
-    let workspace = OmWorkspaces::find_by_name(ctx.connection, &req.workspace_name)?.unwrap();
-    let src_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.src_group_name)?.unwrap();
-    let mut src_filesystem = group_filesystem(&src_group).unwrap();
-    let dst_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.dst_group_name)?.unwrap();
-    let mut dst_filesystem = group_filesystem(&dst_group).unwrap();
+pub fn copy<'a>(ctx: &'a mut Context<'a>, req: &'a CopyRequest) -> Result<CopyResponse, Box<dyn Error>> {
+    let workspace = OmWorkspaces::find_by_name(ctx.connection, &req.workspace_name).unwrap().unwrap();
+    let src_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.src_group_name).unwrap().unwrap();
+    let mut src_filesystem = group_filesystem(ctx.handle.clone(), &src_group).unwrap();
+    let dst_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.dst_group_name).unwrap().unwrap();
+    let mut dst_filesystem = group_filesystem(ctx.handle.clone(), &dst_group).unwrap();
     let cond = OmStatSearchCondition {
         group_ids: Some(vec![src_group.id]),
         path_prefix: Some(&req.src_path),
@@ -335,22 +334,20 @@ pub fn copy(ctx: &mut Context, req: &CopyRequest) -> Result<CopyResponse, Box<dy
         ..Default::default()
     };
     let mut paths: Vec<(bool, String, Option<String>)> = Vec::new();
-    let stats = OmStats::search(ctx.connection, workspace.id, &cond)?;
+    let stats = OmStats::search(ctx.connection, workspace.id, &cond).unwrap();
     for stat in stats.iter() {
         let tempfile = NamedTempFile::new()?;
         {
-            let f = tempfile.reopen()?;
-            if let Err(e) = src_filesystem.download(&stat.path, f) {
+            let _file = tempfile.reopen()?;
+            if let Err(e) = src_filesystem.download(&stat.path, tempfile.path()) {
                 warn!("failed to download: {}", e);
                 paths.push((false, stat.path.to_string(), None));
                 continue;
             };
         }
         {
-            let f = tempfile.reopen()?;
-            let dst_path = url_parent(&dst_group.url)
-                .and_then(|u| u.join(&stat.path).ok()).unwrap().to_string();
-            if let Err(e) = dst_filesystem.upload(&stat.path, f) {
+            let dst_path = url_parent(&dst_group.url).and_then(|u| u.join(&stat.path).ok()).unwrap().to_string();
+            if let Err(e) = dst_filesystem.upload(&stat.path, tempfile.path()) {
                 warn!("failed to upload: {}", e);
                 paths.push((false, stat.path.to_string(), Some(dst_path)));
                 continue;
@@ -362,7 +359,7 @@ pub fn copy(ctx: &mut Context, req: &CopyRequest) -> Result<CopyResponse, Box<dy
     Ok(CopyResponse { src_group, dst_group, paths })
 }
 
-fn group_filesystem(group: &Group) -> Option<Box<dyn Filesystem>> {
+fn group_filesystem(handle: Handle, group: &Group) -> Option<Box<dyn Filesystem>> {
     let mut url = Url::parse(&group.url).unwrap();
     let path = url.path().rsplitn(2, "/").nth(1).unwrap_or("/").to_string();
     url.set_path(&path);
@@ -370,6 +367,12 @@ fn group_filesystem(group: &Group) -> Option<Box<dyn Filesystem>> {
         Some(Box::new(SshFilesystem::with_url(&url)?))
     } else if url.scheme() == "file" {
         Some(Box::new(LocalFilesystem::with_url(&url)?))
+    } else if url.scheme() == "s3" {
+        let client = handle.block_on(async {
+            let config = aws_config::load_from_env().await;
+            aws_sdk_s3::Client::new(&config)
+        });
+        Some(Box::new(S3Filesystem::with_url(&url, handle, client)?))
     } else {
         None
     }
