@@ -5,10 +5,10 @@ use std::{env, error::Error, process::exit};
 
 use chrono::Utc;
 use diesel::Connection;
-use ichno::id::{IdGenerator};
+use ichno::id::IdGenerator;
 use ichnome::{
     action,
-    action::{PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
+    action::{CopyRequest, PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
     db::Connection as OmConnection,
 };
 use structopt::{clap, StructOpt};
@@ -31,6 +31,7 @@ pub enum SubCommands {
     Setup(Setup),
     Register(Register),
     Pull(Pull),
+    Copy(Copy),
 }
 
 #[derive(Debug, StructOpt)]
@@ -64,6 +65,15 @@ pub struct Register {
 pub struct Pull {
     #[structopt(name = "GROUP")]
     pub group_name: String,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct Copy {
+    #[structopt(name = "SRC")]
+    pub src: String,
+
+    #[structopt(name = "DST")]
+    pub dst: String,
 }
 
 fn main_with_error() -> Result<i32, Box<dyn Error>> {
@@ -108,6 +118,29 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 &mut ctx,
                 &PullRequest { workspace_name, group_name: pull.group_name, options: PullOptions {} },
             )?;
+        }
+        SubCommands::Copy(copy) => {
+            let src: Vec<&str> = copy.src.splitn(2, ":").collect();
+            if src.len() != 2 {
+                return Err("invalid src".into());
+            }
+            let results = action::copy(
+                &mut ctx,
+                &CopyRequest {
+                    workspace_name,
+                    src_group_name: src[0].to_owned(),
+                    src_path: src[1].to_owned(),
+                    dst_group_name: copy.dst.clone(),
+                    options: Default::default(),
+                },
+            )?;
+            let error_count = results.paths.iter()
+                .map(|r| !r.0 as i32)
+                .reduce(|acc, e| acc + e)
+                .unwrap_or_default();
+            if error_count > 0 {
+                return Err(format!("{} errors occured.", error_count).into());
+            }
         }
     }
     Ok(0)

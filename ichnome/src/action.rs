@@ -1,12 +1,17 @@
-use std::{error::Error, path::Path};
+use std::{
+    error::Error,
+    path::Path,
+};
 
 use chrono::{DateTime, Utc};
 use diesel::{Connection, SqliteConnection};
 use ichno::{
     db::{IdGenerate, SqliteFootprints, SqliteGroups, SqliteHistories, SqliteStats, SqliteWorkspaces},
     id::IdGenerator,
+    Status,
 };
 
+use tempfile::NamedTempFile;
 use url::Url;
 
 use crate::{
@@ -17,7 +22,9 @@ use crate::{
             create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat, FileState,
         },
         Connection as OmConnection, OmFootprints, OmGroups, OmHistories, OmStats, OmWorkspaces,
+        StatSearchCondition as OmStatSearchCondition,
     },
+    fs::{Filesystem, LocalFilesystem, SshFilesystem},
     models::{
         Group, GroupUpdateForm, HistoryInsertForm, StatInsertForm, StatUpdateForm, Workspace, WorkspaceUpdateForm,
     },
@@ -288,4 +295,89 @@ fn load_local_db(
     let _group = update_meta_group_stat(ctx.connection, ctx.id_generator, glb_workspace, glb_group, path, now)?;
 
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct CopyRequest {
+    pub workspace_name: String,
+    pub src_group_name: String,
+    pub src_path: String,
+    pub dst_group_name: String,
+    pub options: CopyOptions,
+}
+
+#[derive(Debug)]
+pub struct CopyOptions {}
+
+impl Default for CopyOptions {
+    fn default() -> Self {
+        CopyOptions {}
+    }
+}
+
+#[derive(Debug)]
+pub struct CopyResponse {
+    pub src_group: Group,
+    pub dst_group: Group,
+    pub paths: Vec<(bool, String, Option<String>)>,
+}
+
+pub fn copy(ctx: &mut Context, req: &CopyRequest) -> Result<CopyResponse, Box<dyn Error>> {
+    let workspace = OmWorkspaces::find_by_name(ctx.connection, &req.workspace_name)?.unwrap();
+    let src_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.src_group_name)?.unwrap();
+    let mut src_filesystem = group_filesystem(&src_group).unwrap();
+    let dst_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.dst_group_name)?.unwrap();
+    let mut dst_filesystem = group_filesystem(&dst_group).unwrap();
+    let cond = OmStatSearchCondition {
+        group_ids: Some(vec![src_group.id]),
+        path_prefix: Some(&req.src_path),
+        statuses: Some(vec![Status::Enabled]),
+        ..Default::default()
+    };
+    let mut paths: Vec<(bool, String, Option<String>)> = Vec::new();
+    let stats = OmStats::search(ctx.connection, workspace.id, &cond)?;
+    for stat in stats.iter() {
+        let tempfile = NamedTempFile::new()?;
+        {
+            let f = tempfile.reopen()?;
+            if let Err(e) = src_filesystem.download(&stat.path, f) {
+                warn!("failed to download: {}", e);
+                paths.push((false, stat.path.to_string(), None));
+                continue;
+            };
+        }
+        {
+            let f = tempfile.reopen()?;
+            let dst_path = url_parent(&dst_group.url)
+                .and_then(|u| u.join(&stat.path).ok()).unwrap().to_string();
+            if let Err(e) = dst_filesystem.upload(&stat.path, f) {
+                warn!("failed to upload: {}", e);
+                paths.push((false, stat.path.to_string(), Some(dst_path)));
+                continue;
+            };
+            paths.push((true, stat.path.to_string(), Some(dst_path)));
+        }
+    }
+    // TODO: sync database
+    Ok(CopyResponse { src_group, dst_group, paths })
+}
+
+fn group_filesystem(group: &Group) -> Option<Box<dyn Filesystem>> {
+    let mut url = Url::parse(&group.url).unwrap();
+    let path = url.path().rsplitn(2, "/").nth(1).unwrap_or("/").to_string();
+    url.set_path(&path);
+    if url.scheme() == "ssh" {
+        Some(Box::new(SshFilesystem::with_url(&url)?))
+    } else if url.scheme() == "file" {
+        Some(Box::new(LocalFilesystem::with_url(&url)?))
+    } else {
+        None
+    }
+}
+
+fn url_parent(url: &str) -> Option<Url> {
+    let mut url = Url::parse(&url).unwrap();
+    let Some(path) = url.path().rsplitn(2, "/").nth(1).map(|s| s.to_owned()) else { return None };
+    url.set_path(&path);
+    Some(url)
 }
