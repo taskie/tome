@@ -3,6 +3,8 @@ members = [
     "optional_derive",
     "treblo",
     "treblo_cli",
+    "aether",
+    "aether_cli",
     "ichno",
     "ichno_cli",
     "ichnome",

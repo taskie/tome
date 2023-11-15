@@ -1,0 +1,18 @@
+[package]
+name = "aether_cli"
+version = "0.1.0"
+authors = ["taskie <t@skie.jp>"]
+edition = "2021"
+publish = false
+
+[[bin]]
+path = "src/main.rs"
+name = "aether"
+doc = false
+
+[dependencies]
+env_logger = "0.10.0"
+aether = { path = "../aether" }
+log = "0.4.20"
+structopt = "0.3.26"
+tempfile = "3.1.0"
