@@ -27,6 +27,12 @@ pub struct Opt {
     #[structopt(short, long)]
     pub output: Option<PathBuf>,
 
+    #[structopt(short, long)]
+    pub password_prompt: bool,
+
+    #[structopt(short = "P", long)]
+    pub password_env: Option<String>,
+
     #[structopt(short, long, env = "AETHER_KEY_FILE")]
     pub key_file: Option<PathBuf>,
 
@@ -57,7 +63,16 @@ fn load_key<R: Read>(mut r: R) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(buf)
 }
 
-fn process<R: BufRead, W: Write>(r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn Error>> {
+fn execute<R: BufRead, W: Write>(cipher: &mut Cipher, r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn Error>> {
+    if opt.decrypt {
+        cipher.decrypt(r, w)?;
+    } else {
+        cipher.encrypt(r, w)?;
+    }
+    Ok(())
+}
+
+fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn Error>> {
     let mut cipher = if let Some(key_file) = opt.key_file.as_ref() {
         let key = if Opt::path_is_stdin(key_file) {
             load_key(std::io::stdin().lock())?
@@ -68,14 +83,41 @@ fn process<R: BufRead, W: Write>(r: R, w: BufWriter<W>, opt: &Opt) -> Result<(),
         Cipher::with_key_slice(&key)
     } else if let Some(key) = opt.key_env.as_ref().and_then(|name| env::var(name).ok()) {
         Cipher::with_key_b64(&key)
+    } else if let Some(password) = opt.password_env.as_ref().and_then(|name| env::var(name).ok()) {
+        if opt.decrypt {
+            let mut header_bytes = [0u8; aether::HEADER_SIZE];
+            r.read_exact(&mut header_bytes)?;
+            let header = aether::Header::from_bytes(&header_bytes)?;
+            let mut cipher = Cipher::with_password(password.as_bytes(), Some(header.integrity));
+            let mut r = header_bytes[..].chain(r);
+            execute(&mut cipher, &mut r, w, opt)?;
+            return Ok(());
+        } else {
+            Cipher::with_password(password.as_bytes(), None)
+        }
+    } else if opt.password_prompt {
+        let password = rpassword::prompt_password("Password: ")?;
+        if !opt.decrypt {
+            let password2 = rpassword::prompt_password("Password (again): ")?;
+            if password != password2 {
+                return Err("passwords do not match".into());
+            }
+        }
+        if opt.decrypt {
+            let mut header_bytes = [0u8; aether::HEADER_SIZE];
+            r.read_exact(&mut header_bytes)?;
+            let header = aether::Header::from_bytes(&header_bytes)?;
+            let mut cipher = Cipher::with_password(password.as_bytes(), Some(header.integrity));
+            let mut r = header_bytes[..].chain(r);
+            execute(&mut cipher, &mut r, w, opt)?;
+            return Ok(());
+        } else {
+            Cipher::with_password(password.as_bytes(), None)
+        }
     } else {
         return Err("key is not specified".into());
     };
-    if opt.decrypt {
-        cipher.decrypt(r, w)?;
-    } else {
-        cipher.encrypt(r, w)?;
-    }
+    execute(&mut cipher, r, w, opt)?;
     Ok(())
 }
 

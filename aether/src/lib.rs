@@ -8,26 +8,36 @@ use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
 };
+use argon2::Argon2;
 use base64::Engine;
 use bytes::{Buf, BufMut};
 use crypto_bigint::rand_core::RngCore as _;
 use typenum::U12;
 
+type Integrity = [u8; INTEGRITY_SIZE];
+
 pub struct Cipher {
     gcm: Aes256Gcm,
     countered_nonce: CounteredNonce,
+    integrity: Option<Integrity>,
 }
 
 pub const KEY_SIZE: usize = 32;
-const BUFSIZE: usize = 8192;
+pub const HEADER_SIZE: usize = 32;
+const BUFFER_SIZE: usize = 8192;
 const NONCE_SIZE: usize = 12;
-const INTEGRITY_SIZE: usize = 8;
+const COUNTER_SIZE: usize = 8;
+const INTEGRITY_SIZE: usize = 16;
 
 impl Cipher {
-    pub fn new(key: &Key<Aes256Gcm>) -> Cipher {
+    fn new0(key: &Key<Aes256Gcm>, integrity: Option<Integrity>) -> Cipher {
         let gcm = Aes256Gcm::new(key);
         let countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
-        Cipher { gcm, countered_nonce }
+        Cipher { gcm, countered_nonce, integrity }
+    }
+
+    pub fn new(key: &Key<Aes256Gcm>) -> Cipher {
+        Cipher::new0(key, None)
     }
 
     pub fn with_key_slice(key: &[u8]) -> Cipher {
@@ -40,15 +50,39 @@ impl Cipher {
         Cipher::with_key_slice(&key)
     }
 
+    pub fn with_password(password: &[u8], salt: Option<Integrity>) -> Cipher {
+        let salt = salt.unwrap_or_else(|| {
+            let mut salt = [0u8; INTEGRITY_SIZE];
+            OsRng.fill_bytes(&mut salt);
+            salt
+        });
+        // Use Argon2id with a minimum configuration of 19 MiB of memory, an iteration count of 2, and 1 degree of parallelism.
+        // See: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+        let argon2 = Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(19 * 1024, 2, 1, Some(32)).unwrap(),
+        );
+        let mut key = [0u8; KEY_SIZE];
+        argon2.hash_password_into(password, &salt, &mut key).unwrap();
+        let key = Key::<Aes256Gcm>::from_slice(&key);
+        Cipher::new0(key, Some(salt.clone()))
+    }
+
     pub fn encrypt<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<(), std::io::Error> {
         let mut countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
-        let integrity = OsRng.next_u64();
-        let header = self.make_header(&countered_nonce.peek(), integrity);
-        let integrity = integrity.to_be_bytes();
+        let integrity = if let Some(integrity) = self.integrity {
+            integrity
+        } else {
+            let mut integrity = [0u8; INTEGRITY_SIZE];
+            OsRng.fill_bytes(&mut integrity);
+            integrity
+        };
+        let header = Header::new(&countered_nonce.peek(), integrity).to_bytes();
         w.write_all(&header)?;
         let mut r = r.chain(&integrity[..]);
         loop {
-            let mut buf = [0u8; BUFSIZE - 16];
+            let mut buf = [0u8; BUFFER_SIZE - 16];
             let pos = self.read_exact_or_eof(&mut r, &mut buf)?;
             if pos == 0 {
                 break;
@@ -81,14 +115,14 @@ impl Cipher {
     }
 
     pub fn decrypt<R: BufRead, W: Write>(&mut self, mut r: R, mut w: BufWriter<W>) -> Result<(), std::io::Error> {
-        let mut header = [0u8; 24];
+        let mut header = [0u8; HEADER_SIZE];
         r.read_exact(&mut header)?;
-        let (iv, expected_integrity) = self.load_header(&header)?;
-        let mut countered_nonce = CounteredNonce::new(iv);
-        let mut tmp_old = Vec::with_capacity(BUFSIZE);
-        let mut tmp_new = Vec::with_capacity(BUFSIZE);
+        let header = Header::from_bytes(&header)?;
+        let mut countered_nonce = CounteredNonce::new(header.iv);
+        let mut tmp_old = Vec::with_capacity(BUFFER_SIZE);
+        let mut tmp_new = Vec::with_capacity(BUFFER_SIZE);
         loop {
-            let mut buf = [0u8; BUFSIZE];
+            let mut buf = [0u8; BUFFER_SIZE];
             let pos = self.read_exact_or_eof(&mut r, &mut buf)?;
             if pos == 0 {
                 break;
@@ -110,7 +144,7 @@ impl Cipher {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid data"));
         }
         let (tmp, actual_integrity) = tmp_old.split_at(tmp_old.len() - INTEGRITY_SIZE);
-        if expected_integrity != u64::from_be_bytes(actual_integrity.try_into().unwrap()) {
+        if header.integrity != actual_integrity {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid integrity"));
         }
         w.write_all(&tmp)?;
@@ -141,38 +175,58 @@ impl Cipher {
         loop {
             let n = r.read(&mut buf[pos..])?;
             pos += n;
-            if n == 0 || pos == BUFSIZE {
+            if n == 0 || pos == BUFFER_SIZE {
                 break;
             }
         }
         Ok(pos)
     }
+}
 
-    fn make_header(&self, iv: &Nonce<U12>, integrity: u64) -> Vec<u8> {
-        let mut header = Vec::new();
+#[derive(Clone)]
+pub struct Header {
+    magic: u16,
+    flags: u16,
+    iv: Nonce<U12>,
+    pub integrity: Integrity,
+}
+
+impl Header {
+    pub fn new(iv: &Nonce<U12>, integrity: Integrity) -> Header {
+        Header { magic: 0xae71, flags: 0, iv: *iv, integrity }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut header = Vec::with_capacity(HEADER_SIZE);
         // 2: 0..2
-        header.put_u16(0xae71);
+        header.put_u16(self.magic);
         // 2: 2..4
-        header.put_u16(0x0000);
+        header.put_u16(self.flags);
         // 12: 4..16
-        header.write_all(&iv).unwrap();
-        // 8: 16..24
-        header.put_u64(integrity);
+        header.write_all(self.iv.as_ref()).unwrap();
+        // 16: 16..32
+        header.write_all(self.integrity.as_ref()).unwrap();
+        assert_eq!(header.len(), HEADER_SIZE);
         header
     }
 
-    fn load_header(&self, header: &[u8]) -> Result<(Nonce<U12>, u64), std::io::Error> {
-        let mut header = &header[..];
+    pub fn from_bytes(bs: &[u8]) -> Result<Header, std::io::Error> {
+        if bs.len() != HEADER_SIZE {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header (len)"));
+        }
+        let mut header = &bs[..];
         let magic = header.get_u16();
         if magic != 0xae71 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header (magic)"));
         }
-        let _unused = header.get_u16();
+        let flags = header.get_u16();
         let mut iv = Nonce::default();
         iv.as_mut_slice().copy_from_slice(&header[..NONCE_SIZE]);
         header.advance(NONCE_SIZE);
-        let integrity = header.get_u64();
-        Ok((iv, integrity))
+        let mut integrity = [0u8; INTEGRITY_SIZE];
+        integrity.copy_from_slice(&header[..INTEGRITY_SIZE]);
+        header.advance(INTEGRITY_SIZE);
+        Ok(Header { magic, flags, iv, integrity })
     }
 }
 
@@ -191,7 +245,7 @@ impl CounteredNonce {
         let xs = nonce.as_mut_slice();
         let ys = self.counter.to_be_bytes();
         for i in 0..ys.len() {
-            xs[i + NONCE_SIZE - INTEGRITY_SIZE] ^= ys[i];
+            xs[i + NONCE_SIZE - COUNTER_SIZE] ^= ys[i];
         }
         nonce
     }
@@ -209,7 +263,7 @@ mod tests {
 
     use aes_gcm::{Aes256Gcm, Key};
 
-    use crate::KEY_SIZE;
+    use crate::{INTEGRITY_SIZE, KEY_SIZE};
 
     use super::Cipher;
 
@@ -232,7 +286,7 @@ mod tests {
         let mut ciphertext = Vec::new();
         let bw = BufWriter::new(&mut ciphertext);
         cipher.encrypt(&plaintext[..], bw).unwrap();
-        xxd(&ciphertext, 0, 32);
+        xxd(&ciphertext, 0, ciphertext.len());
         let mut plaintext2 = Vec::new();
         let bw = BufWriter::new(&mut plaintext2);
         cipher.decrypt(&ciphertext[..], bw).unwrap();
@@ -270,5 +324,21 @@ mod tests {
         println!("{}", ciphertext.to_string_lossy());
         let plaintext = cipher.decrypt_file_name(&ciphertext).unwrap();
         assert_eq!(s, plaintext.to_string_lossy());
+    }
+
+    #[test]
+    fn test_password() {
+        let password = b"test";
+        let integrity = [42u8; INTEGRITY_SIZE];
+        let mut cipher = Cipher::with_password(password, Some(integrity));
+        let plaintext = b"Hello, world!";
+        let mut ciphertext = Vec::new();
+        let bw = BufWriter::new(&mut ciphertext);
+        cipher.encrypt(&plaintext[..], bw).unwrap();
+        xxd(&ciphertext, 0, ciphertext.len());
+        let mut plaintext2 = Vec::new();
+        let bw = BufWriter::new(&mut plaintext2);
+        cipher.decrypt(&ciphertext[..], bw).unwrap();
+        assert_eq!(plaintext, &plaintext2[..]);
     }
 }

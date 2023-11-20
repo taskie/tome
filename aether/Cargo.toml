@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 aes-gcm = "0.10.3"
+argon2 = "0.5.2"
 base64 = "0.21.5"
 bytes = "1.5.0"
 crypto-bigint = "0.5.4"
