@@ -2,9 +2,9 @@ use std::{
     env,
     error::Error,
     ffi::OsStr,
-    fs::File,
+    fs::{metadata, set_permissions, File},
     io::{BufRead, BufWriter, Read, Write},
-    os::unix::ffi::OsStrExt,
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt as _},
     path::{Path, PathBuf},
     process::exit,
 };
@@ -174,6 +174,9 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 process(r, w, &opt)?;
             }
             tempfile.persist(output)?;
+            let mut perms = metadata(output)?.permissions();
+            perms.set_mode(0o644);
+            set_permissions(output, perms)?;
         }
     } else {
         let input = opt.input.as_ref().unwrap();
@@ -196,6 +199,10 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
                 process(r, w, &opt)?;
             }
             tempfile.persist(&output)?;
+            let input_perms = metadata(input)?.permissions();
+            let mut perms = metadata(&output)?.permissions();
+            perms.set_mode(input_perms.mode());
+            set_permissions(&output, perms)?;
         }
     }
     Ok(0)
