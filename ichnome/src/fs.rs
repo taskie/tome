@@ -34,6 +34,7 @@ pub trait Filesystem {
     fn list(&mut self, path: &str) -> Result<Vec<FileEntry>, FilesystemError>;
     fn upload(&mut self, path: &str, file: &Path) -> Result<(), FilesystemError>;
     fn download(&mut self, path: &str, file: &Path) -> Result<(), FilesystemError>;
+    fn delete(&mut self, path: &str) -> Result<(), FilesystemError>;
 
     fn read(&mut self, path: &str) -> Result<Vec<u8>, FilesystemError> {
         let tempfile = NamedTempFile::new()?;
@@ -114,6 +115,13 @@ impl LocalFilesystem {
         std::io::copy(&mut f, &mut file)?;
         Ok(())
     }
+
+    fn delete_sync(&mut self, path: &str) -> Result<(), FilesystemError> {
+        let full_path = self.base_path.join(path);
+        info!("delete: {}", full_path.to_string_lossy());
+        std::fs::remove_file(full_path)?;
+        Ok(())
+    }
 }
 
 impl Filesystem for LocalFilesystem {
@@ -131,6 +139,10 @@ impl Filesystem for LocalFilesystem {
 
     fn download(&mut self, path: &str, file: &Path) -> Result<(), FilesystemError> {
         self.download_sync(path, file)
+    }
+
+    fn delete(&mut self, path: &str) -> Result<(), FilesystemError> {
+        self.delete_sync(path)
     }
 }
 
@@ -222,6 +234,15 @@ impl SshFilesystem {
         std::io::copy(&mut remote_file, &mut file)?;
         Ok(())
     }
+
+    fn delete_sync(&mut self, path: &str) -> Result<(), FilesystemError> {
+        let sess = self.session()?;
+        let sftp = sess.sftp()?;
+        let full_path = self.base_path.join(path);
+        info!("delete: {}", full_path.to_string_lossy());
+        sftp.unlink(&full_path)?;
+        Ok(())
+    }
 }
 
 impl Filesystem for SshFilesystem {
@@ -239,6 +260,10 @@ impl Filesystem for SshFilesystem {
 
     fn download(&mut self, path: &str, file: &Path) -> Result<(), FilesystemError> {
         self.download_sync(path, file).into()
+    }
+
+    fn delete(&mut self, path: &str) -> Result<(), FilesystemError> {
+        self.delete_sync(path)
     }
 }
 
@@ -326,6 +351,21 @@ impl Filesystem for S3Filesystem {
             let mut reader = resp.body.into_async_read();
             let mut file = tokio::fs::File::create(file).await?;
             tokio::io::copy(&mut reader, &mut file).await?;
+            Ok(())
+        })
+    }
+
+    fn delete(&mut self, path: &str) -> Result<(), FilesystemError> {
+        self.handle.block_on(async {
+            let full_path = self.base_path.join(path);
+            let _resp = self
+                .client
+                .delete_object()
+                .bucket(self.bucket.clone())
+                .key(full_path.to_string_lossy().to_string())
+                .send()
+                .await
+                .map_err(|e| FilesystemError::AwsS3(e.into()))?;
             Ok(())
         })
     }
