@@ -444,6 +444,8 @@ pub(crate) struct FileMetadata {
     pub digest: Vec<u8>,
 }
 
+pub(crate) type FileStateHandler = Box<dyn Fn(Option<&Stat>, &Path) -> Result<Option<FileState>, Box<dyn Error>>>;
+
 pub(crate) fn new_updated_file_state_if_needed(
     stat: Option<&Stat>,
     path: &Path,
@@ -494,9 +496,11 @@ pub(crate) fn update_stat_with_paths_if_needed<I: IdGenerate>(
     stat_path: &str,
     file_path: &Path,
     now: DateTime<Utc>,
+    file_state_handler: Option<FileStateHandler>,
 ) -> Result<Option<Stat>, Box<dyn Error>> {
     let old_stat = Stats::find_by_path(conn, group.id, stat_path)?;
-    let file_state = new_updated_file_state_if_needed(old_stat.as_ref(), file_path)?;
+    let file_state_handler = file_state_handler.unwrap_or(Box::new(new_updated_file_state_if_needed));
+    let file_state = file_state_handler(old_stat.as_ref(), file_path)?;
     trace!("updated file state: {:?}", file_state);
     if let Some(file_state) = file_state {
         if let FileState::Enabled(md) = file_state {
@@ -521,7 +525,7 @@ pub(crate) fn update_stat_with_present_paths_if_needed<I: IdGenerate>(
     file_path: &Path,
     now: DateTime<Utc>,
 ) -> Result<Stat, Box<dyn Error>> {
-    update_stat_with_paths_if_needed(conn, id_generator, group, stat_path, file_path, now).map(|s| s.unwrap())
+    update_stat_with_paths_if_needed(conn, id_generator, group, stat_path, file_path, now, None).map(|s| s.unwrap())
 }
 
 pub(crate) fn update_meta_group_stat<I: IdGenerate>(

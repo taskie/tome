@@ -8,7 +8,10 @@ use diesel::Connection;
 use ichno::id::IdGenerator;
 use ichnome::{
     action,
-    action::{CopyRequest, PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions, SetupRequest},
+    action::{
+        CopyOptions, CopyRequest, PullOptions, PullRequest, RegisterOptions, RegisterRequest, SetupOptions,
+        SetupRequest,
+    },
     db::Connection as OmConnection,
 };
 use structopt::{clap, StructOpt};
@@ -75,6 +78,9 @@ pub struct Copy {
 
     #[structopt(name = "DST")]
     pub dst: String,
+
+    #[structopt(long)]
+    pub overwrite: bool,
 }
 
 fn main_with_error(handle: Handle) -> Result<i32, Box<dyn Error>> {
@@ -132,7 +138,7 @@ fn main_with_error(handle: Handle) -> Result<i32, Box<dyn Error>> {
                     src_group_name: src[0].to_owned(),
                     src_path: src[1].to_owned(),
                     dst_group_name: copy.dst.clone(),
-                    options: Default::default(),
+                    options: CopyOptions { overwrite: copy.overwrite, ..Default::default() },
                 },
             )?;
             let error_count = results.paths.iter().map(|r| !r.0 as i32).reduce(|acc, e| acc + e).unwrap_or_default();

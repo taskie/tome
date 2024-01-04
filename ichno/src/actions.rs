@@ -82,5 +82,5 @@ pub fn update_file_stat<P: AsRef<Path>>(ctx: &mut Context, path: P) -> Result<Op
     } else {
         return Err(Box::new(DomainError::params("path", format!("can't convert to UTF-8: {:?}", path_ref))));
     };
-    update_stat_with_paths_if_needed(ctx.connection, ctx.id_generator, group, path_str, path_ref, now)
+    update_stat_with_paths_if_needed(ctx.connection, ctx.id_generator, group, path_str, path_ref, now, None)
 }

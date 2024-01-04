@@ -1,4 +1,8 @@
-use std::{error::Error, path::Path};
+use std::{
+    collections::HashMap,
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use chrono::{DateTime, Utc};
 use diesel::{Connection, SqliteConnection};
@@ -7,7 +11,6 @@ use ichno::{
     id::IdGenerator,
     Status,
 };
-
 use tempfile::NamedTempFile;
 use tokio::runtime::Handle;
 use url::Url;
@@ -17,7 +20,8 @@ use crate::{
     db::{
         actions::{
             create_footprint_if_needed, create_group_if_needed, create_meta_group_if_needed,
-            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat, FileState,
+            create_workspace_if_needed, new_updated_file_state_if_needed, update_meta_group_stat,
+            update_stat_with_paths_if_needed, FileMetadata, FileState,
         },
         Connection as OmConnection, OmFootprints, OmGroups, OmHistories, OmStats, OmWorkspaces,
         StatSearchCondition as OmStatSearchCondition,
@@ -306,11 +310,13 @@ pub struct CopyRequest {
 }
 
 #[derive(Debug)]
-pub struct CopyOptions {}
+pub struct CopyOptions {
+    pub overwrite: bool,
+}
 
 impl Default for CopyOptions {
     fn default() -> Self {
-        CopyOptions {}
+        CopyOptions { overwrite: false }
     }
 }
 
@@ -318,7 +324,7 @@ impl Default for CopyOptions {
 pub struct CopyResponse {
     pub src_group: Group,
     pub dst_group: Group,
-    pub paths: Vec<(bool, String, Option<String>)>,
+    pub paths: Vec<(bool, String, String, Status)>,
 }
 
 pub fn copy<'a>(ctx: &'a mut Context<'a>, req: &'a CopyRequest) -> Result<CopyResponse, Box<dyn Error>> {
@@ -327,36 +333,113 @@ pub fn copy<'a>(ctx: &'a mut Context<'a>, req: &'a CopyRequest) -> Result<CopyRe
     let mut src_filesystem = group_filesystem(ctx.handle.clone(), &src_group).unwrap();
     let dst_group = OmGroups::find_by_name(ctx.connection, workspace.id, &req.dst_group_name).unwrap().unwrap();
     let mut dst_filesystem = group_filesystem(ctx.handle.clone(), &dst_group).unwrap();
+    // sources
     let cond = OmStatSearchCondition {
-        group_ids: Some(vec![src_group.id]),
+        group_ids: Some(vec![src_group.id, dst_group.id]),
         path_prefix: Some(&req.src_path),
         statuses: Some(vec![Status::Enabled]),
         ..Default::default()
     };
-    let mut paths: Vec<(bool, String, Option<String>)> = Vec::new();
     let stats = OmStats::search(ctx.connection, workspace.id, &cond).unwrap();
-    for stat in stats.iter() {
+    let src_stats = stats.iter().filter(|s| s.group_id == src_group.id).cloned().collect::<Vec<_>>();
+    let src_path_to_stat = src_stats.iter().map(|s| (s.path.to_string(), s)).collect::<HashMap<_, _>>();
+    let dst_stats = stats.iter().filter(|s| s.group_id == dst_group.id).collect::<Vec<_>>();
+    let dst_path_to_stat = dst_stats.iter().map(|s| (s.path.to_string(), s)).collect::<HashMap<_, _>>();
+    // check difference
+    let appeared_stats =
+        src_stats.iter().filter(|s| !dst_path_to_stat.contains_key(&s.path)).cloned().collect::<Vec<_>>();
+    let disappeared_stats = dst_stats.iter().filter(|s| !src_path_to_stat.contains_key(&s.path)).collect::<Vec<_>>();
+    let updated_stats = src_stats
+        .iter()
+        .filter(|s| {
+            if let Some(dst_stat) = dst_path_to_stat.get(&s.path) {
+                if s.fast_digest == dst_stat.fast_digest && s.digest == dst_stat.digest {
+                    if req.options.overwrite {
+                        debug!("{}: no change but overwritten", s.path);
+                        true
+                    } else {
+                        debug!("{}: no change", s.path);
+                        false
+                    }
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+        })
+        .collect::<Vec<_>>();
+    // upload files
+    let mut results: Vec<(bool, String, String, Status)> = Vec::new();
+    for src_stat in appeared_stats.iter().chain(updated_stats) {
+        debug!("{}: uploading", src_stat.path);
+        let dst_path = src_stat.path.to_owned();
+        let dst_full_path = url_parent(&dst_group.url).and_then(|u| u.join(&dst_path).ok()).unwrap().to_string();
         let tempfile = NamedTempFile::new()?;
         {
             let _file = tempfile.reopen()?;
-            if let Err(e) = src_filesystem.download(&stat.path, tempfile.path()) {
+            if let Err(e) = src_filesystem.download(&src_stat.path, tempfile.path()) {
                 warn!("failed to download: {}", e);
-                paths.push((false, stat.path.to_string(), None));
+                results.push((false, src_stat.path.to_string(), dst_full_path, Status::Enabled));
                 continue;
             };
         }
         {
-            let dst_path = url_parent(&dst_group.url).and_then(|u| u.join(&stat.path).ok()).unwrap().to_string();
-            if let Err(e) = dst_filesystem.upload(&stat.path, tempfile.path()) {
+            if let Err(e) = dst_filesystem.upload(&src_stat.path, tempfile.path()) {
                 warn!("failed to upload: {}", e);
-                paths.push((false, stat.path.to_string(), Some(dst_path)));
+                results.push((false, src_stat.path.to_string(), dst_full_path, Status::Enabled));
                 continue;
             };
-            paths.push((true, stat.path.to_string(), Some(dst_path)));
+            results.push((true, src_stat.path.to_string(), dst_full_path, Status::Enabled));
+            // update database
+            let now = ctx.current_time();
+            let path = PathBuf::from(&dst_path);
+            let src_stat = src_stat.clone();
+            update_stat_with_paths_if_needed(
+                ctx.connection,
+                ctx.id_generator,
+                &dst_group,
+                &dst_path,
+                &path,
+                now,
+                Some(Box::new(move |_stat, _path| {
+                    Ok(Some(FileState::Enabled(FileMetadata {
+                        size: src_stat.size.unwrap(),
+                        mtime: src_stat.mtime.as_ref().unwrap().clone(),
+                        fast_digest: src_stat.fast_digest.unwrap(),
+                        digest: src_stat.digest.as_ref().unwrap().clone(),
+                    })))
+                })),
+            )
+            .unwrap();
         }
     }
-    // TODO: sync database
-    Ok(CopyResponse { src_group, dst_group, paths })
+    // delete files
+    for dst_stat in disappeared_stats.iter() {
+        debug!("{}: deleting", dst_stat.path);
+        let dst_path = dst_stat.path.to_owned();
+        let dst_full_path = url_parent(&dst_group.url).and_then(|u| u.join(&dst_path).ok()).unwrap().to_string();
+        if let Err(e) = dst_filesystem.delete(&dst_full_path) {
+            warn!("failed to delete: {}", e);
+            results.push((false, dst_stat.path.to_string(), dst_full_path, Status::Disabled));
+            continue;
+        };
+        results.push((true, dst_stat.path.to_string(), dst_full_path, Status::Disabled));
+        // update database
+        let now = ctx.current_time();
+        let path = PathBuf::from(&dst_path);
+        update_stat_with_paths_if_needed(
+            ctx.connection,
+            ctx.id_generator,
+            &dst_group,
+            &dst_path,
+            &path,
+            now,
+            Some(Box::new(|_stat, _path| Ok(Some(FileState::Disabled)))),
+        )
+        .unwrap();
+    }
+    Ok(CopyResponse { src_group, dst_group, paths: results })
 }
 
 fn group_filesystem(handle: Handle, group: &Group) -> Option<Box<dyn Filesystem>> {
