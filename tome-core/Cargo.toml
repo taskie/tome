@@ -1,0 +1,15 @@
+[package]
+name = "tome-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sonyflake = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+twox-hash = { workspace = true }
