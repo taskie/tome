@@ -6,7 +6,7 @@ use sea_orm::{
 
 use tome_core::{hash::FileHash, id::next_id};
 
-use crate::entities::{blob, entry, entry_cache, repository, snapshot};
+use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, store};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Repository
@@ -277,4 +277,165 @@ pub async fn upsert_cache_deleted(
         .exec(db)
         .await?;
     Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Store
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Get or create a store by name.
+pub async fn get_or_create_store(
+    db: &DatabaseConnection,
+    name: &str,
+    url: &str,
+    config: serde_json::Value,
+) -> anyhow::Result<store::Model> {
+    if let Some(s) = store::Entity::find()
+        .filter(store::Column::Name.eq(name))
+        .one(db)
+        .await?
+    {
+        return Ok(s);
+    }
+    let now = Utc::now().fixed_offset();
+    let am = store::ActiveModel {
+        id: Set(next_id()?),
+        name: Set(name.to_owned()),
+        url: Set(url.to_owned()),
+        config: Set(config),
+        created_at: Set(now),
+        updated_at: Set(now),
+    };
+    Ok(am.insert(db).await?)
+}
+
+/// Find a store by name.
+pub async fn find_store_by_name(
+    db: &DatabaseConnection,
+    name: &str,
+) -> anyhow::Result<Option<store::Model>> {
+    Ok(store::Entity::find()
+        .filter(store::Column::Name.eq(name))
+        .one(db)
+        .await?)
+}
+
+/// List all stores.
+pub async fn list_stores(db: &DatabaseConnection) -> anyhow::Result<Vec<store::Model>> {
+    Ok(store::Entity::find().all(db).await?)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Replica
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Check whether a replica exists for (blob_id, store_id).
+pub async fn replica_exists(
+    db: &DatabaseConnection,
+    blob_id: i64,
+    store_id: i64,
+) -> anyhow::Result<bool> {
+    Ok(replica::Entity::find()
+        .filter(replica::Column::BlobId.eq(blob_id))
+        .filter(replica::Column::StoreId.eq(store_id))
+        .one(db)
+        .await?
+        .is_some())
+}
+
+/// Record a new replica.
+pub async fn insert_replica(
+    db: &DatabaseConnection,
+    blob_id: i64,
+    store_id: i64,
+    path: &str,
+    encrypted: bool,
+) -> anyhow::Result<replica::Model> {
+    let now = Utc::now().fixed_offset();
+    let am = replica::ActiveModel {
+        id: Set(next_id()?),
+        blob_id: Set(blob_id),
+        store_id: Set(store_id),
+        path: Set(path.to_owned()),
+        encrypted: Set(encrypted),
+        verified_at: Set(None),
+        created_at: Set(now),
+    };
+    Ok(am.insert(db).await?)
+}
+
+/// Find all replicas in a given store.
+pub async fn replicas_in_store(
+    db: &DatabaseConnection,
+    store_id: i64,
+) -> anyhow::Result<Vec<replica::Model>> {
+    Ok(replica::Entity::find()
+        .filter(replica::Column::StoreId.eq(store_id))
+        .all(db)
+        .await?)
+}
+
+/// Find blobs that have a replica in src_store_id but NOT in dst_store_id.
+pub async fn blobs_missing_in_dst(
+    db: &DatabaseConnection,
+    src_store_id: i64,
+    dst_store_id: i64,
+) -> anyhow::Result<Vec<blob::Model>> {
+    use sea_orm::query::*;
+
+    // Subquery: blob_ids already in dst.
+    let dst_blob_ids: Vec<i64> = replica::Entity::find()
+        .select_only()
+        .column(replica::Column::BlobId)
+        .filter(replica::Column::StoreId.eq(dst_store_id))
+        .into_tuple()
+        .all(db)
+        .await?;
+
+    // Blobs in src but not in dst.
+    let src_replicas = replica::Entity::find()
+        .filter(replica::Column::StoreId.eq(src_store_id))
+        .filter(replica::Column::BlobId.is_not_in(dst_blob_ids))
+        .all(db)
+        .await?;
+
+    let blob_ids: Vec<i64> = src_replicas.into_iter().map(|r| r.blob_id).collect();
+    Ok(blob::Entity::find()
+        .filter(blob::Column::Id.is_in(blob_ids))
+        .all(db)
+        .await?)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Queries for store push
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// List all repositories.
+pub async fn list_repositories(db: &DatabaseConnection) -> anyhow::Result<Vec<repository::Model>> {
+    Ok(repository::Entity::find().all(db).await?)
+}
+
+/// Get present entries from entry_cache for a repository.
+pub async fn present_cache_entries(
+    db: &DatabaseConnection,
+    repository_id: i64,
+) -> anyhow::Result<Vec<entry_cache::Model>> {
+    Ok(entry_cache::Entity::find()
+        .filter(entry_cache::Column::RepositoryId.eq(repository_id))
+        .filter(entry_cache::Column::Status.eq(1i16))
+        .all(db)
+        .await?)
+}
+
+/// Get the latest snapshot for a repository (for metadata/scan_root).
+pub async fn latest_snapshot_metadata(
+    db: &DatabaseConnection,
+    repository_id: i64,
+) -> anyhow::Result<Option<serde_json::Value>> {
+    Ok(snapshot::Entity::find()
+        .filter(snapshot::Column::RepositoryId.eq(repository_id))
+        .order_by_desc(snapshot::Column::CreatedAt)
+        .one(db)
+        .await?
+        .map(|s| s.metadata))
 }

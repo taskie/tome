@@ -23,6 +23,8 @@ struct Cli {
 enum Commands {
     /// Scan a directory and record file changes
     Scan(commands::scan::ScanArgs),
+    /// Manage object stores
+    Store(commands::store::StoreArgs),
 }
 
 #[tokio::main]
@@ -48,6 +50,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Scan(args) => commands::scan::run(&db, args).await?,
+        Commands::Store(args) => commands::store::run(&db, args).await?,
     }
 
     Ok(())
