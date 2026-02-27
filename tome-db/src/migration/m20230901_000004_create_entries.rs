@@ -35,11 +35,7 @@ impl MigrationTrait for Migration {
                             .from(Entries::Table, Entries::SnapshotId)
                             .to(Snapshots::Table, Snapshots::Id),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(Entries::Table, Entries::BlobId)
-                            .to(Blobs::Table, Blobs::Id),
-                    )
+                    .foreign_key(ForeignKey::create().from(Entries::Table, Entries::BlobId).to(Blobs::Table, Blobs::Id))
                     .index(
                         Index::create()
                             .name("uq_entries_snapshot_path")
@@ -52,13 +48,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .create_index(
-                Index::create()
-                    .name("ix_entries_blob")
-                    .table(Entries::Table)
-                    .col(Entries::BlobId)
-                    .to_owned(),
-            )
+            .create_index(Index::create().name("ix_entries_blob").table(Entries::Table).col(Entries::BlobId).to_owned())
             .await?;
 
         manager

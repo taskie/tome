@@ -27,30 +27,15 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .from(Tags::Table, Tags::BlobId)
-                            .to(Blobs::Table, Blobs::Id),
-                    )
-                    .index(
-                        Index::create()
-                            .name("uq_tags_blob_key")
-                            .col(Tags::BlobId)
-                            .col(Tags::Key)
-                            .unique(),
-                    )
+                    .foreign_key(ForeignKey::create().from(Tags::Table, Tags::BlobId).to(Blobs::Table, Blobs::Id))
+                    .index(Index::create().name("uq_tags_blob_key").col(Tags::BlobId).col(Tags::Key).unique())
                     .to_owned(),
             )
             .await?;
 
         manager
             .create_index(
-                Index::create()
-                    .name("ix_tags_key_value")
-                    .table(Tags::Table)
-                    .col(Tags::Key)
-                    .col(Tags::Value)
-                    .to_owned(),
+                Index::create().name("ix_tags_key_value").table(Tags::Table).col(Tags::Key).col(Tags::Value).to_owned(),
             )
             .await
     }

@@ -29,17 +29,9 @@ pub enum Relation {
         to = "super::repository::Column::Id"
     )]
     Repository,
-    #[sea_orm(
-        belongs_to = "super::snapshot::Entity",
-        from = "Column::SnapshotId",
-        to = "super::snapshot::Column::Id"
-    )]
+    #[sea_orm(belongs_to = "super::snapshot::Entity", from = "Column::SnapshotId", to = "super::snapshot::Column::Id")]
     Snapshot,
-    #[sea_orm(
-        belongs_to = "super::entry::Entity",
-        from = "Column::EntryId",
-        to = "super::entry::Column::Id"
-    )]
+    #[sea_orm(belongs_to = "super::entry::Entity", from = "Column::EntryId", to = "super::entry::Column::Id")]
     Entry,
 }
 

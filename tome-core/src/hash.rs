@@ -68,11 +68,7 @@ pub struct FileMeta {
 impl FileMeta {
     pub fn from_metadata(meta: &std::fs::Metadata) -> Option<Self> {
         use std::os::unix::fs::MetadataExt;
-        Some(Self {
-            size: meta.len(),
-            mtime_secs: meta.mtime(),
-            mtime_nanos: meta.mtime_nsec() as u32,
-        })
+        Some(Self { size: meta.len(), mtime_secs: meta.mtime(), mtime_nanos: meta.mtime_nsec() as u32 })
     }
 }
 

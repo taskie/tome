@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::Serialize;
@@ -146,10 +146,7 @@ pub async fn get_repository(db: Db, Path(name): Path<String>) -> AppResult<Json<
 // GET /repositories/:name/snapshots
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn list_snapshots(
-    db: Db,
-    Path(name): Path<String>,
-) -> AppResult<Json<Vec<SnapshotResponse>>> {
+pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<Vec<SnapshotResponse>>> {
     let repo = repository::Entity::find()
         .filter(repository::Column::Name.eq(&name))
         .one(&*db)
@@ -169,10 +166,7 @@ pub async fn list_snapshots(
 // GET /snapshots/:id/entries
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn list_entries(
-    db: Db,
-    Path(id): Path<String>,
-) -> AppResult<Json<Vec<EntryResponse>>> {
+pub async fn list_entries(db: Db, Path(id): Path<String>) -> AppResult<Json<Vec<EntryResponse>>> {
     let snapshot_id: i64 = id.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id"))?;
     let entries = ops::entries_in_snapshot(&db, snapshot_id).await?;
     Ok(Json(entries.into_iter().map(Into::into).collect()))
@@ -183,8 +177,7 @@ pub async fn list_entries(
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<BlobResponse>> {
-    let digest = hex::decode(&digest_hex)
-        .map_err(|_| anyhow::anyhow!("invalid digest hex"))?;
+    let digest = hex::decode(&digest_hex).map_err(|_| anyhow::anyhow!("invalid digest hex"))?;
     let blob = ops::find_blob_by_digest(&db, &digest)
         .await?
         .ok_or_else(|| anyhow::anyhow!("blob {:?} not found", digest_hex))?;
@@ -195,10 +188,7 @@ pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<
 // GET /repositories/:name/latest
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn get_latest_snapshot(
-    db: Db,
-    Path(name): Path<String>,
-) -> AppResult<Json<Option<SnapshotResponse>>> {
+pub async fn get_latest_snapshot(db: Db, Path(name): Path<String>) -> AppResult<Json<Option<SnapshotResponse>>> {
     let repo = repository::Entity::find()
         .filter(repository::Column::Name.eq(&name))
         .one(&*db)

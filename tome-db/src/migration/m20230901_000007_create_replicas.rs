@@ -30,14 +30,10 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .foreign_key(
-                        ForeignKey::create()
-                            .from(Replicas::Table, Replicas::BlobId)
-                            .to(Blobs::Table, Blobs::Id),
+                        ForeignKey::create().from(Replicas::Table, Replicas::BlobId).to(Blobs::Table, Blobs::Id),
                     )
                     .foreign_key(
-                        ForeignKey::create()
-                            .from(Replicas::Table, Replicas::StoreId)
-                            .to(Stores::Table, Stores::Id),
+                        ForeignKey::create().from(Replicas::Table, Replicas::StoreId).to(Stores::Table, Stores::Id),
                     )
                     .index(
                         Index::create()

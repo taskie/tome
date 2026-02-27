@@ -26,11 +26,7 @@ pub async fn open_storage(url_str: &str) -> Result<Box<dyn Storage>> {
         "ssh" => {
             let host = url.host_str().ok_or_else(|| StoreError::InvalidUrl("missing host".into()))?.to_owned();
             let port = url.port().unwrap_or(22);
-            let username = if url.username().is_empty() {
-                whoami_user()
-            } else {
-                url.username().to_owned()
-            };
+            let username = if url.username().is_empty() { whoami_user() } else { url.username().to_owned() };
             let root = PathBuf::from(url.path());
             Ok(Box::new(SshStorage::new(host, port, username, root)))
         }

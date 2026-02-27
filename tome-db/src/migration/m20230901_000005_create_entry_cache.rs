@@ -1,8 +1,8 @@
 use sea_orm_migration::prelude::*;
 
 use super::{
-    m20230901_000002_create_blobs::Blobs, m20230901_000003_create_snapshots::Snapshots,
-    m20230901_000004_create_entries::Entries, m20230901_000001_create_repositories::Repositories,
+    m20230901_000001_create_repositories::Repositories, m20230901_000002_create_blobs::Blobs,
+    m20230901_000003_create_snapshots::Snapshots, m20230901_000004_create_entries::Entries,
 };
 
 pub struct Migration;
@@ -36,11 +36,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .primary_key(
-                        Index::create()
-                            .col(EntryCache::RepositoryId)
-                            .col(EntryCache::Path),
-                    )
+                    .primary_key(Index::create().col(EntryCache::RepositoryId).col(EntryCache::Path))
                     .foreign_key(
                         ForeignKey::create()
                             .from(EntryCache::Table, EntryCache::RepositoryId)
@@ -57,9 +53,7 @@ impl MigrationTrait for Migration {
                             .to(Entries::Table, Entries::Id),
                     )
                     .foreign_key(
-                        ForeignKey::create()
-                            .from(EntryCache::Table, EntryCache::BlobId)
-                            .to(Blobs::Table, Blobs::Id),
+                        ForeignKey::create().from(EntryCache::Table, EntryCache::BlobId).to(Blobs::Table, Blobs::Id),
                     )
                     .to_owned(),
             )

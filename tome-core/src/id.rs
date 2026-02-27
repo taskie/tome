@@ -14,11 +14,8 @@ static SONYFLAKE: Mutex<Option<Sonyflake>> = Mutex::new(None);
 pub fn init(machine_id: u16, start_time: Option<i64>) {
     let start_secs = start_time.unwrap_or(1_693_526_400);
     let start = Utc.timestamp_opt(start_secs, 0).single().expect("invalid start_time");
-    let sf = Builder::new()
-        .machine_id(&move || Ok(machine_id))
-        .start_time(start)
-        .finalize()
-        .expect("Sonyflake init failed");
+    let sf =
+        Builder::new().machine_id(&move || Ok(machine_id)).start_time(start).finalize().expect("Sonyflake init failed");
     *SONYFLAKE.lock().unwrap() = Some(sf);
 }
 
@@ -30,10 +27,5 @@ pub fn next_id() -> Result<i64> {
         init(0, None);
         guard = SONYFLAKE.lock().unwrap();
     }
-    guard
-        .as_mut()
-        .unwrap()
-        .next_id()
-        .map(|id| id as i64)
-        .map_err(|e| CoreError::IdGeneration(e.to_string()))
+    guard.as_mut().unwrap().next_id().map(|id| id as i64).map_err(|e| CoreError::IdGeneration(e.to_string()))
 }

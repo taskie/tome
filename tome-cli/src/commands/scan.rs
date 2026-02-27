@@ -76,27 +76,27 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     };
 
     // 6. Process each file entry.
+    let mut ctx =
+        ScanContext { db, snapshot_id: snapshot.id, repository_id: repo.id, cache: &mut cache, stats: &mut stats };
     for dir_entry in dir_entries {
         let abs_path = dir_entry.path();
         let rel_path = match abs_path.strip_prefix(&scan_root) {
             Ok(p) => p.to_string_lossy().into_owned(),
             Err(_) => {
                 warn!("could not relativize {:?}", abs_path);
-                stats.errors += 1;
+                ctx.stats.errors += 1;
                 continue;
             }
         };
 
-        stats.scanned += 1;
+        ctx.stats.scanned += 1;
         seen_paths.insert(rel_path.clone());
 
-        match process_file(db, abs_path, &rel_path, snapshot.id, repo.id, &mut cache, &mut stats)
-            .await
-        {
+        match process_file(&mut ctx, abs_path, &rel_path).await {
             Ok(()) => {}
             Err(e) => {
                 warn!("error processing {:?}: {}", rel_path, e);
-                stats.errors += 1;
+                ctx.stats.errors += 1;
             }
         }
     }
@@ -145,32 +145,29 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     Ok(())
 }
 
-async fn process_file(
-    db: &DatabaseConnection,
-    abs_path: &Path,
-    rel_path: &str,
+struct ScanContext<'a> {
+    db: &'a DatabaseConnection,
     snapshot_id: i64,
     repository_id: i64,
-    cache: &mut std::collections::HashMap<String, tome_db::entities::entry_cache::Model>,
-    stats: &mut ScanStats,
-) -> Result<()> {
+    cache: &'a mut std::collections::HashMap<String, tome_db::entities::entry_cache::Model>,
+    stats: &'a mut ScanStats,
+}
+
+async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str) -> Result<()> {
     let meta = std::fs::metadata(abs_path)?;
     let mtime_secs = meta.mtime();
     let mtime_nanos = meta.mtime_nsec() as u32;
     let size = meta.len();
 
     // Stage 1: compare mtime + size against cache.
-    if let Some(cached) = cache.get(rel_path) {
+    if let Some(cached) = ctx.cache.get(rel_path) {
         if cached.status == EntryStatus::Present.as_i16() {
             if let (Some(cached_size), Some(cached_mtime)) = (cached.size, cached.mtime) {
                 let cached_mtime_secs = cached_mtime.timestamp();
                 let cached_mtime_nanos = cached_mtime.timestamp_subsec_nanos();
-                if cached_size == size as i64
-                    && cached_mtime_secs == mtime_secs
-                    && cached_mtime_nanos == mtime_nanos
-                {
+                if cached_size == size as i64 && cached_mtime_secs == mtime_secs && cached_mtime_nanos == mtime_nanos {
                     // mtime + size unchanged — skip hashing.
-                    stats.unchanged += 1;
+                    ctx.stats.unchanged += 1;
                     return Ok(());
                 }
             }
@@ -183,80 +180,78 @@ async fn process_file(
                     // Content unchanged — update mtime in cache only.
                     let mtime_dt = make_mtime(mtime_secs, mtime_nanos);
                     ops::upsert_cache_present(
-                        db,
-                        repository_id,
-                        rel_path,
-                        cached.snapshot_id,
-                        cached.entry_id,
-                        cached.blob_id.unwrap(),
-                        Some(mtime_dt),
-                        cached.digest.clone(),
-                        cached.size,
-                        cached.fast_digest,
+                        ctx.db,
+                        ops::UpsertCachePresentParams {
+                            repository_id: ctx.repository_id,
+                            path: rel_path.to_owned(),
+                            snapshot_id: cached.snapshot_id,
+                            entry_id: cached.entry_id,
+                            blob_id: cached.blob_id.unwrap(),
+                            mtime: Some(mtime_dt),
+                            digest: cached.digest.clone(),
+                            size: cached.size,
+                            fast_digest: cached.fast_digest,
+                        },
                     )
                     .await?;
-                    stats.unchanged += 1;
+                    ctx.stats.unchanged += 1;
                     return Ok(());
                 }
             }
 
             // Content changed — create blob + entry.
-            record_present_file(db, abs_path, rel_path, snapshot_id, repository_id, &meta, &file_hash, cache, stats, true).await?;
+            record_present_file(ctx, rel_path, &meta, &file_hash, true).await?;
             return Ok(());
         }
     }
 
     // No cache entry or previously deleted — full hash.
     let file_hash = hash::hash_file(abs_path)?;
-    record_present_file(db, abs_path, rel_path, snapshot_id, repository_id, &meta, &file_hash, cache, stats, false).await?;
+    record_present_file(ctx, rel_path, &meta, &file_hash, false).await?;
     Ok(())
 }
 
 async fn record_present_file(
-    db: &DatabaseConnection,
-    _abs_path: &Path,
+    ctx: &mut ScanContext<'_>,
     rel_path: &str,
-    snapshot_id: i64,
-    repository_id: i64,
     meta: &std::fs::Metadata,
     file_hash: &hash::FileHash,
-    cache: &mut std::collections::HashMap<String, tome_db::entities::entry_cache::Model>,
-    stats: &mut ScanStats,
     modified: bool,
 ) -> Result<()> {
     let mtime_secs = meta.mtime();
     let mtime_nanos = meta.mtime_nsec() as u32;
     let mode = meta.mode() as i32;
 
-    let blob = ops::get_or_create_blob(db, file_hash).await?;
+    let blob = ops::get_or_create_blob(ctx.db, file_hash).await?;
     let mtime_dt = make_mtime(mtime_secs, mtime_nanos);
 
     let entry =
-        ops::insert_entry_present(db, snapshot_id, rel_path, blob.id, Some(mode), Some(mtime_dt))
-            .await?;
+        ops::insert_entry_present(ctx.db, ctx.snapshot_id, rel_path, blob.id, Some(mode), Some(mtime_dt)).await?;
 
     ops::upsert_cache_present(
-        db,
-        repository_id,
-        rel_path,
-        snapshot_id,
-        entry.id,
-        blob.id,
-        Some(mtime_dt),
-        Some(file_hash.digest.to_vec()),
-        Some(file_hash.size as i64),
-        Some(file_hash.fast_digest),
+        ctx.db,
+        ops::UpsertCachePresentParams {
+            repository_id: ctx.repository_id,
+            path: rel_path.to_owned(),
+            snapshot_id: ctx.snapshot_id,
+            entry_id: entry.id,
+            blob_id: blob.id,
+            mtime: Some(mtime_dt),
+            digest: Some(file_hash.digest.to_vec()),
+            size: Some(file_hash.size as i64),
+            fast_digest: Some(file_hash.fast_digest),
+        },
     )
     .await?;
 
     // Remove from cache map so it won't appear as "deleted" in the second pass.
-    cache.remove(rel_path);
+    ctx.cache.remove(rel_path);
 
     if modified {
-        stats.modified += 1;
+        ctx.stats.modified += 1;
         info!("modified: {}", rel_path);
     } else {
-        stats.added += 1;
+        ctx.stats.added += 1;
         info!("added: {}", rel_path);
     }
 
@@ -265,9 +260,5 @@ async fn record_present_file(
 
 fn make_mtime(secs: i64, nanos: u32) -> chrono::DateTime<chrono::FixedOffset> {
     use chrono::TimeZone;
-    chrono::Utc
-        .timestamp_opt(secs, nanos)
-        .single()
-        .unwrap_or_else(chrono::Utc::now)
-        .fixed_offset()
+    chrono::Utc.timestamp_opt(secs, nanos).single().unwrap_or_else(chrono::Utc::now).fixed_offset()
 }

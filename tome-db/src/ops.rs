@@ -1,7 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 
 use tome_core::{hash::FileHash, id::next_id};
@@ -13,15 +12,8 @@ use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, s
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Get or create a repository by name.
-pub async fn get_or_create_repository(
-    db: &DatabaseConnection,
-    name: &str,
-) -> anyhow::Result<repository::Model> {
-    if let Some(repo) = repository::Entity::find()
-        .filter(repository::Column::Name.eq(name))
-        .one(db)
-        .await?
-    {
+pub async fn get_or_create_repository(db: &DatabaseConnection, name: &str) -> anyhow::Result<repository::Model> {
+    if let Some(repo) = repository::Entity::find().filter(repository::Column::Name.eq(name)).one(db).await? {
         return Ok(repo);
     }
 
@@ -42,15 +34,8 @@ pub async fn get_or_create_repository(
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Find blob by digest, or insert and return it.
-pub async fn get_or_create_blob(
-    db: &DatabaseConnection,
-    file_hash: &FileHash,
-) -> anyhow::Result<blob::Model> {
-    if let Some(b) = blob::Entity::find()
-        .filter(blob::Column::Digest.eq(file_hash.digest.as_ref()))
-        .one(db)
-        .await?
-    {
+pub async fn get_or_create_blob(db: &DatabaseConnection, file_hash: &FileHash) -> anyhow::Result<blob::Model> {
+    if let Some(b) = blob::Entity::find().filter(blob::Column::Digest.eq(file_hash.digest.as_ref())).one(db).await? {
         return Ok(b);
     }
 
@@ -90,10 +75,7 @@ pub async fn create_snapshot(
 }
 
 /// Find the most recent snapshot for a repository (by created_at DESC).
-pub async fn latest_snapshot(
-    db: &DatabaseConnection,
-    repository_id: i64,
-) -> anyhow::Result<Option<snapshot::Model>> {
+pub async fn latest_snapshot(db: &DatabaseConnection, repository_id: i64) -> anyhow::Result<Option<snapshot::Model>> {
     Ok(snapshot::Entity::find()
         .filter(snapshot::Column::RepositoryId.eq(repository_id))
         .order_by_desc(snapshot::Column::CreatedAt)
@@ -175,58 +157,53 @@ pub async fn load_entry_cache(
     repository_id: i64,
 ) -> anyhow::Result<std::collections::HashMap<String, entry_cache::Model>> {
     use entry_cache::Column;
-    let rows = entry_cache::Entity::find()
-        .filter(Column::RepositoryId.eq(repository_id))
-        .all(db)
-        .await?;
+    let rows = entry_cache::Entity::find().filter(Column::RepositoryId.eq(repository_id)).all(db).await?;
     Ok(rows.into_iter().map(|r| (r.path.clone(), r)).collect())
 }
 
+pub struct UpsertCachePresentParams {
+    pub repository_id: i64,
+    pub path: String,
+    pub snapshot_id: i64,
+    pub entry_id: i64,
+    pub blob_id: i64,
+    pub mtime: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub digest: Option<Vec<u8>>,
+    pub size: Option<i64>,
+    pub fast_digest: Option<i64>,
+}
+
 /// Upsert (insert or replace) a cache row for a present file.
-pub async fn upsert_cache_present(
-    db: &DatabaseConnection,
-    repository_id: i64,
-    path: &str,
-    snapshot_id: i64,
-    entry_id: i64,
-    blob_id: i64,
-    mtime: Option<chrono::DateTime<chrono::FixedOffset>>,
-    digest: Option<Vec<u8>>,
-    size: Option<i64>,
-    fast_digest: Option<i64>,
-) -> anyhow::Result<()> {
+pub async fn upsert_cache_present(db: &DatabaseConnection, p: UpsertCachePresentParams) -> anyhow::Result<()> {
     let now = Utc::now().fixed_offset();
     let am = entry_cache::ActiveModel {
-        repository_id: Set(repository_id),
-        path: Set(path.to_owned()),
-        snapshot_id: Set(snapshot_id),
-        entry_id: Set(entry_id),
+        repository_id: Set(p.repository_id),
+        path: Set(p.path),
+        snapshot_id: Set(p.snapshot_id),
+        entry_id: Set(p.entry_id),
         status: Set(1),
-        blob_id: Set(Some(blob_id)),
-        mtime: Set(mtime),
-        digest: Set(digest),
-        size: Set(size),
-        fast_digest: Set(fast_digest),
+        blob_id: Set(Some(p.blob_id)),
+        mtime: Set(p.mtime),
+        digest: Set(p.digest),
+        size: Set(p.size),
+        fast_digest: Set(p.fast_digest),
         updated_at: Set(now),
     };
     entry_cache::Entity::insert(am)
         .on_conflict(
-            sea_orm::sea_query::OnConflict::columns([
-                entry_cache::Column::RepositoryId,
-                entry_cache::Column::Path,
-            ])
-            .update_columns([
-                entry_cache::Column::SnapshotId,
-                entry_cache::Column::EntryId,
-                entry_cache::Column::Status,
-                entry_cache::Column::BlobId,
-                entry_cache::Column::Mtime,
-                entry_cache::Column::Digest,
-                entry_cache::Column::Size,
-                entry_cache::Column::FastDigest,
-                entry_cache::Column::UpdatedAt,
-            ])
-            .to_owned(),
+            sea_orm::sea_query::OnConflict::columns([entry_cache::Column::RepositoryId, entry_cache::Column::Path])
+                .update_columns([
+                    entry_cache::Column::SnapshotId,
+                    entry_cache::Column::EntryId,
+                    entry_cache::Column::Status,
+                    entry_cache::Column::BlobId,
+                    entry_cache::Column::Mtime,
+                    entry_cache::Column::Digest,
+                    entry_cache::Column::Size,
+                    entry_cache::Column::FastDigest,
+                    entry_cache::Column::UpdatedAt,
+                ])
+                .to_owned(),
         )
         .exec(db)
         .await?;
@@ -257,22 +234,19 @@ pub async fn upsert_cache_deleted(
     };
     entry_cache::Entity::insert(am)
         .on_conflict(
-            sea_orm::sea_query::OnConflict::columns([
-                entry_cache::Column::RepositoryId,
-                entry_cache::Column::Path,
-            ])
-            .update_columns([
-                entry_cache::Column::SnapshotId,
-                entry_cache::Column::EntryId,
-                entry_cache::Column::Status,
-                entry_cache::Column::BlobId,
-                entry_cache::Column::Mtime,
-                entry_cache::Column::Digest,
-                entry_cache::Column::Size,
-                entry_cache::Column::FastDigest,
-                entry_cache::Column::UpdatedAt,
-            ])
-            .to_owned(),
+            sea_orm::sea_query::OnConflict::columns([entry_cache::Column::RepositoryId, entry_cache::Column::Path])
+                .update_columns([
+                    entry_cache::Column::SnapshotId,
+                    entry_cache::Column::EntryId,
+                    entry_cache::Column::Status,
+                    entry_cache::Column::BlobId,
+                    entry_cache::Column::Mtime,
+                    entry_cache::Column::Digest,
+                    entry_cache::Column::Size,
+                    entry_cache::Column::FastDigest,
+                    entry_cache::Column::UpdatedAt,
+                ])
+                .to_owned(),
         )
         .exec(db)
         .await?;
@@ -290,11 +264,7 @@ pub async fn get_or_create_store(
     url: &str,
     config: serde_json::Value,
 ) -> anyhow::Result<store::Model> {
-    if let Some(s) = store::Entity::find()
-        .filter(store::Column::Name.eq(name))
-        .one(db)
-        .await?
-    {
+    if let Some(s) = store::Entity::find().filter(store::Column::Name.eq(name)).one(db).await? {
         return Ok(s);
     }
     let now = Utc::now().fixed_offset();
@@ -310,14 +280,8 @@ pub async fn get_or_create_store(
 }
 
 /// Find a store by name.
-pub async fn find_store_by_name(
-    db: &DatabaseConnection,
-    name: &str,
-) -> anyhow::Result<Option<store::Model>> {
-    Ok(store::Entity::find()
-        .filter(store::Column::Name.eq(name))
-        .one(db)
-        .await?)
+pub async fn find_store_by_name(db: &DatabaseConnection, name: &str) -> anyhow::Result<Option<store::Model>> {
+    Ok(store::Entity::find().filter(store::Column::Name.eq(name)).one(db).await?)
 }
 
 /// List all stores.
@@ -330,11 +294,7 @@ pub async fn list_stores(db: &DatabaseConnection) -> anyhow::Result<Vec<store::M
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Check whether a replica exists for (blob_id, store_id).
-pub async fn replica_exists(
-    db: &DatabaseConnection,
-    blob_id: i64,
-    store_id: i64,
-) -> anyhow::Result<bool> {
+pub async fn replica_exists(db: &DatabaseConnection, blob_id: i64, store_id: i64) -> anyhow::Result<bool> {
     Ok(replica::Entity::find()
         .filter(replica::Column::BlobId.eq(blob_id))
         .filter(replica::Column::StoreId.eq(store_id))
@@ -365,14 +325,8 @@ pub async fn insert_replica(
 }
 
 /// Find all replicas in a given store.
-pub async fn replicas_in_store(
-    db: &DatabaseConnection,
-    store_id: i64,
-) -> anyhow::Result<Vec<replica::Model>> {
-    Ok(replica::Entity::find()
-        .filter(replica::Column::StoreId.eq(store_id))
-        .all(db)
-        .await?)
+pub async fn replicas_in_store(db: &DatabaseConnection, store_id: i64) -> anyhow::Result<Vec<replica::Model>> {
+    Ok(replica::Entity::find().filter(replica::Column::StoreId.eq(store_id)).all(db).await?)
 }
 
 /// Find blobs that have a replica in src_store_id but NOT in dst_store_id.
@@ -400,10 +354,7 @@ pub async fn blobs_missing_in_dst(
         .await?;
 
     let blob_ids: Vec<i64> = src_replicas.into_iter().map(|r| r.blob_id).collect();
-    Ok(blob::Entity::find()
-        .filter(blob::Column::Id.is_in(blob_ids))
-        .all(db)
-        .await?)
+    Ok(blob::Entity::find().filter(blob::Column::Id.is_in(blob_ids)).all(db).await?)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -481,14 +432,8 @@ pub async fn find_sync_peer(
 }
 
 /// List all sync peers for a repository.
-pub async fn list_sync_peers(
-    db: &DatabaseConnection,
-    repository_id: i64,
-) -> anyhow::Result<Vec<sync_peer::Model>> {
-    Ok(sync_peer::Entity::find()
-        .filter(sync_peer::Column::RepositoryId.eq(repository_id))
-        .all(db)
-        .await?)
+pub async fn list_sync_peers(db: &DatabaseConnection, repository_id: i64) -> anyhow::Result<Vec<sync_peer::Model>> {
+    Ok(sync_peer::Entity::find().filter(sync_peer::Column::RepositoryId.eq(repository_id)).all(db).await?)
 }
 
 /// Update the last_snapshot_id and last_synced_at of a sync peer.
@@ -534,31 +479,16 @@ pub async fn snapshots_after(
 }
 
 /// Get all entries in a snapshot.
-pub async fn entries_in_snapshot(
-    db: &DatabaseConnection,
-    snapshot_id: i64,
-) -> anyhow::Result<Vec<entry::Model>> {
-    Ok(entry::Entity::find()
-        .filter(entry::Column::SnapshotId.eq(snapshot_id))
-        .all(db)
-        .await?)
+pub async fn entries_in_snapshot(db: &DatabaseConnection, snapshot_id: i64) -> anyhow::Result<Vec<entry::Model>> {
+    Ok(entry::Entity::find().filter(entry::Column::SnapshotId.eq(snapshot_id)).all(db).await?)
 }
 
 /// Find a blob by digest.
-pub async fn find_blob_by_digest(
-    db: &DatabaseConnection,
-    digest: &[u8],
-) -> anyhow::Result<Option<blob::Model>> {
-    Ok(blob::Entity::find()
-        .filter(blob::Column::Digest.eq(digest))
-        .one(db)
-        .await?)
+pub async fn find_blob_by_digest(db: &DatabaseConnection, digest: &[u8]) -> anyhow::Result<Option<blob::Model>> {
+    Ok(blob::Entity::find().filter(blob::Column::Digest.eq(digest)).one(db).await?)
 }
 
 /// Find a blob by primary key ID.
-pub async fn find_blob_by_id(
-    db: &DatabaseConnection,
-    id: i64,
-) -> anyhow::Result<Option<blob::Model>> {
+pub async fn find_blob_by_id(db: &DatabaseConnection, id: i64) -> anyhow::Result<Option<blob::Model>> {
     Ok(blob::Entity::find_by_id(id).one(db).await?)
 }

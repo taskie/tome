@@ -1,11 +1,11 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use sea_orm::DatabaseConnection;
 use tracing::{info, warn};
 
 use tome_core::hash;
 use tome_db::ops;
-use tome_store::{encrypted::EncryptedStorage, factory, storage::blob_path, Storage};
+use tome_store::{Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
@@ -95,7 +95,7 @@ async fn store_list(db: &DatabaseConnection) -> Result<()> {
         println!("no stores registered");
         return Ok(());
     }
-    println!("{:<20} {:<8} {}", "name", "id", "url");
+    println!("{:<20} {:<8} url", "name", "id");
     println!("{}", "-".repeat(60));
     for s in stores {
         println!("{:<20} {:<8} {}", s.name, s.id, s.url);
@@ -153,11 +153,8 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs) -> Result<()> 
             continue;
         }
 
-        let digest_hex = cache
-            .digest
-            .as_ref()
-            .map(|d| hash::hex_encode(d))
-            .unwrap_or_else(|| format!("blob-{}", blob_id));
+        let digest_hex =
+            cache.digest.as_ref().map(|d| hash::hex_encode(d)).unwrap_or_else(|| format!("blob-{}", blob_id));
 
         let local_file = scan_root.join(&cache.path);
         if !local_file.exists() {
@@ -202,10 +199,7 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs) -> Result<()> 
             Some(ref p) => p.clone(),
             None => {
                 let default_dir = factory::key_dir();
-                bail!(
-                    "--key-file is required when --encrypt is set (default key dir: {:?})",
-                    default_dir
-                )
+                bail!("--key-file is required when --encrypt is set (default key dir: {:?})", default_dir)
             }
         };
         Some(factory::read_key_file(&key_path)?)

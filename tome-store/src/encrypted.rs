@@ -6,7 +6,7 @@ use std::{
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{error::Result, storage::Storage, StoreError};
+use crate::{StoreError, error::Result, storage::Storage};
 
 /// A `Storage` wrapper that transparently encrypts on upload and decrypts on download
 /// using `aether` (AES-256-GCM + Argon2id).

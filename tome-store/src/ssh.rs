@@ -7,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{error::Result, storage::Storage, StoreError};
+use crate::{StoreError, error::Result, storage::Storage};
 
 /// Storage backed by SFTP over SSH.
 ///
@@ -24,13 +24,7 @@ pub struct SshStorage {
 
 impl SshStorage {
     pub fn new(host: impl Into<String>, port: u16, username: impl Into<String>, root: PathBuf) -> Self {
-        Self {
-            host: host.into(),
-            port,
-            username: username.into(),
-            root,
-            session: Arc::new(Mutex::new(None)),
-        }
+        Self { host: host.into(), port, username: username.into(), root, session: Arc::new(Mutex::new(None)) }
     }
 
     fn ensure_session(
@@ -85,11 +79,7 @@ impl Storage for SshStorage {
                 let entries = sftp.readdir(&dir).map_err(StoreError::Ssh)?;
                 let result = entries
                     .into_iter()
-                    .filter_map(|(path, _stat)| {
-                        path.strip_prefix(&root)
-                            .ok()
-                            .map(|p| p.to_string_lossy().into_owned())
-                    })
+                    .filter_map(|(path, _stat)| path.strip_prefix(&root).ok().map(|p| p.to_string_lossy().into_owned()))
                     .collect();
                 Ok(result)
             })
@@ -154,9 +144,7 @@ impl Storage for SshStorage {
         let username = self.username.clone();
 
         tokio::task::spawn_blocking(move || {
-            Self::with_sftp(&session, &host, port, &username, |sftp| {
-                sftp.unlink(&path).map_err(StoreError::Ssh)
-            })
+            Self::with_sftp(&session, &host, port, &username, |sftp| sftp.unlink(&path).map_err(StoreError::Ssh))
         })
         .await
         .map_err(|e| StoreError::Other(e.to_string()))?
@@ -170,12 +158,10 @@ impl Storage for SshStorage {
         let username = self.username.clone();
 
         tokio::task::spawn_blocking(move || {
-            Self::with_sftp(&session, &host, port, &username, |sftp| {
-                match sftp.stat(&path) {
-                    Ok(_) => Ok(true),
-                    Err(e) if e.message() == "no such file" => Ok(false),
-                    Err(e) => Err(StoreError::Ssh(e)),
-                }
+            Self::with_sftp(&session, &host, port, &username, |sftp| match sftp.stat(&path) {
+                Ok(_) => Ok(true),
+                Err(e) if e.message() == "no such file" => Ok(false),
+                Err(e) => Err(StoreError::Ssh(e)),
             })
         })
         .await
@@ -185,9 +171,8 @@ impl Storage for SshStorage {
 
 /// Recursively create directories via SFTP (mkdir -p).
 fn mkdir_p(sftp: &ssh2::Sftp, dir: &Path) -> Result<()> {
-    match sftp.stat(dir) {
-        Ok(_) => return Ok(()),
-        Err(_) => {}
+    if sftp.stat(dir).is_ok() {
+        return Ok(());
     }
     if let Some(parent) = dir.parent() {
         mkdir_p(sftp, parent)?;

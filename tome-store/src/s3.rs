@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use aws_sdk_s3::primitives::ByteStream;
 use tracing::info;
 
-use crate::{error::Result, storage::Storage, StoreError};
+use crate::{StoreError, error::Result, storage::Storage};
 
 /// Storage backed by AWS S3 (or compatible object store).
 pub struct S3Storage {
@@ -55,9 +55,7 @@ impl Storage for S3Storage {
     async fn upload(&self, remote_path: &str, local_file: &Path) -> Result<()> {
         let key = self.full_key(remote_path);
         info!("s3 upload: {:?} -> s3://{}/{}", local_file, self.bucket, key);
-        let body = ByteStream::from_path(local_file)
-            .await
-            .map_err(|e| StoreError::Other(e.to_string()))?;
+        let body = ByteStream::from_path(local_file).await.map_err(|e| StoreError::Other(e.to_string()))?;
         self.client
             .put_object()
             .bucket(&self.bucket)
@@ -105,11 +103,7 @@ impl Storage for S3Storage {
             Ok(_) => Ok(true),
             Err(e) => {
                 let se = e.into_service_error();
-                if se.is_not_found() {
-                    Ok(false)
-                } else {
-                    Err(StoreError::AwsS3(se.to_string()))
-                }
+                if se.is_not_found() { Ok(false) } else { Err(StoreError::AwsS3(se.to_string())) }
             }
         }
     }

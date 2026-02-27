@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{error::Result, storage::Storage, StoreError};
+use crate::{StoreError, error::Result, storage::Storage};
 
 /// Storage backed by the local filesystem.
 pub struct LocalStorage {
