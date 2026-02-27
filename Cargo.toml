@@ -13,6 +13,7 @@ members = [
     "tome-core",
     "tome-db",
     "tome-store",
+    "tome-server",
     "tome-cli",
 ]
 resolver = "2"
@@ -20,6 +21,7 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
+axum = "0.7"
 aws-config = "1"
 aws-sdk-s3 = "1"
 chrono = { version = "0.4", features = ["serde"] }

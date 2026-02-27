@@ -27,6 +27,15 @@ enum Commands {
     Store(commands::store::StoreArgs),
     /// Manage sync peers and pull changes
     Sync(commands::sync::SyncArgs),
+    /// Start the HTTP API server
+    Serve(ServeArgs),
+}
+
+#[derive(clap::Args)]
+struct ServeArgs {
+    /// Address to listen on
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    addr: String,
 }
 
 #[tokio::main]
@@ -54,6 +63,7 @@ async fn main() -> Result<()> {
         Commands::Scan(args) => commands::scan::run(&db, args).await?,
         Commands::Store(args) => commands::store::run(&db, args).await?,
         Commands::Sync(args) => commands::sync::run(&db, args).await?,
+        Commands::Serve(args) => tome_server::serve(db, &args.addr).await?,
     }
 
     Ok(())
