@@ -517,3 +517,33 @@ pub async fn find_blob_by_digest(db: &DatabaseConnection, digest: &[u8]) -> anyh
 pub async fn find_blob_by_id(db: &DatabaseConnection, id: i64) -> anyhow::Result<Option<blob::Model>> {
     Ok(blob::Entity::find_by_id(id).one(db).await?)
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Diff queries
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Fetch present entries (status=1) for a snapshot, optionally filtered by path prefix.
+pub async fn entries_by_prefix(
+    db: &DatabaseConnection,
+    snapshot_id: i64,
+    path_prefix: &str,
+) -> anyhow::Result<Vec<entry::Model>> {
+    let mut q = entry::Entity::find()
+        .filter(entry::Column::SnapshotId.eq(snapshot_id))
+        .filter(entry::Column::Status.eq(1i16));
+    if !path_prefix.is_empty() {
+        q = q.filter(entry::Column::Path.like(format!("{path_prefix}%")));
+    }
+    Ok(q.all(db).await?)
+}
+
+/// Fetch blobs by a list of IDs.
+pub async fn blobs_by_ids(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<Vec<blob::Model>> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(blob::Entity::find()
+        .filter(blob::Column::Id.is_in(ids.iter().copied()))
+        .all(db)
+        .await?)
+}
