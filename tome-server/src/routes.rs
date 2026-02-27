@@ -1,10 +1,11 @@
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 use tome_core::hash::hex_encode;
 use tome_db::{
@@ -208,4 +209,98 @@ pub async fn get_latest_snapshot(db: Db, Path(name): Path<String>) -> AppResult<
 
     let snap = ops::latest_snapshot(&db, repo.id).await?;
     Ok(Json(snap.map(Into::into)))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /repositories/:name/diff
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct DiffQuery {
+    pub snapshot1: String,
+    pub snapshot2: String,
+    #[serde(default)]
+    pub prefix: String,
+}
+
+#[derive(Serialize)]
+pub struct DiffResponse {
+    pub snapshot1: SnapshotResponse,
+    pub snapshot2: SnapshotResponse,
+    pub blobs: HashMap<String, BlobResponse>,
+    pub entries: HashMap<String, EntryResponse>,
+    /// blob_id → (entry_ids_in_snapshot1, entry_ids_in_snapshot2)
+    pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
+}
+
+pub async fn diff_snapshots(
+    db: Db,
+    Path(name): Path<String>,
+    Query(q): Query<DiffQuery>,
+) -> AppResult<Json<DiffResponse>> {
+    let repo = repository::Entity::find()
+        .filter(repository::Column::Name.eq(&name))
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name))?;
+
+    let snap_id1: i64 = q.snapshot1.parse().map_err(|_| anyhow::anyhow!("invalid snapshot1 id"))?;
+    let snap_id2: i64 = q.snapshot2.parse().map_err(|_| anyhow::anyhow!("invalid snapshot2 id"))?;
+
+    let snap1 = snapshot::Entity::find_by_id(snap_id1)
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", snap_id1))?;
+    if snap1.repository_id != repo.id {
+        return Err(anyhow::anyhow!("snapshot1 does not belong to this repository").into());
+    }
+
+    let snap2 = snapshot::Entity::find_by_id(snap_id2)
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", snap_id2))?;
+    if snap2.repository_id != repo.id {
+        return Err(anyhow::anyhow!("snapshot2 does not belong to this repository").into());
+    }
+
+    let entries1 = ops::entries_by_prefix(&db, snap_id1, &q.prefix).await?;
+    let entries2 = ops::entries_by_prefix(&db, snap_id2, &q.prefix).await?;
+
+    let blob_ids: Vec<i64> = entries1
+        .iter()
+        .chain(entries2.iter())
+        .filter_map(|e| e.blob_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let blobs: HashMap<String, BlobResponse> = ops::blobs_by_ids(&db, &blob_ids)
+        .await?
+        .into_iter()
+        .map(|b| (b.id.to_string(), b.into()))
+        .collect();
+
+    let mut entries: HashMap<String, EntryResponse> = HashMap::new();
+    let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+
+    for e in &entries1 {
+        let eid = e.id.to_string();
+        let key = e.blob_id.map(|id| id.to_string()).unwrap_or_default();
+        diff.entry(key).or_default().0.push(eid.clone());
+        entries.insert(eid, e.clone().into());
+    }
+    for e in &entries2 {
+        let eid = e.id.to_string();
+        let key = e.blob_id.map(|id| id.to_string()).unwrap_or_default();
+        diff.entry(key).or_default().1.push(eid.clone());
+        entries.insert(eid, e.clone().into());
+    }
+
+    Ok(Json(DiffResponse {
+        snapshot1: snap1.into(),
+        snapshot2: snap2.into(),
+        blobs,
+        entries,
+        diff,
+    }))
 }
