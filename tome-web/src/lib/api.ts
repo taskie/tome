@@ -1,6 +1,6 @@
 import type { Entry, Repository, Snapshot } from "./types";
 
-const API_BASE = process.env.TOME_API_URL ?? "http://localhost:3000";
+const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 10 } });

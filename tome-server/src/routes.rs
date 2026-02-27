@@ -113,6 +113,17 @@ impl From<blob::Model> for BlobResponse {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// GET /
+// ──────────────────────────────────────────────────────────────────────────────
+
+pub async fn index() -> (StatusCode, Json<serde_json::Value>) {
+    (StatusCode::OK, Json(serde_json::json!({
+        "service": "tome-server",
+        "endpoints": ["/health", "/repositories", "/snapshots/:id/entries", "/blobs/:digest"],
+    })))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // GET /health
 // ──────────────────────────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ use crate::routes;
 
 pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
     let app = Router::new()
+        .route("/", get(routes::index))
         .route("/health", get(routes::health))
         .route("/repositories", get(routes::list_repositories))
         .route("/repositories/:name", get(routes::get_repository))
