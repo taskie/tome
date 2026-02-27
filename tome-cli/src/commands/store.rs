@@ -27,6 +27,8 @@ pub enum StoreCommands {
     Push(StorePushArgs),
     /// Copy blobs from one store to another
     Copy(StoreCopyArgs),
+    /// Verify integrity of blobs in a store
+    Verify(StoreVerifyArgs),
 }
 
 #[derive(Args)]
@@ -62,6 +64,12 @@ pub struct StoreCopyArgs {
     pub key_file: Option<std::path::PathBuf>,
 }
 
+#[derive(Args)]
+pub struct StoreVerifyArgs {
+    /// Store name to verify
+    pub store: String,
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Dispatch
 // ──────────────────────────────────────────────────────────────────────────────
@@ -72,6 +80,7 @@ pub async fn run(db: &DatabaseConnection, args: StoreArgs) -> Result<()> {
         StoreCommands::List => store_list(db).await,
         StoreCommands::Push(a) => store_push(db, a).await,
         StoreCommands::Copy(a) => store_copy(db, a).await,
+        StoreCommands::Verify(a) => store_verify(db, a).await,
     }
 }
 
@@ -278,5 +287,81 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs) -> Result<()> 
     }
 
     println!("done: {} copied, {} errors", copied, errors);
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// store verify
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<()> {
+    let store = ops::find_store_by_name(db, &args.store)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.store))?;
+
+    let storage = factory::open_storage(&store.url).await?;
+    let replicas = ops::replicas_with_blobs_in_store(db, store.id).await?;
+
+    if replicas.is_empty() {
+        println!("no replicas in store {:?}", args.store);
+        return Ok(());
+    }
+
+    println!("verifying {} replica(s) in store {:?} ...", replicas.len(), args.store);
+    let mut ok = 0u64;
+    let mut failed = 0u64;
+    let mut skipped = 0u64;
+
+    let tmp_dir = tempfile::tempdir()?;
+    let now = chrono::Utc::now().fixed_offset();
+
+    for (replica, blob) in &replicas {
+        let digest_hex = hash::hex_encode(&blob.digest);
+
+        if replica.encrypted {
+            warn!("skipping encrypted replica: {}", digest_hex);
+            skipped += 1;
+            continue;
+        }
+
+        let tmp_file = tmp_dir.path().join(&digest_hex);
+
+        match storage.download(&replica.path, &tmp_file).await {
+            Ok(()) => {}
+            Err(e) => {
+                warn!("download failed for {}: {}", digest_hex, e);
+                failed += 1;
+                continue;
+            }
+        }
+
+        let file_hash = match hash::hash_file(&tmp_file) {
+            Ok(h) => h,
+            Err(e) => {
+                warn!("hash failed for {}: {}", digest_hex, e);
+                failed += 1;
+                continue;
+            }
+        };
+
+        if file_hash.digest.as_slice() == blob.digest.as_slice() && file_hash.size as i64 == blob.size {
+            ops::update_replica_verified_at(db, replica.id, now).await?;
+            info!("ok: {}", digest_hex);
+            ok += 1;
+        } else {
+            warn!(
+                "digest mismatch for blob {}: stored={}, actual={}",
+                blob.id,
+                digest_hex,
+                hash::hex_encode(&file_hash.digest)
+            );
+            failed += 1;
+        }
+    }
+
+    println!("done: {} ok, {} failed, {} skipped (encrypted)", ok, failed, skipped);
+    if failed > 0 {
+        bail!("{} replica(s) failed verification", failed);
+    }
     Ok(())
 }

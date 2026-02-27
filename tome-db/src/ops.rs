@@ -329,6 +329,31 @@ pub async fn replicas_in_store(db: &DatabaseConnection, store_id: i64) -> anyhow
     Ok(replica::Entity::find().filter(replica::Column::StoreId.eq(store_id)).all(db).await?)
 }
 
+/// Find all (replica, blob) pairs for a store (for verify).
+pub async fn replicas_with_blobs_in_store(
+    db: &DatabaseConnection,
+    store_id: i64,
+) -> anyhow::Result<Vec<(replica::Model, blob::Model)>> {
+    let rows = replica::Entity::find()
+        .filter(replica::Column::StoreId.eq(store_id))
+        .find_also_related(blob::Entity)
+        .all(db)
+        .await?;
+    Ok(rows.into_iter().filter_map(|(r, b)| b.map(|b| (r, b))).collect())
+}
+
+/// Update the verified_at timestamp of a replica.
+pub async fn update_replica_verified_at(
+    db: &DatabaseConnection,
+    replica_id: i64,
+    verified_at: chrono::DateTime<chrono::FixedOffset>,
+) -> anyhow::Result<()> {
+    replica::ActiveModel { id: Set(replica_id), verified_at: Set(Some(verified_at)), ..Default::default() }
+        .update(db)
+        .await?;
+    Ok(())
+}
+
 /// Find blobs that have a replica in src_store_id but NOT in dst_store_id.
 pub async fn blobs_missing_in_dst(
     db: &DatabaseConnection,

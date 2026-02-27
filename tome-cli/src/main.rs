@@ -1,7 +1,6 @@
-mod commands;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use tome_cli::commands;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
