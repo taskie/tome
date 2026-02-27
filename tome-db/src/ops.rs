@@ -6,7 +6,7 @@ use sea_orm::{
 
 use tome_core::{hash::FileHash, id::next_id};
 
-use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, store};
+use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, store, sync_peer};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Repository
@@ -438,4 +438,127 @@ pub async fn latest_snapshot_metadata(
         .one(db)
         .await?
         .map(|s| s.metadata))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Sync peer management
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Insert a new sync peer.
+pub async fn insert_sync_peer(
+    db: &DatabaseConnection,
+    name: &str,
+    url: &str,
+    repository_id: i64,
+    config: serde_json::Value,
+) -> anyhow::Result<sync_peer::Model> {
+    let now = Utc::now().fixed_offset();
+    let am = sync_peer::ActiveModel {
+        id: Set(next_id()?),
+        name: Set(name.to_owned()),
+        url: Set(url.to_owned()),
+        repository_id: Set(repository_id),
+        last_synced_at: Set(None),
+        last_snapshot_id: Set(None),
+        config: Set(config),
+        created_at: Set(now),
+        updated_at: Set(now),
+    };
+    Ok(am.insert(db).await?)
+}
+
+/// Find a sync peer by name and repository.
+pub async fn find_sync_peer(
+    db: &DatabaseConnection,
+    name: &str,
+    repository_id: i64,
+) -> anyhow::Result<Option<sync_peer::Model>> {
+    Ok(sync_peer::Entity::find()
+        .filter(sync_peer::Column::Name.eq(name))
+        .filter(sync_peer::Column::RepositoryId.eq(repository_id))
+        .one(db)
+        .await?)
+}
+
+/// List all sync peers for a repository.
+pub async fn list_sync_peers(
+    db: &DatabaseConnection,
+    repository_id: i64,
+) -> anyhow::Result<Vec<sync_peer::Model>> {
+    Ok(sync_peer::Entity::find()
+        .filter(sync_peer::Column::RepositoryId.eq(repository_id))
+        .all(db)
+        .await?)
+}
+
+/// Update the last_snapshot_id and last_synced_at of a sync peer.
+pub async fn update_sync_peer_progress(
+    db: &DatabaseConnection,
+    peer_id: i64,
+    last_snapshot_id: i64,
+) -> anyhow::Result<()> {
+    let peer = sync_peer::Entity::find_by_id(peer_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync_peer {} not found", peer_id))?;
+    let mut am: sync_peer::ActiveModel = peer.into();
+    am.last_snapshot_id = Set(Some(last_snapshot_id));
+    am.last_synced_at = Set(Some(Utc::now().fixed_offset()));
+    am.updated_at = Set(Utc::now().fixed_offset());
+    am.update(db).await?;
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Snapshot / entry queries for sync
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Get snapshots for a repository created after `last_snapshot_id` (ordered by created_at ASC).
+pub async fn snapshots_after(
+    db: &DatabaseConnection,
+    repository_id: i64,
+    last_snapshot_id: Option<i64>,
+) -> anyhow::Result<Vec<snapshot::Model>> {
+    let mut q = snapshot::Entity::find()
+        .filter(snapshot::Column::RepositoryId.eq(repository_id))
+        .order_by_asc(snapshot::Column::CreatedAt);
+
+    if let Some(last_id) = last_snapshot_id {
+        // Find created_at of the last known snapshot and fetch snapshots newer than it.
+        if let Some(last_snap) = snapshot::Entity::find_by_id(last_id).one(db).await? {
+            q = q.filter(snapshot::Column::CreatedAt.gt(last_snap.created_at));
+        }
+    }
+
+    Ok(q.all(db).await?)
+}
+
+/// Get all entries in a snapshot.
+pub async fn entries_in_snapshot(
+    db: &DatabaseConnection,
+    snapshot_id: i64,
+) -> anyhow::Result<Vec<entry::Model>> {
+    Ok(entry::Entity::find()
+        .filter(entry::Column::SnapshotId.eq(snapshot_id))
+        .all(db)
+        .await?)
+}
+
+/// Find a blob by digest.
+pub async fn find_blob_by_digest(
+    db: &DatabaseConnection,
+    digest: &[u8],
+) -> anyhow::Result<Option<blob::Model>> {
+    Ok(blob::Entity::find()
+        .filter(blob::Column::Digest.eq(digest))
+        .one(db)
+        .await?)
+}
+
+/// Find a blob by primary key ID.
+pub async fn find_blob_by_id(
+    db: &DatabaseConnection,
+    id: i64,
+) -> anyhow::Result<Option<blob::Model>> {
+    Ok(blob::Entity::find_by_id(id).one(db).await?)
 }

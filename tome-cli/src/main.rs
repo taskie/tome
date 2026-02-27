@@ -25,6 +25,8 @@ enum Commands {
     Scan(commands::scan::ScanArgs),
     /// Manage object stores
     Store(commands::store::StoreArgs),
+    /// Manage sync peers and pull changes
+    Sync(commands::sync::SyncArgs),
 }
 
 #[tokio::main]
@@ -51,6 +53,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Scan(args) => commands::scan::run(&db, args).await?,
         Commands::Store(args) => commands::store::run(&db, args).await?,
+        Commands::Sync(args) => commands::sync::run(&db, args).await?,
     }
 
     Ok(())
