@@ -36,3 +36,20 @@ export type Entry = {
   mtime: string | null;
   created_at: string;
 };
+
+export type Blob = {
+  id: string;
+  digest: string;
+  size: number;
+  fast_digest: string;
+  created_at: string;
+};
+
+export type DiffResponse = {
+  snapshot1: Snapshot;
+  snapshot2: Snapshot;
+  blobs: Record<string, Blob>;
+  entries: Record<string, Entry>;
+  /** blob_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2] */
+  diff: Record<string, [string[], string[]]>;
+};

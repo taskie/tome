@@ -1,4 +1,4 @@
-import type { Entry, Repository, Snapshot } from "./types";
+import type { DiffResponse, Entry, Repository, Snapshot } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
 
@@ -21,4 +21,10 @@ export const api = {
 
   entries: (id: string): Promise<Entry[]> =>
     get(`/snapshots/${encodeURIComponent(id)}/entries`),
+
+  diff: (name: string, s1: string, s2: string, prefix = ""): Promise<DiffResponse> =>
+    get(
+      `/repositories/${encodeURIComponent(name)}/diff` +
+        `?snapshot1=${encodeURIComponent(s1)}&snapshot2=${encodeURIComponent(s2)}&prefix=${encodeURIComponent(prefix)}`,
+    ),
 };
