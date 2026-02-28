@@ -17,14 +17,14 @@ export default async function BlobPage({ params }: Props) {
 
   let blob;
   let entries;
+  let repositories;
   try {
-    [blob, entries] = await Promise.all([api.blob(digest), api.blobEntries(digest)]);
+    [blob, entries, repositories] = await Promise.all([api.blob(digest), api.blobEntries(digest), api.repositories()]);
   } catch {
     notFound();
   }
 
-  // Group entries by repository (via snapshot.repository_id — use repo name if available via snapshot)
-  // snapshot has repository_id but not name; we just show snapshot id for navigation
+  const repoById = new Map(repositories.map((r) => [r.id, r.name]));
 
   return (
     <>
@@ -75,18 +75,35 @@ export default async function BlobPage({ params }: Props) {
             </tr>
           </thead>
           <tbody>
-            {entries.map(({ snapshot: s, entry: e }) => (
-              <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-3 py-1.5 text-gray-700">{e.path}</td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/snapshots/${s.id}`} className="font-mono text-blue-600 hover:underline">
-                    {s.id.slice(0, 10)}
-                  </Link>
-                </td>
-                <td className="px-3 py-1.5 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
-                <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
-              </tr>
-            ))}
+            {entries.map(({ snapshot: s, entry: e }) => {
+              const repoName = repoById.get(s.repository_id);
+              const historyHref = repoName
+                ? `/repositories/${encodeURIComponent(repoName)}/history?path=${encodeURIComponent(e.path)}`
+                : null;
+              return (
+                <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-3 py-1.5 text-gray-700">
+                    {historyHref ? (
+                      <Link href={historyHref} className="hover:underline text-blue-600">
+                        {e.path}
+                      </Link>
+                    ) : (
+                      e.path
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <Link
+                      href={`/snapshots/${s.id}${repoName ? `?repo=${encodeURIComponent(repoName)}` : ""}`}
+                      className="font-mono text-blue-600 hover:underline"
+                    >
+                      {s.id.slice(0, 10)}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
+                  <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

@@ -45,23 +45,26 @@ export default async function RepositoryPage({ params }: Props) {
         <span className="text-gray-600">{repoName}</span>
       </nav>
 
-      <h1 className="text-base font-semibold mb-2">
+      <h1 className="text-base font-semibold mb-3">
         Repository: <span className="text-blue-700">{repoName}</span>
       </h1>
-      <div className="mb-4 flex gap-2">
+      <nav className="flex gap-1 mb-4 border-b border-gray-200 pb-0">
+        <span className="text-xs px-3 py-1.5 border-b-2 border-blue-600 text-blue-700 font-medium -mb-px">
+          Snapshots
+        </span>
         <Link
           href={`/repositories/${name}/files`}
-          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
         >
           Files
         </Link>
         <Link
           href={`/repositories/${name}/diff`}
-          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
         >
           Diff
         </Link>
-      </div>
+      </nav>
 
       {sorted.length === 0 ? (
         <p className="text-gray-400">No snapshots yet.</p>

@@ -103,9 +103,24 @@ export default async function DiffPage({ params, searchParams }: Props) {
         {" / diff"}
       </nav>
 
-      <h1 className="text-base font-semibold mb-4">
-        Diff — <span className="text-blue-700">{repoName}</span>
+      <h1 className="text-base font-semibold mb-3">
+        Repository: <span className="text-blue-700">{repoName}</span>
       </h1>
+      <nav className="flex gap-1 mb-4 border-b border-gray-200 pb-0">
+        <Link
+          href={`/repositories/${name}`}
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
+        >
+          Snapshots
+        </Link>
+        <Link
+          href={`/repositories/${name}/files`}
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
+        >
+          Files
+        </Link>
+        <span className="text-xs px-3 py-1.5 border-b-2 border-blue-600 text-blue-700 font-medium -mb-px">Diff</span>
+      </nav>
 
       {/* Snapshot selector */}
       <form method="GET" action={baseUrl} className="flex flex-wrap gap-3 items-end mb-6">
@@ -216,14 +231,32 @@ export default async function DiffPage({ params, searchParams }: Props) {
                       <td className="px-3 py-1.5">{badge}</td>
                       <td className="px-3 py-1.5 text-gray-700">
                         {row.paths1.length > 0 ? (
-                          row.paths1.map((p) => <div key={p}>{p}</div>)
+                          row.paths1.map((p) => (
+                            <div key={p}>
+                              <Link
+                                href={`/repositories/${name}/history?path=${encodeURIComponent(p)}`}
+                                className="hover:underline text-blue-600"
+                              >
+                                {p}
+                              </Link>
+                            </div>
+                          ))
                         ) : (
                           <span className="text-gray-300">—</span>
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-gray-700">
                         {row.paths2.length > 0 ? (
-                          row.paths2.map((p) => <div key={p}>{p}</div>)
+                          row.paths2.map((p) => (
+                            <div key={p}>
+                              <Link
+                                href={`/repositories/${name}/history?path=${encodeURIComponent(p)}`}
+                                className="hover:underline text-blue-600"
+                              >
+                                {p}
+                              </Link>
+                            </div>
+                          ))
                         ) : (
                           <span className="text-gray-300">—</span>
                         )}

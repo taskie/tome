@@ -84,9 +84,24 @@ export default async function FilesPage({ params, searchParams }: Props) {
         {" / files"}
       </nav>
 
-      <h1 className="text-base font-semibold mb-4">
-        Files — <span className="text-blue-700">{repoName}</span>
+      <h1 className="text-base font-semibold mb-3">
+        Repository: <span className="text-blue-700">{repoName}</span>
       </h1>
+      <nav className="flex gap-1 mb-4 border-b border-gray-200 pb-0">
+        <Link
+          href={`/repositories/${name}`}
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
+        >
+          Snapshots
+        </Link>
+        <span className="text-xs px-3 py-1.5 border-b-2 border-blue-600 text-blue-700 font-medium -mb-px">Files</span>
+        <Link
+          href={`/repositories/${name}/diff`}
+          className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-800 hover:border-b-2 hover:border-gray-300 -mb-px"
+        >
+          Diff
+        </Link>
+      </nav>
 
       {/* Filter form */}
       <form method="GET" action={baseUrl} className="flex flex-wrap gap-2 items-center mb-4">

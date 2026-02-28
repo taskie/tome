@@ -42,6 +42,10 @@ export default async function HistoryPage({ params, searchParams }: Props) {
         <Link href={`/repositories/${name}`} className="hover:underline text-gray-600">
           {repoName}
         </Link>
+        {" / "}
+        <Link href={`/repositories/${name}/files`} className="hover:underline text-gray-600">
+          files
+        </Link>
         {" / history"}
       </nav>
 

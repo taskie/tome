@@ -200,14 +200,32 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                       <td className="px-3 py-1.5">{badge}</td>
                       <td className="px-3 py-1.5 text-gray-700">
                         {row.paths1.length > 0 ? (
-                          row.paths1.map((p) => <div key={p}>{p}</div>)
+                          row.paths1.map((p) => (
+                            <div key={p}>
+                              <Link
+                                href={`/repositories/${encodeURIComponent(repo1)}/history?path=${encodeURIComponent(p)}`}
+                                className="hover:underline text-blue-600"
+                              >
+                                {p}
+                              </Link>
+                            </div>
+                          ))
                         ) : (
                           <span className="text-gray-300">—</span>
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-gray-700">
                         {row.paths2.length > 0 ? (
-                          row.paths2.map((p) => <div key={p}>{p}</div>)
+                          row.paths2.map((p) => (
+                            <div key={p}>
+                              <Link
+                                href={`/repositories/${encodeURIComponent(repo2)}/history?path=${encodeURIComponent(p)}`}
+                                className="hover:underline text-blue-600"
+                              >
+                                {p}
+                              </Link>
+                            </div>
+                          ))
                         ) : (
                           <span className="text-gray-300">—</span>
                         )}
