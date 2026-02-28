@@ -62,11 +62,18 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     let dir_entries: Vec<ignore::DirEntry> = {
         let mut walk_errors = 0u64;
         let use_ignore = !args.no_ignore;
+        // Always exclude .git/ regardless of hidden() setting.
+        let overrides = {
+            let mut ob = ignore::overrides::OverrideBuilder::new(&scan_root);
+            ob.add("!.git").map_err(|e| anyhow::anyhow!("{}", e))?;
+            ob.build().map_err(|e| anyhow::anyhow!("{}", e))?
+        };
         let entries: Vec<_> = ignore::WalkBuilder::new(&scan_root)
             .hidden(false)
             .git_ignore(use_ignore)
             .git_global(use_ignore)
             .git_exclude(use_ignore)
+            .overrides(overrides)
             .sort_by_file_name(|a, b| a.cmp(b))
             .build()
             .filter_map(|e| match e {
