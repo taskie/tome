@@ -321,7 +321,7 @@ addr = "127.0.0.1:8080"          # リッスンアドレス (現: --addr)
 | 優先度 | 内容 |
 |--------|------|
 | 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
-| 中 | BLAKE3 導入 — 上記の BLAKE3 導入方針を参照 |
+| 中 | ChaCha20-Poly1305 導入（aether）— 上記の ChaCha20-Poly1305 導入方針を参照 |
 | 中 | ChaCha20-Poly1305 導入 — 上記の ChaCha20-Poly1305 導入方針を参照 |
 | 低 | 重複レポート — blob の content-addressing を活かしリポジトリ横断でファイル重複を報告 |
 | 低 | PostgreSQL 中央同期 — 複数マシンが一つの PostgreSQL に push/pull（現在は SQLite↔SQLite のみ） |
