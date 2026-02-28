@@ -387,3 +387,87 @@ pub async fn diff_snapshots(
         diff,
     }))
 }
+
+// ── GET /repositories/:name/files ────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct FilesQuery {
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub include_deleted: bool,
+    #[serde(default = "default_page")]
+    pub page: u64,
+    #[serde(default = "default_per_page")]
+    pub per_page: u64,
+}
+
+fn default_page() -> u64 {
+    1
+}
+fn default_per_page() -> u64 {
+    100
+}
+
+#[derive(Serialize)]
+pub struct CacheEntryResponse {
+    pub path: String,
+    pub status: i16,
+    pub size: Option<i64>,
+    pub mtime: Option<String>,
+    pub digest: Option<String>,
+    pub fast_digest: Option<String>,
+    pub snapshot_id: String,
+    pub entry_id: String,
+}
+
+#[derive(Serialize)]
+pub struct FilesResponse {
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+    pub items: Vec<CacheEntryResponse>,
+}
+
+pub async fn list_files(
+    db: Db,
+    Path(name): Path<String>,
+    Query(q): Query<FilesQuery>,
+) -> AppResult<Json<FilesResponse>> {
+    let repo = repository::Entity::find()
+        .filter(repository::Column::Name.eq(&name))
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name))?;
+
+    let per_page = q.per_page.clamp(1, 500);
+    let page = q.page.max(1);
+
+    let (entries, total) = ops::list_cache_entries(
+        &db,
+        &ops::ListCacheEntriesParams {
+            repository_id: repo.id,
+            include_deleted: q.include_deleted,
+            prefix: q.prefix,
+            page,
+            per_page,
+        },
+    )
+    .await?;
+
+    let items = entries
+        .into_iter()
+        .map(|e| CacheEntryResponse {
+            path: e.path,
+            status: e.status,
+            size: e.size,
+            mtime: e.mtime.map(|t| t.to_rfc3339()),
+            digest: e.digest.as_deref().map(hex_encode),
+            fast_digest: e.fast_digest.map(|fd| format!("{:016x}", fd as u64)),
+            snapshot_id: e.snapshot_id.to_string(),
+            entry_id: e.entry_id.to_string(),
+        })
+        .collect();
+
+    Ok(Json(FilesResponse { total, page, per_page, items }))
+}
