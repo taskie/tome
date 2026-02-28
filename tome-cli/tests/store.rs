@@ -115,3 +115,36 @@ async fn store_push_incremental_scan_adds_new_replica() {
     let count_after = ops::replicas_in_store(&env.db, stores[0].id).await.unwrap().len();
     assert_eq!(count_after, 2);
 }
+
+// ── Store verify ────────────────────────────────────────────────────────────
+
+/// `tome store verify` passes when all blob files in the store are intact.
+#[tokio::test]
+async fn store_verify_passes_for_intact_store() {
+    let env = Env::new().await;
+    env.write("a.txt", b"content a");
+    env.write("b.txt", b"content b");
+    env.scan().await.unwrap();
+    env.store_add_and_push("local").await.unwrap();
+
+    env.store_verify("local").await.unwrap();
+}
+
+/// `tome store verify` detects corrupted blob files.
+#[tokio::test]
+async fn store_verify_detects_corrupted_blob() {
+    let env = Env::new().await;
+    env.write("data.txt", b"important data");
+    env.scan().await.unwrap();
+    env.store_add_and_push("local").await.unwrap();
+
+    // Corrupt the blob file on disk.
+    let stores = ops::list_stores(&env.db).await.unwrap();
+    let replicas = ops::replicas_in_store(&env.db, stores[0].id).await.unwrap();
+    assert_eq!(replicas.len(), 1);
+    let blob_file = env.store_dir().join(&replicas[0].path);
+    std::fs::write(&blob_file, b"corrupted!!!").unwrap();
+
+    let result = env.store_verify("local").await;
+    assert!(result.is_err(), "store verify should fail when a blob is corrupted");
+}

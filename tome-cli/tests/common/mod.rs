@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use tome_cli::{
-    commands::{gc, scan, store, verify},
+    commands::{diff, gc, restore, scan, store, tag, verify},
     config::StoreConfig,
 };
 use tome_core::hash::DigestAlgorithm;
@@ -154,6 +154,117 @@ impl Env {
     /// Run `tome gc` with the given arguments.
     pub async fn gc(&self, args: gc::GcArgs) -> anyhow::Result<()> {
         gc::run(&self.db, args).await
+    }
+
+    /// Run `tome diff` between two snapshot IDs.
+    pub async fn diff(&self, snap1: &str, snap2: &str, prefix: &str) -> anyhow::Result<()> {
+        diff::run(
+            &self.db,
+            diff::DiffArgs {
+                snapshot1: snap1.to_string(),
+                snapshot2: snap2.to_string(),
+                prefix: prefix.to_string(),
+                name_only: false,
+                stat: false,
+            },
+        )
+        .await
+    }
+
+    /// Run `tome restore` from a snapshot to a destination directory.
+    pub async fn restore(
+        &self,
+        snapshot_id: &str,
+        dest: PathBuf,
+        store_name: Option<&str>,
+        prefix: &str,
+    ) -> anyhow::Result<()> {
+        restore::run(
+            &self.db,
+            restore::RestoreArgs {
+                snapshot: snapshot_id.to_string(),
+                store: store_name.map(|s| s.to_string()),
+                prefix: prefix.to_string(),
+                dest,
+            },
+        )
+        .await
+    }
+
+    /// Run `tome tag set`.
+    pub async fn tag_set(&self, digest: &str, key: &str, value: Option<&str>) -> anyhow::Result<()> {
+        tag::run(
+            &self.db,
+            tag::TagArgs {
+                command: tag::TagCommands::Set(tag::TagSetArgs {
+                    digest: digest.to_string(),
+                    key: key.to_string(),
+                    value: value.map(|v| v.to_string()),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome tag delete`.
+    pub async fn tag_delete(&self, digest: &str, key: &str) -> anyhow::Result<()> {
+        tag::run(
+            &self.db,
+            tag::TagArgs {
+                command: tag::TagCommands::Delete(tag::TagDeleteArgs {
+                    digest: digest.to_string(),
+                    key: key.to_string(),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome tag list`.
+    pub async fn tag_list(&self, digest: &str) -> anyhow::Result<()> {
+        tag::run(
+            &self.db,
+            tag::TagArgs { command: tag::TagCommands::List(tag::TagListArgs { digest: digest.to_string() }) },
+        )
+        .await
+    }
+
+    /// Run `tome tag search`.
+    pub async fn tag_search(&self, key: &str, value: Option<&str>) -> anyhow::Result<()> {
+        tag::run(
+            &self.db,
+            tag::TagArgs {
+                command: tag::TagCommands::Search(tag::TagSearchArgs {
+                    key: key.to_string(),
+                    value: value.map(|v| v.to_string()),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome store verify`.
+    pub async fn store_verify(&self, store_name: &str) -> anyhow::Result<()> {
+        store::run(
+            &self.db,
+            store::StoreArgs {
+                command: store::StoreCommands::Verify(store::StoreVerifyArgs {
+                    store: store_name.to_string(),
+                    digest_algorithm: DigestAlgorithm::Sha256,
+                }),
+            },
+            &StoreConfig::default(),
+        )
+        .await
+    }
+
+    /// Return the hex-encoded digest of the first blob in the database.
+    pub async fn first_blob_digest_hex(&self) -> String {
+        let repo = ops::get_or_create_repository(&self.db, "default").await.unwrap();
+        let entries = ops::present_cache_entries(&self.db, repo.id).await.unwrap();
+        let blob_id = entries[0].blob_id.unwrap();
+        let blobs = ops::blobs_by_ids(&self.db, &[blob_id]).await.unwrap();
+        tome_core::hash::hex_encode(&blobs[0].digest)
     }
 }
 

@@ -160,3 +160,74 @@ async fn scan_creates_one_snapshot_per_call() {
     env.scan().await.unwrap();
     assert_eq!(env.snapshots().await.len(), 3);
 }
+
+// ── Snapshot message ─────────────────────────────────────────────────────────
+
+/// `--message` annotates the snapshot.
+#[tokio::test]
+async fn scan_message_appears_in_snapshot_metadata() {
+    let env = Env::new().await;
+    env.write("file.txt", b"hello");
+
+    env.scan_with("default", "after deploy v1.2.0").await.unwrap();
+
+    let snaps = env.snapshots().await;
+    assert_eq!(snaps[0].message, "after deploy v1.2.0");
+}
+
+// ── BLAKE3 digest algorithm ──────────────────────────────────────────────────
+
+/// `--digest-algorithm blake3` scans successfully and records files.
+#[tokio::test]
+async fn scan_with_blake3_digest_algorithm() {
+    use tome_cli::commands::scan;
+    use tome_core::hash::DigestAlgorithm;
+
+    let env = Env::new().await;
+    env.write("data.bin", b"binary content");
+
+    scan::run(
+        &env.db,
+        scan::ScanArgs {
+            repo: "blake3repo".to_string(),
+            no_ignore: true,
+            message: String::new(),
+            digest_algorithm: DigestAlgorithm::Blake3,
+            path: Some(env.files_dir()),
+        },
+    )
+    .await
+    .unwrap();
+
+    // Verify a snapshot was created for the blake3 repo.
+    let repo = tome_db::ops::get_or_create_repository(&env.db, "blake3repo").await.unwrap();
+    let snaps = tome_db::ops::list_snapshots_for_repo(&env.db, repo.id).await.unwrap();
+    assert_eq!(snaps.len(), 1);
+
+    let meta = &snaps[0].metadata;
+    assert_eq!(meta_count(meta, "added"), 1);
+    assert_eq!(meta_count(meta, "scanned"), 1);
+}
+
+// ── Multiple repositories ────────────────────────────────────────────────────
+
+/// Scanning the same directory into different repos keeps independent histories.
+#[tokio::test]
+async fn scan_multiple_repos_are_independent() {
+    let env = Env::new().await;
+    env.write("shared.txt", b"shared content");
+
+    env.scan_with("repo_a", "").await.unwrap();
+    env.scan_with("repo_b", "").await.unwrap();
+
+    let repo_a = tome_db::ops::get_or_create_repository(&env.db, "repo_a").await.unwrap();
+    let repo_b = tome_db::ops::get_or_create_repository(&env.db, "repo_b").await.unwrap();
+
+    let snaps_a = tome_db::ops::list_snapshots_for_repo(&env.db, repo_a.id).await.unwrap();
+    let snaps_b = tome_db::ops::list_snapshots_for_repo(&env.db, repo_b.id).await.unwrap();
+
+    assert_eq!(snaps_a.len(), 1);
+    assert_eq!(snaps_b.len(), 1);
+    // Different repos, different snapshot IDs.
+    assert_ne!(snaps_a[0].id, snaps_b[0].id);
+}
