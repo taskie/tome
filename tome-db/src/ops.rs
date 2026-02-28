@@ -344,6 +344,19 @@ pub async fn replicas_with_blobs_in_store(
     Ok(rows.into_iter().filter_map(|(r, b)| b.map(|b| (r, b))).collect())
 }
 
+/// Find all (replica, store) pairs for a blob (used by restore to locate download sources).
+pub async fn replicas_for_blob(
+    db: &DatabaseConnection,
+    blob_id: i64,
+) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
+    let rows = replica::Entity::find()
+        .filter(replica::Column::BlobId.eq(blob_id))
+        .find_also_related(store::Entity)
+        .all(db)
+        .await?;
+    Ok(rows.into_iter().filter_map(|(r, s)| s.map(|s| (r, s))).collect())
+}
+
 /// Update the verified_at timestamp of a replica.
 pub async fn update_replica_verified_at(
     db: &DatabaseConnection,

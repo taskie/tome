@@ -22,6 +22,10 @@ struct Cli {
 enum Commands {
     /// Scan a directory and record file changes
     Scan(commands::scan::ScanArgs),
+    /// Show differences between two snapshots
+    Diff(commands::diff::DiffArgs),
+    /// Restore files from a snapshot via a store
+    Restore(commands::restore::RestoreArgs),
     /// Manage object stores
     Store(commands::store::StoreArgs),
     /// Manage sync peers and pull changes
@@ -57,6 +61,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Scan(args) => commands::scan::run(&db, args).await?,
+        Commands::Diff(args) => commands::diff::run(&db, args).await?,
+        Commands::Restore(args) => commands::restore::run(&db, args).await?,
         Commands::Store(args) => commands::store::run(&db, args).await?,
         Commands::Sync(args) => commands::sync::run(&db, args).await?,
         Commands::Serve(args) => tome_server::serve(db, &args.addr).await?,
