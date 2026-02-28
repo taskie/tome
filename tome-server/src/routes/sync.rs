@@ -8,7 +8,7 @@ use tome_core::hash::{FileHash, hex_encode};
 use tome_db::{entities::repository, ops};
 
 use super::Db;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 // ── Shared protocol types ────────────────────────────────────────────────────
 
@@ -195,7 +195,7 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                 let digest_arr: [u8; 32] = digest_bytes
                     .as_slice()
                     .try_into()
-                    .map_err(|_| anyhow::anyhow!("invalid digest length for {hex}"))?;
+                    .map_err(|_| AppError::bad_request(format!("invalid digest length for {hex}")))?;
                 let fh = FileHash { size: size as u64, fast_digest: fast, digest: digest_arr };
                 let blob = ops::get_or_create_blob(&db, &fh).await?;
 
@@ -250,5 +250,5 @@ async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppRe
         .filter(repository::Column::Name.eq(name))
         .one(db)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name).into())
+        .ok_or_else(|| AppError::not_found(format!("repository {:?} not found", name)))
 }

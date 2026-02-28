@@ -429,6 +429,59 @@ tome は**ローカルファーストの個人ツール**であり、tome-server
 
 ---
 
+## エラーハンドリング方針
+
+### 現状
+
+| クレート | エラー型 | 方式 |
+|----------|----------|------|
+| tome-core | `CoreError` enum | thiserror + `type Result<T>` |
+| tome-db | なし | anyhow::Result 直接使用 |
+| tome-store | `StoreError` enum | thiserror + `type Result<T>` |
+| tome-cli | なし | anyhow::Result 直接使用 |
+| tome-server | `AppError` wrapper | anyhow → axum IntoResponse |
+
+### 問題点と対応
+
+#### 1. AppError の HTTP ステータス判定が粗い（対応済）
+
+**問題:** エラーメッセージに `"not found"` を含むかの文字列マッチで 404/500 を判定していた。
+
+**対応:** `AppError` を `kind: ErrorKind` フィールド付きの構造体に変更。
+`ErrorKind::NotFound` / `BadRequest` / `Internal` で HTTP ステータスを明示的にマッピング。
+ヘルパー関数 `not_found()` / `bad_request()` を提供し、ルートハンドラで使い分ける。
+Internal エラーはメッセージをサニタイズ（`cfg!(debug_assertions)` で開発時のみ詳細表示）。
+
+#### 2. Mutex パニック（対応済）
+
+**問題:** `tome-core/src/id.rs` と `tome-store/src/ssh.rs` で `.lock().unwrap()` を使用。
+Mutex poisoning 時にパニックする。
+
+**対応:**
+- `id.rs`: `.lock().map_err(|e| CoreError::Other(...))` でエラー伝播に変更。
+  `init()` も `Result` を返すように変更。`expect()` → `ok_or(CoreError::...)` + `?`。
+- `ssh.rs`: `.lock().map_err(|_| StoreError::Other(...))` に変更。
+
+#### 3. 安全でない unwrap パターン（対応済）
+
+- `scan.rs:233` `cached.blob_id.unwrap()` → `anyhow::Context` 付きエラーに変更
+- `sync.rs` `.try_into().unwrap_or([0u8; 32])` → 無音のゼロ埋めを `anyhow::bail!` に変更
+
+#### 4. Context 付与の徹底（対応済）
+
+CLI コマンドの主要な DB/IO 操作に `.context("...")` を追加し、
+エラー発生時に「何をしていたか」をユーザーに提示。
+
+### コーディング規約（エラー関連）
+
+- **ライブラリクレート**（core/db/store）: thiserror の enum を使い、`type Result<T>` を定義
+- **アプリケーションクレート**（cli/server）: anyhow を使い、`.context()` で文脈を付与
+- **`unwrap()` / `expect()` は原則禁止**: テストコード以外では `?` + `map_err` を使う
+  - 安全であることが自明な場合のみ許容（コメント必須: `// safe: ...`）
+- **HTTP レスポンス**: `AppError::not_found()` / `bad_request()` を使い、Internal は詳細を隠蔽
+
+---
+
 ## 残タスク
 
 > **方針: 個人ツールとしての完成度向上。認証・RBAC はスコープ外（外部インフラで代替）。**

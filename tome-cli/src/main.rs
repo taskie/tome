@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tome_cli::{commands, config};
 use tracing_subscriber::EnvFilter;
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     let machine_id = cli.machine_id.or(cfg.machine_id).unwrap_or(0);
 
     // Initialize Sonyflake ID generator.
-    tome_core::id::init(machine_id, None::<i64>);
+    tome_core::id::init(machine_id, None::<i64>).context("failed to initialize ID generator")?;
 
     // Build DB URL for SQLite if a plain path is given.
     let db_url = if db.starts_with("sqlite:") || db.starts_with("postgres") {
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
         format!("sqlite://{}?mode=rwc", db)
     };
 
-    let db_conn = tome_db::connection::open(&db_url).await?;
+    let db_conn = tome_db::connection::open(&db_url).await.context("failed to open database")?;
 
     match cli.command {
         Commands::Init(_) => unreachable!(),

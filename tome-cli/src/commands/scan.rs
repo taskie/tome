@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Args;
 use sea_orm::DatabaseConnection;
 use tracing::{debug, info, warn};
@@ -230,7 +230,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
                             path: rel_path.to_owned(),
                             snapshot_id: cached.snapshot_id,
                             entry_id: cached.entry_id,
-                            blob_id: cached.blob_id.unwrap(),
+                            blob_id: cached.blob_id.context("cache entry has no blob_id")?,
                             mtime: Some(mtime_dt),
                             digest: cached.digest.clone(),
                             size: cached.size,

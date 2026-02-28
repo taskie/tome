@@ -14,14 +14,14 @@ use tome_db::{
 
 use super::Db;
 use super::responses::*;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppResult<repository::Model> {
     repository::Entity::find()
         .filter(repository::Column::Name.eq(name))
         .one(db)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name).into())
+        .ok_or_else(|| AppError::not_found(format!("repository {:?} not found", name)))
 }
 
 pub async fn list_repositories(db: Db) -> AppResult<Json<Vec<RepositoryResponse>>> {
@@ -99,23 +99,23 @@ pub async fn diff_snapshots(
 ) -> AppResult<Json<DiffResponse>> {
     let repo = find_repo_or_404(&db, &name).await?;
 
-    let snap_id1: i64 = q.snapshot1.parse().map_err(|_| anyhow::anyhow!("invalid snapshot1 id"))?;
-    let snap_id2: i64 = q.snapshot2.parse().map_err(|_| anyhow::anyhow!("invalid snapshot2 id"))?;
+    let snap_id1: i64 = q.snapshot1.parse().map_err(|_| AppError::bad_request("invalid snapshot1 id"))?;
+    let snap_id2: i64 = q.snapshot2.parse().map_err(|_| AppError::bad_request("invalid snapshot2 id"))?;
 
     let snap1 = snapshot::Entity::find_by_id(snap_id1)
         .one(&*db)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", snap_id1))?;
+        .ok_or_else(|| AppError::not_found(format!("snapshot {} not found", snap_id1)))?;
     if snap1.repository_id != repo.id {
-        return Err(anyhow::anyhow!("snapshot1 does not belong to this repository").into());
+        return Err(AppError::bad_request("snapshot1 does not belong to this repository"));
     }
 
     let snap2 = snapshot::Entity::find_by_id(snap_id2)
         .one(&*db)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", snap_id2))?;
+        .ok_or_else(|| AppError::not_found(format!("snapshot {} not found", snap_id2)))?;
     if snap2.repository_id != repo.id {
-        return Err(anyhow::anyhow!("snapshot2 does not belong to this repository").into());
+        return Err(AppError::bad_request("snapshot2 does not belong to this repository"));
     }
 
     let entries1 = ops::entries_by_prefix(&db, snap_id1, &q.prefix).await?;
@@ -248,7 +248,7 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
 
     const MAX_ENTRIES: usize = 10_000;
     if entries1.len() > MAX_ENTRIES || entries2.len() > MAX_ENTRIES {
-        return Err(anyhow::anyhow!("too many entries (limit {}), narrow the prefix", MAX_ENTRIES).into());
+        return Err(AppError::bad_request(format!("too many entries (limit {}), narrow the prefix", MAX_ENTRIES)));
     }
 
     let blob_ids: Vec<i64> =

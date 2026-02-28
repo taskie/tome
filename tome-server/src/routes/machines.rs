@@ -5,7 +5,7 @@ use tome_db::ops;
 
 use super::Db;
 use super::responses::*;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 #[derive(Deserialize)]
 pub struct RegisterMachineRequest {
@@ -26,6 +26,8 @@ pub async fn register_machine(db: Db, Json(req): Json<RegisterMachineRequest>) -
 
 pub async fn update_machine(db: Db, Path(id): Path<i16>) -> AppResult<Json<MachineResponse>> {
     ops::update_machine_last_seen(&db, id).await?;
-    let machine = ops::find_machine_by_id(&db, id).await?.ok_or_else(|| anyhow::anyhow!("machine {} not found", id))?;
+    let machine = ops::find_machine_by_id(&db, id)
+        .await?
+        .ok_or_else(|| AppError::not_found(format!("machine {} not found", id)))?;
     Ok(Json(MachineResponse::from(machine)))
 }

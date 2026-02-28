@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use sea_orm::DatabaseConnection;
 use tracing::{info, warn};
@@ -154,7 +154,8 @@ async fn apply_pulled_snapshot(
         if e.status == 1 {
             if let (Some(hex), Some(size), Some(fast)) = (&e.blob_digest, e.blob_size, e.blob_fast_digest) {
                 let digest_bytes = hex::decode(hex)?;
-                let digest_arr: [u8; 32] = digest_bytes.as_slice().try_into().unwrap_or([0u8; 32]);
+                let digest_arr: [u8; 32] =
+                    digest_bytes.as_slice().try_into().context("invalid digest length in sync entry")?;
 
                 let b: blob::Model = if let Some(b) = ops::find_blob_by_digest(local_db, &digest_bytes).await? {
                     b
@@ -334,7 +335,11 @@ async fn sync_pull_db(
                     let fh = tome_core::hash::FileHash {
                         size: remote_blob.size as u64,
                         fast_digest: remote_blob.fast_digest,
-                        digest: remote_blob.digest.as_slice().try_into().unwrap_or([0u8; 32]),
+                        digest: remote_blob
+                            .digest
+                            .as_slice()
+                            .try_into()
+                            .context("invalid digest length in remote blob")?,
                     };
                     let b = ops::get_or_create_blob(local_db, &fh).await?;
                     blobs_created += 1;
@@ -596,7 +601,11 @@ async fn sync_push_db(
                     let fh = tome_core::hash::FileHash {
                         size: local_blob.size as u64,
                         fast_digest: local_blob.fast_digest,
-                        digest: local_blob.digest.as_slice().try_into().unwrap_or([0u8; 32]),
+                        digest: local_blob
+                            .digest
+                            .as_slice()
+                            .try_into()
+                            .context("invalid digest length in local blob")?,
                     };
                     let b = ops::get_or_create_blob(&peer_db, &fh).await?;
                     blobs_created += 1;

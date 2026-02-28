@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Args;
 use sea_orm::DatabaseConnection;
 use tracing::{info, warn};
@@ -60,7 +60,7 @@ pub async fn run(db: &DatabaseConnection, args: RestoreArgs) -> Result<()> {
     let mut errors = 0u64;
 
     for (entry, _blob) in &present {
-        let blob_id = entry.blob_id.unwrap(); // safe: filtered above
+        let blob_id = entry.blob_id.context("present entry has no blob_id")?;
 
         // Find usable replicas for this blob.
         let replicas = ops::replicas_for_blob(db, blob_id).await?;

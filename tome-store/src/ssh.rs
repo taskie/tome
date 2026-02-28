@@ -33,7 +33,7 @@ impl SshStorage {
         port: u16,
         username: &str,
     ) -> Result<()> {
-        let mut guard = session.lock().unwrap();
+        let mut guard = session.lock().map_err(|e| StoreError::Other(format!("mutex poisoned: {e}")))?;
         if guard.is_some() {
             return Ok(());
         }
@@ -57,8 +57,8 @@ impl SshStorage {
         F: FnOnce(&ssh2::Sftp) -> Result<T>,
     {
         Self::ensure_session(session, host, port, username)?;
-        let guard = session.lock().unwrap();
-        let sess = guard.as_ref().unwrap();
+        let guard = session.lock().map_err(|e| StoreError::Other(format!("mutex poisoned: {e}")))?;
+        let sess = guard.as_ref().ok_or_else(|| StoreError::Other("session not initialized".into()))?;
         let sftp = sess.sftp().map_err(StoreError::Ssh)?;
         f(&sftp)
     }
