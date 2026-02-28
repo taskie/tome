@@ -9,6 +9,8 @@ pub struct Model {
     pub parent_id: Option<i64>,
     pub message: String,
     pub metadata: Json,
+    pub source_machine_id: Option<i16>,
+    pub source_snapshot_id: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
 }
 

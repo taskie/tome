@@ -10,6 +10,8 @@ mod m20230901_000006_create_stores;
 mod m20230901_000007_create_replicas;
 mod m20230901_000008_create_tags;
 mod m20230901_000009_create_sync_peers;
+mod m20230901_000010_create_machines;
+mod m20230901_000011_add_snapshot_source;
 
 pub struct Migrator;
 
@@ -26,6 +28,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20230901_000007_create_replicas::Migration),
             Box::new(m20230901_000008_create_tags::Migration),
             Box::new(m20230901_000009_create_sync_peers::Migration),
+            Box::new(m20230901_000010_create_machines::Migration),
+            Box::new(m20230901_000011_add_snapshot_source::Migration),
         ]
     }
 }

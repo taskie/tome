@@ -10,7 +10,7 @@ use tome_core::{
     id::next_id,
 };
 
-use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, store, sync_peer, tag};
+use crate::entities::{blob, entry, entry_cache, machine, replica, repository, snapshot, store, sync_peer, tag};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Repository
@@ -113,6 +113,31 @@ pub async fn create_snapshot(
         parent_id: Set(parent_id),
         message: Set(message.to_owned()),
         metadata: Set(serde_json::json!({})),
+        source_machine_id: Set(None),
+        source_snapshot_id: Set(None),
+        created_at: Set(now),
+    };
+    Ok(am.insert(db).await?)
+}
+
+/// Create a new snapshot with source provenance (for sync push).
+pub async fn create_snapshot_with_source(
+    db: &DatabaseConnection,
+    repository_id: i64,
+    parent_id: Option<i64>,
+    message: &str,
+    source_machine_id: i16,
+    source_snapshot_id: i64,
+) -> anyhow::Result<snapshot::Model> {
+    let now = Utc::now().fixed_offset();
+    let am = snapshot::ActiveModel {
+        id: Set(next_id()?),
+        repository_id: Set(repository_id),
+        parent_id: Set(parent_id),
+        message: Set(message.to_owned()),
+        metadata: Set(serde_json::json!({})),
+        source_machine_id: Set(Some(source_machine_id)),
+        source_snapshot_id: Set(Some(source_snapshot_id)),
         created_at: Set(now),
     };
     Ok(am.insert(db).await?)
@@ -326,6 +351,11 @@ pub async fn get_or_create_store(
 /// Find a store by name.
 pub async fn find_store_by_name(db: &DatabaseConnection, name: &str) -> anyhow::Result<Option<store::Model>> {
     Ok(store::Entity::find().filter(store::Column::Name.eq(name)).one(db).await?)
+}
+
+/// Find a store by its ID.
+pub async fn find_store_by_id(db: &DatabaseConnection, id: i64) -> anyhow::Result<Option<store::Model>> {
+    Ok(store::Entity::find_by_id(id).one(db).await?)
 }
 
 /// List all stores.
@@ -947,3 +977,60 @@ pub async fn delete_entries_in_snapshots(db: &DatabaseConnection, snapshot_ids: 
         .await?;
     Ok(res.rows_affected)
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Machine
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Register a new machine, auto-assigning the next available machine_id.
+pub async fn register_machine(
+    db: &DatabaseConnection,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<machine::Model> {
+    let now = Utc::now().fixed_offset();
+
+    // Find the next available machine_id (start from 1; 0 is reserved for local-only).
+    let max_id: Option<i16> = machine::Entity::find()
+        .select_only()
+        .column_as(machine::Column::MachineId.max(), "max_id")
+        .into_tuple()
+        .one(db)
+        .await?;
+    let next_machine_id = max_id.map(|m| m + 1).unwrap_or(1);
+
+    let am = machine::ActiveModel {
+        machine_id: Set(next_machine_id),
+        name: Set(name.to_owned()),
+        description: Set(description.to_owned()),
+        last_seen_at: Set(None),
+        created_at: Set(now),
+    };
+    Ok(am.insert(db).await?)
+}
+
+/// List all registered machines.
+pub async fn list_machines(db: &DatabaseConnection) -> anyhow::Result<Vec<machine::Model>> {
+    Ok(machine::Entity::find().order_by_asc(machine::Column::MachineId).all(db).await?)
+}
+
+/// Find a machine by its ID.
+pub async fn find_machine_by_id(db: &DatabaseConnection, machine_id: i16) -> anyhow::Result<Option<machine::Model>> {
+    Ok(machine::Entity::find_by_id(machine_id).one(db).await?)
+}
+
+/// Update a machine's last_seen_at timestamp.
+pub async fn update_machine_last_seen(db: &DatabaseConnection, machine_id: i16) -> anyhow::Result<()> {
+    let m = machine::Entity::find_by_id(machine_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("machine {} not found", machine_id))?;
+    let mut am: machine::ActiveModel = m.into();
+    am.last_seen_at = Set(Some(Utc::now().fixed_offset()));
+    am.update(db).await?;
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Replica (additional helpers for sync)
+// ──────────────────────────────────────────────────────────────────────────────

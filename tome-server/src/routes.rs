@@ -525,3 +525,51 @@ pub async fn list_files(
 
     Ok(Json(FilesResponse { total, page, per_page, items }))
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Machine endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct MachineResponse {
+    pub machine_id: i16,
+    pub name: String,
+    pub description: String,
+    pub last_seen_at: Option<String>,
+    pub created_at: String,
+}
+
+impl From<tome_db::entities::machine::Model> for MachineResponse {
+    fn from(m: tome_db::entities::machine::Model) -> Self {
+        Self {
+            machine_id: m.machine_id,
+            name: m.name,
+            description: m.description,
+            last_seen_at: m.last_seen_at.map(|t| t.to_rfc3339()),
+            created_at: m.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RegisterMachineRequest {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+pub async fn list_machines(db: Db) -> AppResult<Json<Vec<MachineResponse>>> {
+    let machines = ops::list_machines(&db).await?;
+    Ok(Json(machines.into_iter().map(MachineResponse::from).collect()))
+}
+
+pub async fn register_machine(db: Db, Json(req): Json<RegisterMachineRequest>) -> AppResult<Json<MachineResponse>> {
+    let machine = ops::register_machine(&db, &req.name, &req.description).await?;
+    Ok(Json(MachineResponse::from(machine)))
+}
+
+pub async fn update_machine(db: Db, Path(id): Path<i16>) -> AppResult<Json<MachineResponse>> {
+    ops::update_machine_last_seen(&db, id).await?;
+    let machine = ops::find_machine_by_id(&db, id).await?.ok_or_else(|| anyhow::anyhow!("machine {} not found", id))?;
+    Ok(Json(MachineResponse::from(machine)))
+}

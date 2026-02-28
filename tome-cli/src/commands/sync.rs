@@ -23,6 +23,8 @@ pub enum SyncCommands {
     List(SyncListArgs),
     /// Pull changes from a sync peer
     Pull(SyncPullArgs),
+    /// Push changes to a sync peer
+    Push(SyncPushArgs),
 }
 
 #[derive(Args)]
@@ -55,6 +57,18 @@ pub struct SyncPullArgs {
     pub repo: String,
 }
 
+#[derive(Args)]
+pub struct SyncPushArgs {
+    /// Peer name
+    pub name: String,
+    /// Local repository name [default: "default"]
+    #[arg(long, default_value = "default")]
+    pub repo: String,
+    /// Local machine_id to record as source (defaults to current Sonyflake machine_id)
+    #[arg(long)]
+    pub machine_id: Option<i16>,
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Dispatch
 // ──────────────────────────────────────────────────────────────────────────────
@@ -64,6 +78,7 @@ pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
         SyncCommands::Add(a) => sync_add(db, a).await,
         SyncCommands::List(a) => sync_list(db, a).await,
         SyncCommands::Pull(a) => sync_pull(db, a).await,
+        SyncCommands::Push(a) => sync_push(db, a).await,
     }
 }
 
@@ -176,6 +191,22 @@ async fn sync_pull(local_db: &DatabaseConnection, args: SyncPullArgs) -> Result<
                     blobs_created += 1;
                     b
                 };
+
+                // Sync replicas from peer so we know where blobs live (e.g. S3 paths).
+                let remote_replicas = ops::replicas_for_blob(&peer_db, *remote_blob_id).await?;
+                for (rr, remote_store) in &remote_replicas {
+                    let local_store = ops::get_or_create_store(
+                        local_db,
+                        &remote_store.name,
+                        &remote_store.url,
+                        remote_store.config.clone(),
+                    )
+                    .await?;
+                    if !ops::replica_exists(local_db, local_blob.id, local_store.id).await? {
+                        ops::insert_replica(local_db, local_blob.id, local_store.id, &rr.path, rr.encrypted).await?;
+                    }
+                }
+
                 Some(local_blob.id)
             } else {
                 None
@@ -241,6 +272,154 @@ async fn sync_pull(local_db: &DatabaseConnection, args: SyncPullArgs) -> Result<
         new_snapshots.len(),
         entries_synced,
         blobs_created
+    );
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// sync push
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn sync_push(local_db: &DatabaseConnection, args: SyncPushArgs) -> Result<()> {
+    // Resolve local repo and peer record.
+    let local_repo = ops::get_or_create_repository(local_db, &args.repo).await?;
+    let peer = ops::find_sync_peer(local_db, &args.name, local_repo.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found", args.name))?;
+
+    let peer_repo_name = peer.config.get("peer_repo").and_then(|v| v.as_str()).unwrap_or(&args.repo).to_owned();
+
+    // Determine source machine_id: CLI arg > 0 (warning).
+    let source_machine_id = args.machine_id.unwrap_or(0);
+    if source_machine_id == 0 {
+        warn!("machine_id is 0 (local-only default). Set --machine-id or configure machine_id in tome.toml.");
+    }
+
+    // Open peer database connection (Aurora or another SQLite).
+    let peer_db = open_db(&peer.url).await?;
+
+    // Ensure the repository exists on the peer side.
+    let remote_repo = ops::get_or_create_repository(&peer_db, &peer_repo_name).await?;
+
+    // Get local snapshots since the last push.
+    let new_snapshots = ops::snapshots_after(local_db, local_repo.id, peer.last_snapshot_id).await?;
+
+    if new_snapshots.is_empty() {
+        println!("already up to date (no new snapshots to push to {:?})", args.name);
+        return Ok(());
+    }
+
+    println!("pushing {} snapshot(s) to {:?} ...", new_snapshots.len(), args.name);
+
+    let mut blobs_created = 0u64;
+    let mut entries_synced = 0u64;
+    let mut replicas_synced = 0u64;
+    let mut last_local_snapshot_id = peer.last_snapshot_id;
+
+    for local_snap in &new_snapshots {
+        // Create a corresponding snapshot on the peer with source provenance.
+        let remote_parent = ops::latest_snapshot(&peer_db, remote_repo.id).await?.map(|s| s.id);
+        let remote_snap = ops::create_snapshot_with_source(
+            &peer_db,
+            remote_repo.id,
+            remote_parent,
+            &local_snap.message,
+            source_machine_id,
+            local_snap.id,
+        )
+        .await?;
+
+        // Push entries from this snapshot.
+        let local_entries = ops::entries_in_snapshot(local_db, local_snap.id).await?;
+
+        for local_entry in &local_entries {
+            // If the entry has a blob, ensure it exists on the peer.
+            let remote_blob_id = if let Some(local_blob_id) = local_entry.blob_id {
+                let local_blob = match ops::find_blob_by_id(local_db, local_blob_id).await? {
+                    Some(b) => b,
+                    None => {
+                        warn!("blob {} not found locally", local_blob_id);
+                        continue;
+                    }
+                };
+
+                // Check if blob already exists on peer by digest.
+                let remote_blob = if let Some(b) = ops::find_blob_by_digest(&peer_db, &local_blob.digest).await? {
+                    b
+                } else {
+                    let fh = tome_core::hash::FileHash {
+                        size: local_blob.size as u64,
+                        fast_digest: local_blob.fast_digest,
+                        digest: local_blob.digest.as_slice().try_into().unwrap_or([0u8; 32]),
+                    };
+                    let b = ops::get_or_create_blob(&peer_db, &fh).await?;
+                    blobs_created += 1;
+                    b
+                };
+
+                // Sync replicas for this blob.
+                let local_replicas = ops::replicas_for_blob(local_db, local_blob_id).await?;
+                for (lr, local_store) in &local_replicas {
+                    let peer_store = ops::get_or_create_store(
+                        &peer_db,
+                        &local_store.name,
+                        &local_store.url,
+                        local_store.config.clone(),
+                    )
+                    .await?;
+                    if !ops::replica_exists(&peer_db, remote_blob.id, peer_store.id).await? {
+                        ops::insert_replica(&peer_db, remote_blob.id, peer_store.id, &lr.path, lr.encrypted).await?;
+                        replicas_synced += 1;
+                    }
+                }
+
+                Some(remote_blob.id)
+            } else {
+                None
+            };
+
+            // Create the entry on the peer.
+            if local_entry.status == 1 {
+                if let Some(blob_id) = remote_blob_id {
+                    ops::insert_entry_present(
+                        &peer_db,
+                        remote_snap.id,
+                        &local_entry.path,
+                        blob_id,
+                        local_entry.mode,
+                        local_entry.mtime,
+                    )
+                    .await?;
+                }
+            } else {
+                ops::insert_entry_deleted(&peer_db, remote_snap.id, &local_entry.path).await?;
+            }
+            entries_synced += 1;
+        }
+
+        // Update snapshot metadata on the peer.
+        let meta = serde_json::json!({
+            "pushed_from_machine_id": source_machine_id,
+            "source_snapshot_id": local_snap.id,
+            "entries": local_entries.len(),
+        });
+        ops::update_snapshot_metadata(&peer_db, remote_snap.id, meta).await?;
+
+        last_local_snapshot_id = Some(local_snap.id);
+        info!("pushed snapshot {} -> {} ({} entries)", local_snap.id, remote_snap.id, local_entries.len());
+    }
+
+    // Update local sync peer progress.
+    if let Some(last_id) = last_local_snapshot_id {
+        ops::update_sync_peer_progress(local_db, peer.id, last_id).await?;
+    }
+
+    println!(
+        "push complete: {} snapshot(s), {} entries, {} blobs created, {} replicas synced",
+        new_snapshots.len(),
+        entries_synced,
+        blobs_created,
+        replicas_synced
     );
     Ok(())
 }

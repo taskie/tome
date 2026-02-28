@@ -36,6 +36,8 @@ enum Commands {
     Verify(commands::verify::VerifyArgs),
     /// Garbage-collect unreferenced blobs and old snapshots
     Gc(commands::gc::GcArgs),
+    /// Register this machine with a central tome-server
+    Init(commands::init::InitArgs),
     /// Start the HTTP API server
     Serve(ServeArgs),
 }
@@ -57,6 +59,11 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // `init` doesn't need a DB connection — handle it early.
+    if let Commands::Init(args) = cli.command {
+        return commands::init::run(args).await;
+    }
+
     // Resolve final values: CLI arg > env var > config file > built-in default.
     // (clap already handles CLI > env; we add the config layer here.)
     let db = cli.db.or(cfg.db).unwrap_or_else(|| "tome.db".to_owned());
@@ -75,6 +82,7 @@ async fn main() -> Result<()> {
     let db_conn = tome_db::connection::open(&db_url).await?;
 
     match cli.command {
+        Commands::Init(_) => unreachable!(),
         Commands::Scan(args) => commands::scan::run(&db_conn, args).await?,
         Commands::Diff(args) => commands::diff::run(&db_conn, args).await?,
         Commands::Restore(args) => commands::restore::run(&db_conn, args).await?,

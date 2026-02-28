@@ -1,4 +1,7 @@
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, post, put},
+};
 use sea_orm::DatabaseConnection;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -20,6 +23,9 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/blobs/{digest}/entries", get(routes::list_blob_entries))
         .route("/snapshots/{id}/entries", get(routes::list_entries))
         .route("/blobs/{digest}", get(routes::get_blob))
+        .route("/api/machines", get(routes::list_machines))
+        .route("/api/machines/register", post(routes::register_machine))
+        .route("/api/machines/{id}", put(routes::update_machine))
         .layer(TraceLayer::new_for_http())
         .with_state(db);
 
