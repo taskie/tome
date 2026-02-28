@@ -79,6 +79,25 @@ impl Hasher for Sha256Holder {
     }
 }
 
+struct Blake3Holder(blake3::Hasher);
+
+impl Write for Blake3Holder {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        self.0.update(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl Hasher for Blake3Holder {
+    fn result_vec(&mut self) -> Vec<u8> {
+        self.0.finalize().as_bytes().to_vec()
+    }
+}
+
 struct XxHash64Holder {
     hash: XxHash64,
     little_endian: bool,
@@ -140,6 +159,7 @@ fn main() {
                     use sha2::Digest;
                     || Box::new(Sha256Holder(Sha256::new()))
                 }
+                "blake3" => || Box::new(Blake3Holder(blake3::Hasher::new())),
                 "xxhash64" => || Box::new(XxHash64Holder { hash: XxHash64::default(), little_endian: false }),
                 _ => panic!("unknown hasher: {}", opt.hasher),
             },

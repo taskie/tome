@@ -12,6 +12,7 @@ name = "treblo"
 doc = false
 
 [dependencies]
+blake3 = { workspace = true }
 byteorder = "1"
 clap = { workspace = true }
 ignore = { workspace = true }
