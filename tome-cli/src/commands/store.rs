@@ -9,6 +9,8 @@ use tome_store::{CipherAlgorithm, Storage, encrypted::EncryptedStorage, factory,
 
 use crate::config::{self, StoreConfig};
 
+use super::helpers::resolve_store;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
@@ -132,23 +134,10 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
         .or_else(|| cfg.default_store.clone())
         .ok_or_else(|| anyhow::anyhow!("store name required (pass <store> or set store.default_store in tome.toml)"))?;
 
-    let store = ops::find_store_by_name(db, &store_name)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", store_name))?;
+    let store = resolve_store(db, &store_name).await?;
 
     // Determine scan root: CLI arg > snapshot metadata > error
-    let scan_root = if let Some(p) = args.path {
-        p.canonicalize()?
-    } else {
-        let meta = ops::latest_snapshot_metadata(db, repo.id).await?;
-        let root_str = meta
-            .as_ref()
-            .and_then(|m| m.get("scan_root"))
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("could not determine scan_root; pass <path> explicitly"))?
-            .to_owned();
-        std::path::PathBuf::from(root_str)
-    };
+    let scan_root = super::helpers::resolve_scan_root(db, repo.id, args.path).await?;
 
     let storage = factory::open_storage(&store.url).await?;
     let entries = ops::present_cache_entries(db, repo.id).await?;
@@ -208,12 +197,8 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
 // ──────────────────────────────────────────────────────────────────────────────
 
 async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreConfig) -> Result<()> {
-    let src_store = ops::find_store_by_name(db, &args.src)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("source store {:?} not found", args.src))?;
-    let dst_store = ops::find_store_by_name(db, &args.dst)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("destination store {:?} not found", args.dst))?;
+    let src_store = resolve_store(db, &args.src).await?;
+    let dst_store = resolve_store(db, &args.dst).await?;
 
     // Resolve encryption key if needed.
     // Priority: --key-file CLI arg > store.key_file in tome.toml.
@@ -312,9 +297,7 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
 // ──────────────────────────────────────────────────────────────────────────────
 
 async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<()> {
-    let store = ops::find_store_by_name(db, &args.store)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.store))?;
+    let store = resolve_store(db, &args.store).await?;
 
     let storage = factory::open_storage(&store.url).await?;
     let replicas = ops::replicas_with_blobs_in_store(db, store.id).await?;

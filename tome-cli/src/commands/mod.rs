@@ -1,5 +1,6 @@
 pub mod diff;
 pub mod gc;
+mod helpers;
 pub mod init;
 pub mod restore;
 pub mod scan;

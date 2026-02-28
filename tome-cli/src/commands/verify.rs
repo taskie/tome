@@ -30,19 +30,7 @@ pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let algo = ops::get_repository_digest_algorithm(&repo)?;
 
-    // Determine scan root: CLI arg > snapshot metadata > error.
-    let scan_root = if let Some(p) = args.path {
-        p.canonicalize()?
-    } else {
-        let meta = ops::latest_snapshot_metadata(db, repo.id).await?;
-        let root_str = meta
-            .as_ref()
-            .and_then(|m| m.get("scan_root"))
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("could not determine scan_root; pass <path> explicitly"))?
-            .to_owned();
-        std::path::PathBuf::from(root_str)
-    };
+    let scan_root = super::helpers::resolve_scan_root(db, repo.id, args.path).await?;
 
     let entries = ops::present_cache_entries(db, repo.id).await?;
 
