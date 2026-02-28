@@ -557,6 +557,77 @@ pub async fn entries_by_prefix(
     Ok(q.all(db).await?)
 }
 
+/// Fetch the history of a path across all snapshots in a repository, newest first.
+pub async fn path_history(
+    db: &DatabaseConnection,
+    repository_id: i64,
+    path: &str,
+) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
+    let snapshots = snapshot::Entity::find()
+        .filter(snapshot::Column::RepositoryId.eq(repository_id))
+        .order_by_desc(snapshot::Column::CreatedAt)
+        .all(db)
+        .await?;
+
+    if snapshots.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let snapshot_map: HashMap<i64, snapshot::Model> =
+        snapshots.iter().map(|s| (s.id, s.clone())).collect();
+    let snapshot_ids: Vec<i64> = snapshots.into_iter().map(|s| s.id).collect();
+
+    let entries = entry::Entity::find()
+        .filter(entry::Column::SnapshotId.is_in(snapshot_ids))
+        .filter(entry::Column::Path.eq(path))
+        .all(db)
+        .await?;
+
+    let mut result: Vec<(entry::Model, snapshot::Model)> = entries
+        .into_iter()
+        .filter_map(|e| snapshot_map.get(&e.snapshot_id).map(|s| (e, s.clone())))
+        .collect();
+    result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
+    Ok(result)
+}
+
+/// Fetch all entries that reference a specific blob, with their snapshot, newest first.
+pub async fn entries_for_blob(
+    db: &DatabaseConnection,
+    blob_id: i64,
+) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
+    let entries = entry::Entity::find()
+        .filter(entry::Column::BlobId.eq(blob_id))
+        .all(db)
+        .await?;
+
+    if entries.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let snapshot_ids: Vec<i64> = entries
+        .iter()
+        .map(|e| e.snapshot_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let snapshots: HashMap<i64, snapshot::Model> = snapshot::Entity::find()
+        .filter(snapshot::Column::Id.is_in(snapshot_ids))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|s| (s.id, s))
+        .collect();
+
+    let mut result: Vec<(entry::Model, snapshot::Model)> = entries
+        .into_iter()
+        .filter_map(|e| snapshots.get(&e.snapshot_id).map(|s| (e, s.clone())))
+        .collect();
+    result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
+    Ok(result)
+}
+
 /// Fetch blobs by a list of IDs.
 pub async fn blobs_by_ids(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<Vec<blob::Model>> {
     if ids.is_empty() {

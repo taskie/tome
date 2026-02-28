@@ -13,6 +13,8 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/repositories/:name/snapshots", get(routes::list_snapshots))
         .route("/repositories/:name/latest", get(routes::get_latest_snapshot))
         .route("/repositories/:name/diff", get(routes::diff_snapshots))
+        .route("/repositories/:name/history", get(routes::path_history))
+        .route("/blobs/:digest/entries", get(routes::list_blob_entries))
         .route("/snapshots/:id/entries", get(routes::list_entries))
         .route("/blobs/:digest", get(routes::get_blob))
         .with_state(db);

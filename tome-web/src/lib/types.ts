@@ -46,6 +46,11 @@ export type Blob = {
   created_at: string;
 };
 
+export type SnapshotEntry = {
+  snapshot: Snapshot;
+  entry: Entry;
+};
+
 export type DiffResponse = {
   snapshot1: Snapshot;
   snapshot2: Snapshot;

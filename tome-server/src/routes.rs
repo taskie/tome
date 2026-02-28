@@ -235,6 +235,66 @@ pub async fn get_latest_snapshot(db: Db, Path(name): Path<String>) -> AppResult<
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Shared: snapshot + entry pair
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SnapshotEntry {
+    pub snapshot: SnapshotResponse,
+    pub entry: EntryResponse,
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /repositories/:name/history?path=
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct HistoryQuery {
+    pub path: String,
+}
+
+pub async fn path_history(
+    db: Db,
+    Path(name): Path<String>,
+    Query(q): Query<HistoryQuery>,
+) -> AppResult<Json<Vec<SnapshotEntry>>> {
+    let repo = repository::Entity::find()
+        .filter(repository::Column::Name.eq(&name))
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name))?;
+
+    let history = ops::path_history(&db, repo.id, &q.path).await?;
+    Ok(Json(
+        history
+            .into_iter()
+            .map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() })
+            .collect(),
+    ))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /blobs/:digest/entries
+// ──────────────────────────────────────────────────────────────────────────────
+
+pub async fn list_blob_entries(
+    db: Db,
+    Path(digest_hex): Path<String>,
+) -> AppResult<Json<Vec<SnapshotEntry>>> {
+    let digest = hex::decode(&digest_hex).map_err(|_| anyhow::anyhow!("invalid digest hex"))?;
+    let blob = ops::find_blob_by_digest(&db, &digest)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("blob {:?} not found", digest_hex))?;
+    let entries = ops::entries_for_blob(&db, blob.id).await?;
+    Ok(Json(
+        entries
+            .into_iter()
+            .map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() })
+            .collect(),
+    ))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // GET /repositories/:name/diff
 // ──────────────────────────────────────────────────────────────────────────────
 
