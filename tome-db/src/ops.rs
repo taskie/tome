@@ -393,6 +393,21 @@ pub async fn list_repositories(db: &DatabaseConnection) -> anyhow::Result<Vec<re
     Ok(repository::Entity::find().all(db).await?)
 }
 
+/// Get present (status=1) entries from entry_cache filtered by path prefix, for diff.
+pub async fn cache_entries_by_prefix(
+    db: &DatabaseConnection,
+    repository_id: i64,
+    prefix: &str,
+) -> anyhow::Result<Vec<entry_cache::Model>> {
+    let mut q = entry_cache::Entity::find()
+        .filter(entry_cache::Column::RepositoryId.eq(repository_id))
+        .filter(entry_cache::Column::Status.eq(1i16));
+    if !prefix.is_empty() {
+        q = q.filter(entry_cache::Column::Path.like(format!("{prefix}%")));
+    }
+    Ok(q.order_by_asc(entry_cache::Column::Path).all(db).await?)
+}
+
 /// Get present entries from entry_cache for a repository.
 pub async fn present_cache_entries(
     db: &DatabaseConnection,
