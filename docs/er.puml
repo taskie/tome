@@ -17,6 +17,8 @@ entity snapshots {
       parent_id [FK, self]
     + message
     + metadata
+      source_machine_id
+      source_snapshot_id
     + created_at
 }
 
@@ -115,5 +117,14 @@ entity sync_peers {
 }
 
 sync_peers }o--|| repositories
+
+entity machines {
+    + machine_id [PK]
+    --
+    + name
+    + description
+      last_seen_at
+    + created_at
+}
 
 @enduml

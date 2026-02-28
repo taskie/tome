@@ -8,9 +8,9 @@
 
 ```
 tome-core/    Hash computation (delegates to treblo), ID generation (Sonyflake), shared models
-tome-db/      SeaORM entities, migrations, query operations (ops.rs)
+tome-db/      SeaORM entities, migrations, query operations (ops/ modules)
 tome-store/   Async Storage trait + implementations: Local, SSH, S3, Encrypted
-tome-server/  HTTP API server (axum 0.8)
+tome-server/  HTTP API server (axum 0.8, routes/ modules)
 tome-cli/     Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve
 tome-web/     Next.js 16 web frontend (Server Components, Tailwind CSS v4)
 aether/       AEAD encryption library: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF
@@ -35,19 +35,20 @@ Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `i
 
 ## Database schema
 
-9 tables. All IDs are Sonyflake `i64`. All timestamps are `DateTimeWithTimeZone`.
+10 tables. All IDs are Sonyflake `i64` (except `machines.machine_id` which is `i16`). All timestamps are `DateTimeWithTimeZone`.
 
 | Table | Description |
 |-------|-------------|
 | `repositories` | Named scan namespaces (e.g. `default`) |
 | `blobs` | Content-addressable file fingerprints (`digest`=SHA-256 or BLAKE3, `fast_digest`=xxHash64) |
-| `snapshots` | Scan execution events (analogous to Git commits, chained via `parent_id`) |
+| `snapshots` | Scan execution events (analogous to Git commits, chained via `parent_id`). `source_machine_id` / `source_snapshot_id` track sync provenance |
 | `entries` | Per-file state within a snapshot (`status`: 0=deleted, 1=present) |
 | `entry_cache` | Latest state cache per path, PK=(repository\_id, path) |
 | `stores` | Storage backend definitions (`url`: `file:///`, `ssh://`, `s3://`) |
 | `replicas` | Tracks which store holds which blob |
 | `tags` | Key-value attributes on blobs |
 | `sync_peers` | Sync peer definitions (`url` + `last_snapshot_id`) |
+| `machines` | Registered machines for central sync (`machine_id` as PK, `name`, `last_seen_at`) |
 
 ### entity_cache limitations
 
@@ -122,6 +123,12 @@ GET /diff                              ?repo1= &prefix1= &repo2= &prefix2=
 GET /snapshots/{id}/entries           ?prefix=
 GET /blobs/{digest}
 GET /blobs/{digest}/entries
+GET /machines
+POST /machines                         register a new machine (returns allocated machine_id)
+PUT /machines/{id}                     update machine (name, description)
+GET /stores
+GET /tags
+GET /sync-peers
 ```
 
 Notes:
@@ -158,6 +165,10 @@ tome-web/
       repositories/[name]/history/page.tsx    per-path history
       snapshots/[id]/page.tsx                 snapshot entry list
       blobs/[digest]/page.tsx                 blob detail
+      stores/page.tsx                         registered stores
+      machines/page.tsx                       registered machines
+      tags/page.tsx                           blob tags
+      sync-peers/page.tsx                     sync peer list
       globals.css                             Tailwind v4 (@import "tailwindcss")
   eslint.config.mjs    ESLint flat config (eslint-config-next 16)
   .prettierrc.json     Prettier config (printWidth: 120)
@@ -176,6 +187,10 @@ tome-web/
   /snapshots/[id]           → snapshot entries (reached from history or repo page)
   /blobs/[digest]           → blob detail + files using this content
   /diff                     → cross-repo diff → paths link to per-repo history
+  /stores                   → registered stores
+  /machines                 → registered machines
+  /tags                     → blob tags → links to blob detail
+  /sync-peers               → sync peer list
 ```
 
 ### Key implementation notes

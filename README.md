@@ -55,6 +55,14 @@ Options:
   --machine-id <N>        Machine ID for ID generation (0–65535)  [env: TOME_MACHINE_ID]  [default: 0]
 ```
 
+### `tome init --server <url>`
+
+Register this machine with a central tome-server and obtain a `machine_id`.
+
+```bash
+tome init --server https://central.example.com   # writes machine_id to tome.toml
+```
+
 ### `tome scan [OPTIONS] [PATH]`
 
 Scan a directory and record a snapshot of file changes.
@@ -188,13 +196,13 @@ tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
 
 ```
 tome-core/     Hash computation (SHA-256 / BLAKE3 / xxHash64), ID generation, shared models
-tome-db/       SeaORM entities, migrations, query operations
+tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
-tome-server/   HTTP API server (axum)
-tome-cli/      Unified CLI (scan / store / sync / diff / restore / tag / verify / gc / serve)
+tome-server/   HTTP API server (axum, routes/ modules)
+tome-cli/      Unified CLI (scan / store / sync / diff / restore / tag / verify / gc / init / serve)
 tome-web/      Next.js 16 web frontend
-aether/        AES-256-GCM authenticated encryption library (internal)
-treblo/        File-tree walk and hex utilities (internal)
+aether/        AEAD authenticated encryption library (AES-256-GCM / ChaCha20-Poly1305, internal)
+treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and hex utilities (internal)
 ```
 
 Legacy crates (`ichno`, `ichnome`, etc.) are archived under `obsolete/`.
