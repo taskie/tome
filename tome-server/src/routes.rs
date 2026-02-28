@@ -359,6 +359,89 @@ pub async fn diff_snapshots(
     Ok(Json(DiffResponse { snapshot1: snap1.into(), snapshot2: snap2.into(), blobs, entries, diff }))
 }
 
+// ── GET /diff ─────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct RepoDiffQuery {
+    pub repo1: String,
+    #[serde(default)]
+    pub prefix1: String,
+    pub repo2: String,
+    #[serde(default)]
+    pub prefix2: String,
+}
+
+#[derive(Serialize)]
+pub struct RepoDiffResponse {
+    pub repo1: RepositoryResponse,
+    pub repo2: RepositoryResponse,
+    pub blobs: HashMap<String, BlobResponse>,
+    /// "1:{path}" or "2:{path}" → CacheEntryResponse
+    pub entries: HashMap<String, CacheEntryResponse>,
+    /// blob_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
+    pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
+}
+
+pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Json<RepoDiffResponse>> {
+    let repo1 = repository::Entity::find()
+        .filter(repository::Column::Name.eq(&q.repo1))
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", q.repo1))?;
+    let repo2 = repository::Entity::find()
+        .filter(repository::Column::Name.eq(&q.repo2))
+        .one(&*db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", q.repo2))?;
+
+    let entries1 = ops::cache_entries_by_prefix(&db, repo1.id, &q.prefix1).await?;
+    let entries2 = ops::cache_entries_by_prefix(&db, repo2.id, &q.prefix2).await?;
+
+    const MAX_ENTRIES: usize = 10_000;
+    if entries1.len() > MAX_ENTRIES || entries2.len() > MAX_ENTRIES {
+        return Err(anyhow::anyhow!("too many entries (limit {}), narrow the prefix", MAX_ENTRIES).into());
+    }
+
+    let blob_ids: Vec<i64> =
+        entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
+
+    let blobs: HashMap<String, BlobResponse> =
+        ops::blobs_by_ids(&db, &blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
+
+    let mut entries: HashMap<String, CacheEntryResponse> = HashMap::new();
+    let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+
+    for e in &entries1 {
+        let key = format!("1:{}", e.path);
+        if let Some(blob_id) = e.blob_id {
+            diff.entry(blob_id.to_string()).or_default().0.push(key.clone());
+        }
+        entries.insert(key, cache_entry_to_response(e));
+    }
+    for e in &entries2 {
+        let key = format!("2:{}", e.path);
+        if let Some(blob_id) = e.blob_id {
+            diff.entry(blob_id.to_string()).or_default().1.push(key.clone());
+        }
+        entries.insert(key, cache_entry_to_response(e));
+    }
+
+    Ok(Json(RepoDiffResponse { repo1: repo1.into(), repo2: repo2.into(), blobs, entries, diff }))
+}
+
+fn cache_entry_to_response(e: &tome_db::entities::entry_cache::Model) -> CacheEntryResponse {
+    CacheEntryResponse {
+        path: e.path.clone(),
+        status: e.status,
+        size: e.size,
+        mtime: e.mtime.map(|t| t.to_rfc3339()),
+        digest: e.digest.as_deref().map(hex_encode),
+        fast_digest: e.fast_digest.map(|fd| format!("{:016x}", fd as u64)),
+        snapshot_id: e.snapshot_id.to_string(),
+        entry_id: e.entry_id.to_string(),
+    }
+}
+
 // ── GET /repositories/:name/files ────────────────────────────────────────────
 
 #[derive(Deserialize)]

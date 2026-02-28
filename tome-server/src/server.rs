@@ -16,6 +16,7 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/repositories/{name}/diff", get(routes::diff_snapshots))
         .route("/repositories/{name}/files", get(routes::list_files))
         .route("/repositories/{name}/history", get(routes::path_history))
+        .route("/diff", get(routes::diff_repos))
         .route("/blobs/{digest}/entries", get(routes::list_blob_entries))
         .route("/snapshots/{id}/entries", get(routes::list_entries))
         .route("/blobs/{digest}", get(routes::get_blob))
