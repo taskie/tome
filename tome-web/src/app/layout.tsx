@@ -18,6 +18,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/diff" className="text-xs text-gray-500 hover:text-blue-600">
             Diff
           </Link>
+          <Link href="/stores" className="text-xs text-gray-500 hover:text-blue-600">
+            Stores
+          </Link>
+          <Link href="/machines" className="text-xs text-gray-500 hover:text-blue-600">
+            Machines
+          </Link>
+          <Link href="/tags" className="text-xs text-gray-500 hover:text-blue-600">
+            Tags
+          </Link>
+          <Link href="/sync-peers" className="text-xs text-gray-500 hover:text-blue-600">
+            Sync Peers
+          </Link>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-6">{children}</main>
       </body>

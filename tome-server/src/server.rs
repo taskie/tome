@@ -25,6 +25,9 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/blobs/{digest}", get(routes::get_blob))
         .route("/machines", get(routes::list_machines).post(routes::register_machine))
         .route("/machines/{id}", put(routes::update_machine))
+        .route("/stores", get(routes::list_stores))
+        .route("/tags", get(routes::list_all_tags))
+        .route("/sync-peers", get(routes::list_all_sync_peers))
         .layer(TraceLayer::new_for_http())
         .with_state(db);
 

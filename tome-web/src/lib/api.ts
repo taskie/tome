@@ -3,10 +3,14 @@ import type {
   DiffResponse,
   Entry,
   FilesResponse,
+  Machine,
   RepoDiffResponse,
   Repository,
   Snapshot,
   SnapshotEntry,
+  Store,
+  SyncPeer,
+  Tag,
 } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
@@ -61,4 +65,12 @@ export const api = {
     const qs = p.toString();
     return get(`/repositories/${encodeURIComponent(name)}/files${qs ? `?${qs}` : ""}`);
   },
+
+  stores: (): Promise<Store[]> => get("/stores"),
+
+  machines: (): Promise<Machine[]> => get("/machines"),
+
+  tags: (): Promise<Tag[]> => get("/tags"),
+
+  syncPeers: (): Promise<SyncPeer[]> => get("/sync-peers"),
 };

@@ -88,3 +88,38 @@ export type RepoDiffResponse = {
   /** blob_id → [entry_keys_in_repo1, entry_keys_in_repo2] */
   diff: Record<string, [string[], string[]]>;
 };
+
+export type Store = {
+  id: string;
+  name: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Machine = {
+  machine_id: number;
+  name: string;
+  description: string;
+  last_seen_at: string | null;
+  created_at: string;
+};
+
+export type Tag = {
+  id: string;
+  blob_id: string;
+  key: string;
+  value: string | null;
+  created_at: string;
+};
+
+export type SyncPeer = {
+  id: string;
+  name: string;
+  url: string;
+  repository_id: string;
+  last_synced_at: string | null;
+  last_snapshot_id: string | null;
+  created_at: string;
+  updated_at: string;
+};

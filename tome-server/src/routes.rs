@@ -573,3 +573,99 @@ pub async fn update_machine(db: Db, Path(id): Path<i16>) -> AppResult<Json<Machi
     let machine = ops::find_machine_by_id(&db, id).await?.ok_or_else(|| anyhow::anyhow!("machine {} not found", id))?;
     Ok(Json(MachineResponse::from(machine)))
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Store endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct StoreResponse {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<tome_db::entities::store::Model> for StoreResponse {
+    fn from(m: tome_db::entities::store::Model) -> Self {
+        Self {
+            id: m.id.to_string(),
+            name: m.name,
+            url: m.url,
+            created_at: m.created_at.to_rfc3339(),
+            updated_at: m.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+pub async fn list_stores(db: Db) -> AppResult<Json<Vec<StoreResponse>>> {
+    let stores = ops::list_stores(&db).await?;
+    Ok(Json(stores.into_iter().map(StoreResponse::from).collect()))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tag endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct TagResponse {
+    pub id: String,
+    pub blob_id: String,
+    pub key: String,
+    pub value: Option<String>,
+    pub created_at: String,
+}
+
+impl From<tome_db::entities::tag::Model> for TagResponse {
+    fn from(m: tome_db::entities::tag::Model) -> Self {
+        Self {
+            id: m.id.to_string(),
+            blob_id: m.blob_id.to_string(),
+            key: m.key,
+            value: m.value,
+            created_at: m.created_at.to_rfc3339(),
+        }
+    }
+}
+
+pub async fn list_all_tags(db: Db) -> AppResult<Json<Vec<TagResponse>>> {
+    let tags = ops::list_all_tags(&db).await?;
+    Ok(Json(tags.into_iter().map(TagResponse::from).collect()))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SyncPeer endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SyncPeerResponse {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub repository_id: String,
+    pub last_synced_at: Option<String>,
+    pub last_snapshot_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<tome_db::entities::sync_peer::Model> for SyncPeerResponse {
+    fn from(m: tome_db::entities::sync_peer::Model) -> Self {
+        Self {
+            id: m.id.to_string(),
+            name: m.name,
+            url: m.url,
+            repository_id: m.repository_id.to_string(),
+            last_synced_at: m.last_synced_at.map(|t| t.to_rfc3339()),
+            last_snapshot_id: m.last_snapshot_id.map(|id| id.to_string()),
+            created_at: m.created_at.to_rfc3339(),
+            updated_at: m.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+pub async fn list_all_sync_peers(db: Db) -> AppResult<Json<Vec<SyncPeerResponse>>> {
+    let peers = ops::list_all_sync_peers(&db).await?;
+    Ok(Json(peers.into_iter().map(SyncPeerResponse::from).collect()))
+}

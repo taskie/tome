@@ -592,6 +592,14 @@ pub async fn list_sync_peers(db: &DatabaseConnection, repository_id: i64) -> any
     Ok(sync_peer::Entity::find().filter(sync_peer::Column::RepositoryId.eq(repository_id)).all(db).await?)
 }
 
+pub async fn list_all_sync_peers(db: &DatabaseConnection) -> anyhow::Result<Vec<sync_peer::Model>> {
+    Ok(sync_peer::Entity::find()
+        .order_by_asc(sync_peer::Column::RepositoryId)
+        .order_by_asc(sync_peer::Column::Name)
+        .all(db)
+        .await?)
+}
+
 /// Update the last_snapshot_id and last_synced_at of a sync peer.
 pub async fn update_sync_peer_progress(
     db: &DatabaseConnection,
@@ -789,6 +797,10 @@ pub async fn list_tags(db: &DatabaseConnection, blob_id: i64) -> anyhow::Result<
         .order_by_asc(tag::Column::Id)
         .all(db)
         .await?)
+}
+
+pub async fn list_all_tags(db: &DatabaseConnection) -> anyhow::Result<Vec<tag::Model>> {
+    Ok(tag::Entity::find().order_by_asc(tag::Column::Key).order_by_asc(tag::Column::Id).all(db).await?)
 }
 
 /// Find all blobs that have a tag matching the given key (and optionally value).
