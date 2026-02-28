@@ -28,7 +28,7 @@ tome-db/      — SeaORM エンティティ + マイグレーション + ops
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
 tome-cli/     — 統一 CLI（tome scan / store / sync / serve）
-tome-web/     — Next.js 15 Web フロントエンド
+tome-web/     — Next.js 16 Web フロントエンド
 ```
 
 tome-sync は独立クレートとして切り出さず、`tome-cli/src/commands/sync.rs` に実装。
@@ -116,6 +116,7 @@ GET /repositories/{name}/history      ?path=
 GET /snapshots/{id}/entries           ?prefix=
 GET /blobs/{digest}
 GET /blobs/{digest}/entries
+GET /diff                          ?repo1= &prefix1= &repo2= &prefix2=
 ```
 
 - digest はバイナリで保存し、API レスポンスでは hex 文字列に変換して返す
@@ -145,6 +146,7 @@ tome-web/
       repositories/[name]/history/page.tsx — パス履歴
       snapshots/[id]/page.tsx             — エントリ一覧
       blobs/[digest]/page.tsx             — blob 詳細
+      diff/page.tsx                       — リポジトリ横断 diff（GET /diff）
       globals.css  — Tailwind v4 (@import "tailwindcss")
   eslint.config.mjs  — ESLint flat config (eslint-config-next 16)
   .prettierrc.json   — Prettier 設定（printWidth: 120）
