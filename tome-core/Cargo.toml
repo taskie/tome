@@ -6,16 +6,13 @@ rust-version = "1.85"
 
 [dependencies]
 anyhow = { workspace = true }
-blake3 = { workspace = true }
 chrono = { workspace = true }
-clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 sonyflake = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-twox-hash = { workspace = true }
+treblo = { path = "../treblo" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

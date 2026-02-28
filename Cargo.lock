@@ -4149,17 +4149,14 @@ name = "tome-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "blake3",
  "chrono",
- "clap",
  "serde",
  "serde_json",
- "sha2",
  "sonyflake",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
- "twox-hash",
+ "treblo",
 ]
 
 [[package]]
@@ -4398,10 +4395,15 @@ dependencies = [
 name = "treblo"
 version = "0.1.0"
 dependencies = [
+ "blake3",
+ "clap",
  "digest",
  "ignore",
  "sha-1",
+ "sha2",
+ "tempfile",
  "tracing",
+ "twox-hash",
 ]
 
 [[package]]

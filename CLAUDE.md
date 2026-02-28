@@ -34,7 +34,7 @@ tome-server/  — HTTP API サーバー (axum)
 tome-cli/     — 統一 CLI（scan / store / sync / diff / restore / tag / verify / gc / serve）
 tome-web/     — Next.js 16 Web フロントエンド
 aether/       — AES-256-GCM 暗号化ライブラリ
-treblo/       — ファイルツリー走査・hex ユーティリティ
+treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・ファイルツリー走査・hex ユーティリティ
 ```
 
 レガシークレート（ichno / ichnome 等）は `obsolete/` 下にアーカイブ済み。

@@ -7,7 +7,14 @@ rust-version = "1.85"
 publish = false
 
 [dependencies]
+blake3 = { workspace = true }
+clap = { workspace = true }
 digest = "0.10"
 ignore = { workspace = true }
 sha-1 = "0.10"
+sha2 = { workspace = true }
 tracing = { workspace = true }
+twox-hash = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

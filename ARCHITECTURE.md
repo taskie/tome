@@ -7,14 +7,14 @@
 ## Crate structure
 
 ```
-tome-core/    Hash computation (SHA-256 / BLAKE3 + xxHash64), ID generation (Sonyflake), shared models
+tome-core/    Hash computation (delegates to treblo), ID generation (Sonyflake), shared models
 tome-db/      SeaORM entities, migrations, query operations (ops.rs)
 tome-store/   Async Storage trait + implementations: Local, SSH, S3, Encrypted
 tome-server/  HTTP API server (axum 0.8)
 tome-cli/     Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve
 tome-web/     Next.js 16 web frontend (Server Components, Tailwind CSS v4)
 aether/       AES-256-GCM + Argon2id encryption library (internal)
-treblo/       File-tree walk and hex utilities (internal)
+treblo/       Hash algorithms (xxHash64/SHA-256/BLAKE3), file-tree walk, and hex utilities
 ```
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
@@ -63,7 +63,7 @@ Change detection uses a three-stage filter to minimize I/O:
 mtime / size  →  xxHash64  →  SHA-256 (or BLAKE3)
 ```
 
-If a stage shows no change, subsequent hashes are skipped. Both hashes are computed in a single pass through the file in `tome-core/src/hash.rs::hash_file()`.
+If a stage shows no change, subsequent hashes are skipped. Both hashes are computed in a single pass through the file in `treblo/src/hash.rs::hash_file()` (re-exported via `tome-core::hash`).
 
 The digest algorithm is configured per repository via `repositories.config["digest_algorithm"]` (default: `"sha256"`). Use `tome scan --digest-algorithm blake3` when creating a new repository. The algorithm cannot be changed after the first scan (digest consistency).
 

@@ -10,19 +10,37 @@ async fn open_test_db(db_dir: &tempfile::TempDir) -> sea_orm::DatabaseConnection
 
 /// Run a scan of `dir` using repo `"default"`.
 async fn scan(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
-    let args = ScanArgs { repo: "default".to_owned(), path: Some(dir.to_path_buf()), no_ignore: false };
+    let args = ScanArgs {
+        repo: "default".to_owned(),
+        path: Some(dir.to_path_buf()),
+        no_ignore: false,
+        message: String::new(),
+        digest_algorithm: Default::default(),
+    };
     scan_run(db, args).await.expect("scan failed");
 }
 
 /// Run a scan with a custom repo name.
 async fn scan_repo(db: &sea_orm::DatabaseConnection, repo: &str, dir: &std::path::Path) {
-    let args = ScanArgs { repo: repo.to_owned(), path: Some(dir.to_path_buf()), no_ignore: false };
+    let args = ScanArgs {
+        repo: repo.to_owned(),
+        path: Some(dir.to_path_buf()),
+        no_ignore: false,
+        message: String::new(),
+        digest_algorithm: Default::default(),
+    };
     scan_run(db, args).await.expect("scan failed");
 }
 
 /// Run a scan with no_ignore=true.
 async fn scan_no_ignore(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
-    let args = ScanArgs { repo: "default".to_owned(), path: Some(dir.to_path_buf()), no_ignore: true };
+    let args = ScanArgs {
+        repo: "default".to_owned(),
+        path: Some(dir.to_path_buf()),
+        no_ignore: true,
+        message: String::new(),
+        digest_algorithm: Default::default(),
+    };
     scan_run(db, args).await.expect("scan failed");
 }
 

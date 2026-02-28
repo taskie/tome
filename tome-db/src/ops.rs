@@ -38,7 +38,7 @@ pub async fn get_or_create_repository(db: &DatabaseConnection, name: &str) -> an
 /// Returns `Sha256` if the key is absent (legacy repos default to SHA-256).
 pub fn get_repository_digest_algorithm(repo: &repository::Model) -> anyhow::Result<DigestAlgorithm> {
     match repo.config.get("digest_algorithm").and_then(|v| v.as_str()) {
-        Some(s) => s.parse::<DigestAlgorithm>(),
+        Some(s) => s.parse::<DigestAlgorithm>().map_err(|e| anyhow::anyhow!(e)),
         None => Ok(DigestAlgorithm::Sha256),
     }
 }
