@@ -32,6 +32,7 @@ export type Entry = {
   /** 0 = deleted, 1 = present */
   status: number;
   blob_id: string | null;
+  digest?: string;
   mode: number | null;
   mtime: string | null;
   created_at: string;

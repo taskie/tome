@@ -19,8 +19,11 @@ export const api = {
   snapshots: (name: string): Promise<Snapshot[]> =>
     get(`/repositories/${encodeURIComponent(name)}/snapshots`),
 
-  entries: (id: string): Promise<Entry[]> =>
-    get(`/snapshots/${encodeURIComponent(id)}/entries`),
+  entries: (id: string, prefix = ""): Promise<Entry[]> =>
+    get(
+      `/snapshots/${encodeURIComponent(id)}/entries` +
+        (prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""),
+    ),
 
   diff: (name: string, s1: string, s2: string, prefix = ""): Promise<DiffResponse> =>
     get(

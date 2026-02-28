@@ -72,23 +72,31 @@ pub struct EntryResponse {
     pub path: String,
     pub status: i16,
     pub blob_id: Option<String>,
+    pub digest: Option<String>,
     pub mode: Option<i32>,
     pub mtime: Option<String>,
     pub created_at: String,
 }
 
+impl EntryResponse {
+    fn from_with_blob(e: entry::Model, blob: Option<&blob::Model>) -> Self {
+        Self {
+            id: e.id.to_string(),
+            snapshot_id: e.snapshot_id.to_string(),
+            path: e.path,
+            status: e.status,
+            blob_id: e.blob_id.map(|id| id.to_string()),
+            digest: blob.map(|b| hex_encode(&b.digest)),
+            mode: e.mode,
+            mtime: e.mtime.map(|t| t.to_rfc3339()),
+            created_at: e.created_at.to_rfc3339(),
+        }
+    }
+}
+
 impl From<entry::Model> for EntryResponse {
     fn from(m: entry::Model) -> Self {
-        Self {
-            id: m.id.to_string(),
-            snapshot_id: m.snapshot_id.to_string(),
-            path: m.path,
-            status: m.status,
-            blob_id: m.blob_id.map(|id| id.to_string()),
-            mode: m.mode,
-            mtime: m.mtime.map(|t| t.to_rfc3339()),
-            created_at: m.created_at.to_rfc3339(),
-        }
+        Self::from_with_blob(m, None)
     }
 }
 
@@ -178,10 +186,25 @@ pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<
 // GET /snapshots/:id/entries
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn list_entries(db: Db, Path(id): Path<String>) -> AppResult<Json<Vec<EntryResponse>>> {
+#[derive(Deserialize)]
+pub struct EntriesQuery {
+    #[serde(default)]
+    pub prefix: String,
+}
+
+pub async fn list_entries(
+    db: Db,
+    Path(id): Path<String>,
+    Query(q): Query<EntriesQuery>,
+) -> AppResult<Json<Vec<EntryResponse>>> {
     let snapshot_id: i64 = id.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id"))?;
-    let entries = ops::entries_in_snapshot(&db, snapshot_id).await?;
-    Ok(Json(entries.into_iter().map(Into::into).collect()))
+    let pairs = ops::entries_with_digest(&db, snapshot_id, &q.prefix).await?;
+    Ok(Json(
+        pairs
+            .into_iter()
+            .map(|(e, b)| EntryResponse::from_with_blob(e, b.as_ref()))
+            .collect(),
+    ))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

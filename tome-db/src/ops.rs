@@ -1,7 +1,9 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, RelationTrait,
 };
+use std::collections::{HashMap, HashSet};
 
 use tome_core::{hash::FileHash, id::next_id};
 
@@ -516,6 +518,24 @@ pub async fn find_blob_by_digest(db: &DatabaseConnection, digest: &[u8]) -> anyh
 /// Find a blob by primary key ID.
 pub async fn find_blob_by_id(db: &DatabaseConnection, id: i64) -> anyhow::Result<Option<blob::Model>> {
     Ok(blob::Entity::find_by_id(id).one(db).await?)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Entries with blob digest
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Fetch all entries for a snapshot with their associated blob, optionally filtered by path prefix.
+pub async fn entries_with_digest(
+    db: &DatabaseConnection,
+    snapshot_id: i64,
+    path_prefix: &str,
+) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>)>> {
+    let mut q = entry::Entity::find()
+        .filter(entry::Column::SnapshotId.eq(snapshot_id));
+    if !path_prefix.is_empty() {
+        q = q.filter(entry::Column::Path.like(format!("{path_prefix}%")));
+    }
+    Ok(q.find_also_related(blob::Entity).all(db).await?)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -45,9 +45,17 @@ export default async function RepositoryPage({ params }: Props) {
         <span className="text-gray-600">{repoName}</span>
       </nav>
 
-      <h1 className="text-base font-semibold mb-4">
+      <h1 className="text-base font-semibold mb-2">
         Repository: <span className="text-blue-700">{repoName}</span>
       </h1>
+      <div className="mb-4">
+        <Link
+          href={`/repositories/${name}/diff`}
+          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+        >
+          Diff
+        </Link>
+      </div>
 
       {sorted.length === 0 ? (
         <p className="text-gray-400">No snapshots yet.</p>
@@ -70,7 +78,7 @@ export default async function RepositoryPage({ params }: Props) {
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-3 py-2">
                     <Link
-                      href={`/snapshots/${s.id}`}
+                      href={`/snapshots/${s.id}?repo=${encodeURIComponent(repoName)}`}
                       className="text-blue-600 hover:underline font-mono"
                     >
                       {idShort}
