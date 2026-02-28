@@ -4,7 +4,7 @@
 >
 > A chronicle of every file — recorded in hashes, preserved in snapshots.
 
-A file change tracking system written in Rust. Scans directories, detects changes via SHA-256 / xxHash64, and records snapshot history to SQLite or PostgreSQL.
+A file change tracking system written in Rust. Scans directories, detects changes via content hashing (SHA-256 or BLAKE3) and xxHash64, and records snapshot history to SQLite or PostgreSQL.
 
 ## Getting Started
 
@@ -25,6 +25,26 @@ tome serve
 # → http://127.0.0.1:8080
 ```
 
+## Configuration
+
+Settings can be specified via CLI arguments, environment variables, or `tome.toml` config files. Priority (highest wins): CLI > env > `./tome.toml` > `~/.config/tome/tome.toml` > defaults.
+
+```toml
+# ~/.config/tome/tome.toml or ./tome.toml
+db = "tome.db"
+machine_id = 0
+
+[scan]
+repo = "default"
+
+[store]
+default_store = "backup"
+key_file = "~/.config/tome/keys/main.key"
+
+[serve]
+addr = "127.0.0.1:8080"
+```
+
 ## CLI Reference
 
 ```
@@ -40,10 +60,12 @@ Options:
 Scan a directory and record a snapshot of file changes.
 
 ```bash
-tome scan                              # current directory
-tome scan --repo docs /srv/docs        # named repository
-tome scan --no-ignore ~/data           # ignore .gitignore rules
-tome --db /var/db/tome.db scan ~/data  # custom DB path
+tome scan                                        # current directory
+tome scan --repo docs /srv/docs                  # named repository
+tome scan --no-ignore ~/data                     # ignore .gitignore rules
+tome scan --message "after deploy"               # annotate the snapshot
+tome scan --digest-algorithm blake3              # use BLAKE3 instead of SHA-256
+tome --db /var/db/tome.db scan ~/data            # custom DB path
 ```
 
 ### `tome store <COMMAND>`
@@ -73,6 +95,55 @@ tome sync pull [--repo <name>] <name>                # pull incremental diffs
 ### `tome serve [--addr <host:port>]`
 
 Start the HTTP API server (default: `127.0.0.1:8080`).
+
+### `tome diff <snapshot1> <snapshot2> [OPTIONS]`
+
+Compare two snapshots and show file changes.
+
+```bash
+tome diff 123456 789012                # show full diff
+tome diff 123456 789012 --name-only    # filenames only
+tome diff 123456 789012 --stat         # summary with sizes
+```
+
+### `tome restore --snapshot <id> <dest>`
+
+Restore files from a historical snapshot to a local directory.
+
+```bash
+tome restore --snapshot 123456 ./restored
+tome restore --snapshot 123456 --store backup --prefix src/ ./restored
+```
+
+### `tome tag <COMMAND>`
+
+Manage key-value tags on blobs.
+
+```bash
+tome tag set <digest> <key> [value]    # set a tag
+tome tag delete <digest> <key>         # delete a tag
+tome tag list <digest>                 # list tags on a blob
+tome tag search <key> [value]          # find blobs by tag
+```
+
+### `tome verify [OPTIONS]`
+
+Verify scanned files against the cached state (bit-rot detection).
+
+```bash
+tome verify                            # verify default repo
+tome verify --repo myproject           # verify specific repo
+```
+
+### `tome gc [OPTIONS]`
+
+Garbage collect unreferenced blobs and old snapshots.
+
+```bash
+tome gc --dry-run                      # report only
+tome gc --keep 10                      # keep 10 most recent snapshots
+tome gc --keep-days 30 --repo myproject
+```
 
 ## Web UI
 
@@ -116,12 +187,16 @@ tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
 ## Architecture
 
 ```
-tome-core/     Hash computation, ID generation, shared models
+tome-core/     Hash computation (SHA-256 / BLAKE3 / xxHash64), ID generation, shared models
 tome-db/       SeaORM entities, migrations, query operations
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum)
-tome-cli/      Unified CLI (scan / store / sync / serve)
+tome-cli/      Unified CLI (scan / store / sync / diff / restore / tag / verify / gc / serve)
 tome-web/      Next.js 16 web frontend
+aether/        AES-256-GCM authenticated encryption library (internal)
+treblo/        File-tree walk and hex utilities (internal)
 ```
+
+Legacy crates (`ichno`, `ichnome`, etc.) are archived under `obsolete/`.
 
 For detailed design documentation — DB schema, hash strategy, HTTP API reference, and known design issues — see [ARCHITECTURE.md](ARCHITECTURE.md).

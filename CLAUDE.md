@@ -1,6 +1,6 @@
 # tome — 開発ガイド
 
-> Rust 製ファイル変更追跡システム。ハッシュ（SHA-256 + xxHash64）で変更を検知し、
+> Rust 製ファイル変更追跡システム。ハッシュ（SHA-256 / BLAKE3 + xxHash64）で変更を検知し、
 > スナップショット履歴を SQLite/PostgreSQL に記録する。
 
 **著者:** taskie <t@skie.jp>
@@ -27,13 +27,17 @@ cd tome-web && npm run format && npm run lint
 ## クレート構成
 
 ```
-tome-core/    — ハッシュ計算・ID生成・共通モデル
+tome-core/    — ハッシュ計算（SHA-256 / BLAKE3 + xxHash64）・ID生成・共通モデル
 tome-db/      — SeaORM エンティティ + マイグレーション + ops
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
-tome-cli/     — 統一 CLI（tome scan / store / sync / serve）
+tome-cli/     — 統一 CLI（scan / store / sync / diff / restore / tag / verify / gc / serve）
 tome-web/     — Next.js 16 Web フロントエンド
+aether/       — AES-256-GCM 暗号化ライブラリ
+treblo/       — ファイルツリー走査・hex ユーティリティ
 ```
+
+レガシークレート（ichno / ichnome 等）は `obsolete/` 下にアーカイブ済み。
 
 ---
 
@@ -62,62 +66,15 @@ tome-web/     — Next.js 16 Web フロントエンド
 
 ---
 
-## BLAKE3 導入方針
+## BLAKE3 対応（実装済み）
 
-SHA-256 の代わりに BLAKE3 を選択可能にする。BLAKE3 はデフォルト出力が 32 バイトのため、
-`Digest256` 型・DB スキーマ (`VarBinary` / BLOB)・ストレージパス (`objects/xx/yy/hex`)
-はすべて **変更不要**。
+SHA-256 の代わりに BLAKE3 を選択可能。リポジトリ単位で `repositories.config["digest_algorithm"]` に記録。
+`tome scan --digest-algorithm blake3` で新規リポジトリ作成時に指定。既存リポジトリの変更は不可。
 
-### 変更箇所
-
-1. **tome-core/src/hash.rs** — ハッシュ計算の抽象化
-   - `blake3` クレートを `Cargo.toml` に追加（feature flag `blake3`）
-   - `DigestAlgorithm` enum (`Sha256`, `Blake3`) を新設
-   - `hash_file()` / `sha256_reader()` 等を `DigestAlgorithm` でディスパッチ
-   - 公開 API 例:
-     ```rust
-     pub enum DigestAlgorithm { Sha256, Blake3 }
-     pub fn hash_file(path: &Path, algo: DigestAlgorithm) -> io::Result<FileHash>
-     ```
-   - `Digest256` 型名は `ContentDigest` 等にリネームしてもよい（BLAKE3 も 32 バイト）
-
-2. **tome-db: `repositories.config`** — リポジトリ単位でアルゴリズム選択
-   - 既存の JSON `config` カラムに `"digest_algorithm": "sha256" | "blake3"` を格納
-   - デフォルトは `"sha256"`（後方互換）
-   - `tome-db/src/ops.rs` の `get_or_create_blob` / scan 系処理で config を参照
-
-3. **tome-cli** — CLI オプション
-   - `tome scan --digest-algorithm blake3` でリポジトリ作成時に設定
-   - 既存リポジトリはアルゴリズム変更不可（digest の一貫性保持）
-
-4. **tome-core/Cargo.toml** — feature gate
-   ```toml
-   [features]
-   default = []
-   blake3 = ["dep:blake3"]
-
-   [dependencies]
-   blake3 = { version = "1", optional = true }
-   ```
-
-### 変更不要な箇所
-
-| 箇所 | 理由 |
-|------|------|
-| DB スキーマ (`blobs.digest`) | `VarBinary(None)` — 長さ非固定、32 バイトのまま |
-| `entry_cache.digest` | 同上（非正規化コピー） |
-| `blob_path()` | hex 文字列ベース — アルゴリズム非依存 |
-| `hex_encode()` | バイト列→hex — 汎用 |
-| `find_blob_by_hex()` | `prefix_bytes.len() == 32` の判定は BLAKE3 でも同じ |
-| HTTP API レスポンス | hex 文字列を返すだけ — 変更不要 |
-| `tome-web` | API レスポンスを表示するだけ — 変更不要 |
-
-### 制約・注意事項
-
-- **同一リポジトリ内でアルゴリズム混在は禁止** — digest の比較が壊れる
-- **既存リポジトリのアルゴリズム変更は不可** — 全 blob の再ハッシュが必要になるため
-- `blake3` クレートは `no_std` 対応・SIMD 自動検出で高速（SHA-256 比 5〜15 倍）
-- feature flag でオプショナルにし、BLAKE3 不要な環境ではバイナリサイズを抑える
+実装:
+- `tome-core/src/hash.rs`: `DigestAlgorithm` enum (Sha256 | Blake3)、`hash_file()` でディスパッチ
+- `tome-db/src/ops.rs`: `get_or_create_blob` / scan 処理で config を参照
+- BLAKE3 も 32 バイト出力のため、DB スキーマ・ストレージパス・API は変更なし
 
 ---
 
@@ -202,117 +159,29 @@ AES-256-GCM に加えて ChaCha20-Poly1305 を選択可能にする。
 
 ---
 
-## 設定ファイル (tome.toml) 導入方針 【優先度: 高】
+## 設定ファイル tome.toml（実装済み）
 
-現在すべての設定が CLI 引数・環境変数・ハードコードで管理されている。
-`tome.toml` を導入し、繰り返し指定する設定を永続化する。
-
-### 読み込み優先順位（後勝ち）
-
-```
-1. デフォルト値（コード内ハードコード）
-2. ~/.config/tome/tome.toml   — グローバル設定
-3. ./tome.toml                — プロジェクトローカル設定
-4. 環境変数 (TOME_*)
-5. CLI 引数 (--db, --machine-id, ...)
-```
-
-上位ソースが下位を上書きする。部分指定可（未指定キーはフォールバック）。
-
-### 設定ファイルの形式
+`~/.config/tome/tome.toml`（グローバル）と `./tome.toml`（プロジェクトローカル）を読み込む。
+優先順位（後勝ち）: デフォルト → グローバル → ローカル → 環境変数 → CLI 引数。
 
 ```toml
-# ~/.config/tome/tome.toml (グローバル) または ./tome.toml (プロジェクト)
+db = "tome.db"
+machine_id = 0
 
-# --- 基本設定 ---
-db = "tome.db"                    # DB パス or URL (現: --db / TOME_DB)
-machine_id = 0                    # Sonyflake ID (現: --machine-id / TOME_MACHINE_ID)
-
-# --- scan ---
 [scan]
-repo = "default"                  # デフォルトリポジトリ名 (現: --repo)
-no_ignore = false                 # .gitignore 無視 (現: --no-ignore)
+repo = "default"
+no_ignore = false
 
-# --- store ---
 [store]
-default_store = "backup"          # デフォルトストア名
-key_file = "~/.config/tome/keys/main.key"  # 暗号化鍵 (現: --key-file)
-cipher = "aes256gcm"              # 暗号アルゴリズム (将来: ChaCha20-Poly1305 方針参照)
+default_store = "backup"
+key_file = "~/.config/tome/keys/main.key"
 
-# --- serve ---
 [serve]
-addr = "127.0.0.1:8080"          # リッスンアドレス (現: --addr)
+addr = "127.0.0.1:8080"
 ```
 
-### 変更箇所
-
-1. **tome-cli/Cargo.toml** — 依存追加
-   ```toml
-   toml = "0.8"
-   serde = { version = "1", features = ["derive"] }
-   dirs = "6"        # XDG 準拠パス解決（現在の手動 HOME 参照を置換）
-   ```
-
-2. **tome-cli/src/config.rs** — 新規: 設定読み込みロジック
-   - `TomeConfig` 構造体を `#[derive(Default, Deserialize)]` で定義
-   - 読み込み関数:
-     ```rust
-     pub fn load_config() -> TomeConfig {
-         let mut config = TomeConfig::default();
-         // 1. ~/.config/tome/tome.toml
-         if let Some(global) = dirs::config_dir() {
-             merge_file(&mut config, global.join("tome/tome.toml"));
-         }
-         // 2. ./tome.toml
-         merge_file(&mut config, PathBuf::from("tome.toml"));
-         config
-     }
-     ```
-   - `merge_file()` は TOML をパースし、`None` でないフィールドのみ上書き
-   - 各フィールドは `Option<T>` で定義し、未指定を明示的に区別
-
-3. **tome-cli/src/main.rs** — clap との統合
-   - `main()` 冒頭で `load_config()` を呼び出し
-   - clap の `default_value` を設定ファイル値で動的に差し替え:
-     ```rust
-     let config = config::load_config();
-     let cli = Cli::parse();
-     // CLI > env > config > default の順で解決
-     let db = cli.db_or(config.db.as_deref().unwrap_or("tome.db"));
-     ```
-   - 環境変数は clap の `env = "TOME_*"` がそのまま処理
-
-4. **tome-store/src/factory.rs** — `key_dir()` 改善
-   - `dirs::config_dir()` を使用（`HOME` 直参照を廃止）
-   - `tome.toml` の `store.key_file` をデフォルトパスとして参照
-
-### 変更不要な箇所
-
-| 箇所 | 理由 |
-|------|------|
-| tome-core | 設定に依存しない純粋な計算ライブラリ |
-| tome-db | DB 接続 URL は tome-cli から渡される |
-| tome-server | addr は tome-cli から渡される |
-| tome-store | factory 以外は URL/key を引数で受け取るだけ |
-| tome-web | 独立した Next.js アプリ（TOME_API_URL で設定済み） |
-
-### 設計判断
-
-- **toml クレート直接利用** — figment / config クレートは多機能すぎる。
-  TOML パース + 手動マージで十分（設定項目が少ない）
-- **`./tome.toml`（ドットなし）** — `.gitignore` が `.*` をブロックする環境との互換。
-  DB ファイルも `tome.db` でドットなし命名に統一済み
-- **`~` 展開** — `key_file` 等のパスで `~` を `dirs::home_dir()` に展開する
-- **XDG 準拠** — `dirs` クレートで `$XDG_CONFIG_HOME` を尊重
-  （未設定時は `~/.config`）
-- **サブコマンド固有設定** — `[scan]`, `[store]`, `[serve]` セクションで分離。
-  将来のサブコマンド追加時もトップレベルが汚れない
-
-### 制約・注意事項
-
-- **tome.toml に機密情報を書かない** — DB パスワード・暗号化鍵はファイルパス参照のみ
-- **設定ファイルは任意** — なくても全機能が動く（既存動作を壊さない）
-- **`--config <PATH>` オプション** は将来追加可（初期実装では不要）
+実装: `tome-cli/src/config.rs` (`TomeConfig` 構造体 + `load_config()`)。
+設定ファイルは任意 — なくても全機能が動作する。
 
 ---
 
@@ -411,24 +280,10 @@ async fn record_change(ctx: &mut ScanContext, path: &str, hash: FileHash) -> Res
 ChaCha20-Poly1305 導入方針（上記セクション参照）と同時に実施。
 `Cipher` 内部を enum ディスパッチに変更する際に、テストも各アルゴリズムでパラメタライズ。
 
-### Phase 5: レガシークレート整理 【優先度: 低】
+### Phase 5: レガシークレート整理 【完了済み — 一部】
 
-以下は tome-* 系への移行完了後に削除またはアーカイブ:
-
-```
-ichno/          — 旧 SQLite 実装
-ichno_cli/      — 旧 CLI
-ichnome/        — 旧 PostgreSQL 実装
-ichnome_cli/    — 旧 CLI
-ichnome_web/    — 旧 Web (Rust)
-ichnome_web_front/ — 旧フロントエンド
-treblo/         — 旧ライブラリ
-treblo_cli/     — 旧 CLI
-optional_derive/ — proc macro（tome-* で未使用なら削除）
-aether_cli/     — aether の CLI ラッパー（tome-cli に統合済みか確認）
-```
-
-**手順:** `Cargo.toml` の `[workspace] members` から除外 → 別ブランチにアーカイブ
+ichno*/ichnome*/optional_derive は `obsolete/` に移動し、ワークスペースから除外済み。
+残り: treblo/treblo-cli/aether-cli の役割を確認し、不要なら同様に整理。
 
 ### 実施順序とガイドライン
 
@@ -444,9 +299,9 @@ aether_cli/     — aether の CLI ラッパー（tome-cli に統合済みか確
 
 | 優先度 | 内容 |
 |--------|------|
+| 高 | リファクタリング Phase 1–3 — 上記のリファクタリング方針を参照 |
 | 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
 | 中 | ChaCha20-Poly1305 導入（aether）— 上記の ChaCha20-Poly1305 導入方針を参照 |
-| 中 | ChaCha20-Poly1305 導入 — 上記の ChaCha20-Poly1305 導入方針を参照 |
 | 低 | 重複レポート — blob の content-addressing を活かしリポジトリ横断でファイル重複を報告 |
 | 低 | PostgreSQL 中央同期 — 複数マシンが一つの PostgreSQL に push/pull（現在は SQLite↔SQLite のみ） |
 | 低 | Webhook / 通知 — スキャン完了時に変更サマリを POST（Slack, Discord 等） |

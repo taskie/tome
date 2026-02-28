@@ -1,23 +1,25 @@
 # Architecture
 
 > Technical reference for the **tome** file change tracking system.
-> For development workflow and gotchas, see [CLAUDE.md](CLAUDE.md).
 
 ---
 
 ## Crate structure
 
 ```
-tome-core/    Hash computation (SHA-256 + xxHash64), ID generation (Sonyflake), shared models
+tome-core/    Hash computation (SHA-256 / BLAKE3 + xxHash64), ID generation (Sonyflake), shared models
 tome-db/      SeaORM entities, migrations, query operations (ops.rs)
 tome-store/   Async Storage trait + implementations: Local, SSH, S3, Encrypted
 tome-server/  HTTP API server (axum 0.8)
-tome-cli/     Unified CLI: scan / store / sync / serve
+tome-cli/     Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve
 tome-web/     Next.js 16 web frontend (Server Components, Tailwind CSS v4)
 aether/       AES-256-GCM + Argon2id encryption library (internal)
+treblo/       File-tree walk and hex utilities (internal)
 ```
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
+
+Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `ichnome_web_front`, `optional_derive`) are archived under `obsolete/` and excluded from the workspace.
 
 ---
 
@@ -38,13 +40,13 @@ aether/       AES-256-GCM + Argon2id encryption library (internal)
 | Table | Description |
 |-------|-------------|
 | `repositories` | Named scan namespaces (e.g. `default`) |
-| `blobs` | Content-addressable file fingerprints (`digest`=SHA-256, `fast_digest`=xxHash64) |
+| `blobs` | Content-addressable file fingerprints (`digest`=SHA-256 or BLAKE3, `fast_digest`=xxHash64) |
 | `snapshots` | Scan execution events (analogous to Git commits, chained via `parent_id`) |
 | `entries` | Per-file state within a snapshot (`status`: 0=deleted, 1=present) |
 | `entry_cache` | Latest state cache per path, PK=(repository\_id, path) |
 | `stores` | Storage backend definitions (`url`: `file:///`, `ssh://`, `s3://`) |
 | `replicas` | Tracks which store holds which blob |
-| `tags` | Key-value attributes on blobs (table defined; CLI/API not yet implemented) |
+| `tags` | Key-value attributes on blobs |
 | `sync_peers` | Sync peer definitions (`url` + `last_snapshot_id`) |
 
 ### entity_cache limitations
@@ -58,10 +60,12 @@ aether/       AES-256-GCM + Argon2id encryption library (internal)
 Change detection uses a three-stage filter to minimize I/O:
 
 ```
-mtime / size  →  xxHash64  →  SHA-256
+mtime / size  →  xxHash64  →  SHA-256 (or BLAKE3)
 ```
 
 If a stage shows no change, subsequent hashes are skipped. Both hashes are computed in a single pass through the file in `tome-core/src/hash.rs::hash_file()`.
+
+The digest algorithm is configured per repository via `repositories.config["digest_algorithm"]` (default: `"sha256"`). Use `tome scan --digest-algorithm blake3` when creating a new repository. The algorithm cannot be changed after the first scan (digest consistency).
 
 ---
 
