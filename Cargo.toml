@@ -22,6 +22,7 @@ resolver = "2"
 anyhow = "1"
 async-trait = "0.1"
 axum = "0.7"
+tower-http = { version = "0.5", features = ["trace"] }
 aws-config = "1"
 aws-sdk-s3 = "1"
 chrono = { version = "0.4", features = ["serde"] }
