@@ -177,6 +177,144 @@ tome store copy central-s3 local   # blob 実体 ← S3（必要時）
 - ネットワーク越しの大量 insert はトランザクションバッチ化が必要（100件/txn 等）
 - Aurora のセキュリティグループで接続元 IP を制限し、SSL 接続を強制すること
 
+### 現状の課題と拡張計画
+
+#### 課題 1: ワークフローが多段
+
+現在のフルサイクルは `scan → store push → sync push` の 3 コマンド。
+毎回手動で実行するのは煩雑であり、順序を間違えると replica 情報が欠落する。
+
+**拡張: `tome push` 統合コマンド**
+
+```bash
+tome push central                  # scan + store push + sync push を一括実行
+tome push central --scan-only      # scan + sync push（blob 転送はスキップ）
+tome push central --no-scan        # store push + sync push（再スキャンなし）
+```
+
+内部フロー:
+1. `scan` — ローカル SQLite にスナップショット記録
+2. `store push` — 新規 blob を S3 にアップロード
+3. `sync push` — メタデータ（snapshot, entry, blob, replica）を Aurora に push
+
+逆方向も同様に `tome pull central` で `sync pull + store copy`（必要な blob のみ）。
+
+#### 課題 2: DB 直接接続の前提
+
+`sync push/pull` は peer の DB に SeaORM で直接接続する。PostgreSQL をインターネットに
+公開するのはセキュリティリスクが高く、VPN/SSHトンネル必須の運用になる。
+
+**拡張: HTTP sync API**
+
+`tome serve` に sync エンドポイントを追加し、DB 直接接続を不要にする:
+
+```
+POST /sync/push    — クライアントが snapshot + entries + blobs + replicas を JSON で送信
+GET  /sync/pull    ?repo=<name>&after=<snapshot_id>  — 差分取得
+POST /sync/register-machine  — machine_id 払い出し（既存 POST /machines の統合）
+```
+
+これにより `sync push/pull` の接続先を DB URL と HTTP URL の両方に対応させる:
+
+```bash
+# DB 直接接続（LAN / VPN 内）
+tome sync add central "postgres://user:pass@aurora/tome"
+
+# HTTP 経由（インターネット越し・Cloudflare Access 等で保護）
+tome sync add central "https://tome.example.com"
+```
+
+`sync.rs` 内の分岐: URL スキームが `http://` / `https://` なら HTTP クライアント、
+それ以外なら従来の DB 直接接続を使用。
+
+#### 課題 3: entry_cache の不整合
+
+`sync pull` は entries のみ取り込み、entry_cache を部分的にしか更新しない。
+pull 後にファイル一覧画面（entry_cache 依存）が正しく表示されないケースがある。
+
+**拡張: entry_cache 再構築コマンド**
+
+```bash
+tome cache rebuild [--repo <name>]
+```
+
+全 entry を走査し、各パスの最新状態を entry_cache に再投入する。
+`sync pull` 完了時にも自動実行するオプション `--rebuild-cache` を追加。
+
+ops に `rebuild_entry_cache(db, repository_id)` を追加:
+1. 全 snapshot を古い順に走査
+2. 各 entry でパスの最新状態を HashMap に蓄積
+3. entry_cache テーブルを UPSERT
+
+#### 課題 4: コンフリクト検知
+
+複数マシンが同一 repo に `sync push` すると、中央 DB 上の snapshot parent_id チェーンが
+分岐する。現状は last-writer-wins で暗黙的にマージされ、ユーザに通知されない。
+
+**拡張: 分岐検知と警告**
+
+`sync push` 時に中央の `latest_snapshot` を取得し、ローカルの `last_snapshot_id`
+（前回 push 時に記録）と比較。不一致なら他マシンが push 済みであることを検知:
+
+```
+warning: central has diverged — snapshot <id> was pushed by machine 3 since your last sync.
+         Your push will create a branched history.
+         Run `tome sync pull central` first to incorporate remote changes.
+```
+
+snapshot.metadata に `source_machine_id` があるので、誰が push したか表示可能。
+マージ戦略の実装は当面不要 — 警告のみで十分（ファイル単位の衝突はない設計）。
+
+#### 課題 5: 復元パスの欠如
+
+中央 DB に履歴があり S3 に blob 実体があるが、`tome restore` が未実装。
+
+**拡張: `tome restore`**
+
+```bash
+# 最新の状態に復元
+tome restore --repo myproject /path/to/dest
+
+# 特定スナップショットの状態に復元
+tome restore --snapshot <id> /path/to/dest
+
+# 特定ファイルのみ復元
+tome restore --snapshot <id> --path "docs/readme.md" /path/to/dest
+
+# 復元前の到達可能性チェック（ダウンロードなし）
+tome restore --check --snapshot <id>
+```
+
+内部フロー:
+1. snapshot の entries を取得（status=1 のみ）
+2. 各 entry の blob_id → replicas テーブルで store を特定
+3. store 優先順位: ローカル file:// > SSH > S3（レイテンシ順）
+4. `storage.download()` で blob を取得し、entry.path に配置
+5. 暗号化 replica の場合は `EncryptedStorage` 経由で復号
+
+#### 課題 6: 選択的同期
+
+全ファイルの同期は帯域・ストレージを圧迫する。特定のパスプレフィックスのみ
+同期したいケースがある（例: `docs/` のみ、`*.log` を除外）。
+
+**拡張: sync フィルタ**
+
+```bash
+tome sync add central <url> --repo default --include "src/**" --exclude "*.log"
+```
+
+sync_peers.config にフィルタルールを保存:
+```json
+{
+  "peer_repo": "default",
+  "include": ["src/**"],
+  "exclude": ["*.log"]
+}
+```
+
+`sync push/pull` 時に `entries_in_snapshot` の結果をフィルタルールでふるいにかける。
+glob マッチは `ignore` クレートの `OverrideBuilder` を流用。
+
 ---
 
 ## 暗号鍵管理方針
@@ -297,8 +435,15 @@ tome は**ローカルファーストの個人ツール**であり、tome-server
 
 | 優先度 | 内容 |
 |--------|------|
+| 高 | `tome push` / `tome pull` 統合コマンド — scan + store push + sync push を一括実行 |
+| 高 | `tome restore` — snapshot + replica 情報から store 経由でファイルを復元 |
 | 高 | `GET /diff` 削除ファイル除外バグ修正 — `blob_id = NULL` のエントリを diff 結果に含める |
+| 高 | `path_history` API の digest 欠落修正 — `From<entry::Model>` が blob を JOIN せず `digest: null` を返す |
 | 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
+| 中 | HTTP sync API — `tome serve` に `/sync/push`, `/sync/pull` を追加し DB 直接接続を不要にする |
+| 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |
+| 中 | sync push 時のコンフリクト検知 — 中央 DB の分岐を検出し警告 |
+| 中 | sync フィルタ — `--include` / `--exclude` でパスを絞った選択的同期 |
 | 中 | 重複レポート（`tome dedup`）— blob の content-addressing を活かしリポジトリ横断で重複ファイルを報告 |
 | 中 | Webhook / 通知 — スキャン完了・変更検知時に変更サマリを POST（Slack, Discord, 汎用 HTTP） |
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
