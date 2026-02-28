@@ -28,10 +28,7 @@ function parentPrefix(prefix: string): string {
   return idx < 0 ? "" : trimmed.slice(0, idx + 1);
 }
 
-function buildUrl(
-  base: string,
-  params: Record<string, string | number | boolean | undefined>,
-): string {
+function buildUrl(base: string, params: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "" && v !== false && v !== 1 && v !== 0) {
@@ -77,7 +74,9 @@ export default async function FilesPage({ params, searchParams }: Props) {
   return (
     <>
       <nav className="text-xs text-gray-400 mb-4">
-        <Link href="/" className="hover:underline">Repositories</Link>
+        <Link href="/" className="hover:underline">
+          Repositories
+        </Link>
         {" / "}
         <Link href={`/repositories/${name}`} className="hover:underline text-gray-600">
           {repoName}
@@ -98,12 +97,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
           className="text-xs border border-gray-300 rounded px-2 py-1 w-56"
         />
         <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            name="include_deleted"
-            value="true"
-            defaultChecked={includeDeleted}
-          />
+          <input type="checkbox" name="include_deleted" value="true" defaultChecked={includeDeleted} />
           Show deleted
         </label>
         <button type="submit" className="text-xs px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
@@ -127,9 +121,17 @@ export default async function FilesPage({ params, searchParams }: Props) {
       {/* Summary + pagination info */}
       <p className="text-xs text-gray-400 mb-3">
         {total.toLocaleString()} {includeDeleted ? "entries" : "files"}
-        {prefix && <> matching <code className="font-mono">{prefix}…</code></>}
+        {prefix && (
+          <>
+            {" "}
+            matching <code className="font-mono">{prefix}…</code>
+          </>
+        )}
         {totalPages > 1 && (
-          <> &mdash; page {page} / {totalPages}</>
+          <>
+            {" "}
+            &mdash; page {page} / {totalPages}
+          </>
         )}
       </p>
 
@@ -140,9 +142,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
           <thead>
             <tr className="bg-gray-100 text-left">
               <th className="px-3 py-2 border-b-2 border-gray-200">Path</th>
-              {includeDeleted && (
-                <th className="px-3 py-2 border-b-2 border-gray-200">Status</th>
-              )}
+              {includeDeleted && <th className="px-3 py-2 border-b-2 border-gray-200">Status</th>}
               <th className="px-3 py-2 border-b-2 border-gray-200 text-right">Size</th>
               <th className="px-3 py-2 border-b-2 border-gray-200">Modified</th>
               <th className="px-3 py-2 border-b-2 border-gray-200">Digest</th>
@@ -178,9 +178,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
                   <td className="px-3 py-1.5 text-right text-gray-500">
                     {e.size != null ? e.size.toLocaleString() : ""}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-400">
-                    {e.mtime ? new Date(e.mtime).toLocaleString() : ""}
-                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
                   <td className="px-3 py-1.5 font-mono text-gray-400">
                     {e.digest ? (
                       <Link href={`/blobs/${e.digest}`} className="hover:underline text-blue-500">

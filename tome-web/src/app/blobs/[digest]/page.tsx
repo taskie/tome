@@ -59,8 +59,7 @@ export default async function BlobPage({ params }: Props) {
       </table>
 
       <h2 className="text-sm font-semibold mb-2">
-        Files with this content{" "}
-        <span className="text-gray-400 font-normal">({entries.length})</span>
+        Files with this content <span className="text-gray-400 font-normal">({entries.length})</span>
       </h2>
 
       {entries.length === 0 ? (
@@ -80,19 +79,12 @@ export default async function BlobPage({ params }: Props) {
               <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="px-3 py-1.5 text-gray-700">{e.path}</td>
                 <td className="px-3 py-1.5">
-                  <Link
-                    href={`/snapshots/${s.id}`}
-                    className="font-mono text-blue-600 hover:underline"
-                  >
+                  <Link href={`/snapshots/${s.id}`} className="font-mono text-blue-600 hover:underline">
                     {s.id.slice(0, 10)}
                   </Link>
                 </td>
-                <td className="px-3 py-1.5 text-gray-400">
-                  {new Date(s.created_at).toLocaleString()}
-                </td>
-                <td className="px-3 py-1.5 text-gray-400">
-                  {e.mtime ? new Date(e.mtime).toLocaleString() : ""}
-                </td>
+                <td className="px-3 py-1.5 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
+                <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
               </tr>
             ))}
           </tbody>

@@ -140,17 +140,12 @@ export default async function DiffPage({ params, searchParams }: Props) {
           </select>
         </div>
         <input type="hidden" name="prefix" value={prefix} />
-        <button
-          type="submit"
-          className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
-        >
+        <button type="submit" className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700">
           Compare
         </button>
       </form>
 
-      {diffError && (
-        <p className="text-sm text-red-600 mb-4">{diffError}</p>
-      )}
+      {diffError && <p className="text-sm text-red-600 mb-4">{diffError}</p>}
 
       {/* Diff result */}
       {diffData && (
@@ -158,9 +153,7 @@ export default async function DiffPage({ params, searchParams }: Props) {
           {/* Path navigation */}
           <div className="flex items-center gap-2 mb-3 text-xs">
             <span className="text-gray-500">Prefix:</span>
-            <code className="text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
-              /{prefix}
-            </code>
+            <code className="text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">/{prefix}</code>
             {prefix && (
               <Link
                 href={`${withSnaps}&prefix=${encodeURIComponent(parent)}`}
@@ -216,7 +209,10 @@ export default async function DiffPage({ params, searchParams }: Props) {
                   );
 
                   return (
-                    <tr key={row.blobId || `no-blob-${row.paths1[0]}`} className={`border-b border-gray-100 hover:bg-gray-50 ${rowBg}`}>
+                    <tr
+                      key={row.blobId || `no-blob-${row.paths1[0]}`}
+                      className={`border-b border-gray-100 hover:bg-gray-50 ${rowBg}`}
+                    >
                       <td className="px-3 py-1.5">{badge}</td>
                       <td className="px-3 py-1.5 text-gray-700">
                         {row.paths1.length > 0 ? (
@@ -235,9 +231,7 @@ export default async function DiffPage({ params, searchParams }: Props) {
                       <td className="px-3 py-1.5 text-right text-gray-400">
                         {row.size > 0 ? row.size.toLocaleString() : ""}
                       </td>
-                      <td className="px-3 py-1.5 text-gray-400 font-mono">
-                        {row.digest.slice(0, 12)}
-                      </td>
+                      <td className="px-3 py-1.5 text-gray-400 font-mono">{row.digest.slice(0, 12)}</td>
                     </tr>
                   );
                 })}

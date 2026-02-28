@@ -126,10 +126,13 @@ impl From<blob::Model> for BlobResponse {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn index() -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::OK, Json(serde_json::json!({
-        "service": "tome-server",
-        "endpoints": ["/health", "/repositories", "/snapshots/:id/entries", "/blobs/:digest"],
-    })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "service": "tome-server",
+            "endpoints": ["/health", "/repositories", "/snapshots/:id/entries", "/blobs/:digest"],
+        })),
+    )
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -199,12 +202,7 @@ pub async fn list_entries(
 ) -> AppResult<Json<Vec<EntryResponse>>> {
     let snapshot_id: i64 = id.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id"))?;
     let pairs = ops::entries_with_digest(&db, snapshot_id, &q.prefix).await?;
-    Ok(Json(
-        pairs
-            .into_iter()
-            .map(|(e, b)| EntryResponse::from_with_blob(e, b.as_ref()))
-            .collect(),
-    ))
+    Ok(Json(pairs.into_iter().map(|(e, b)| EntryResponse::from_with_blob(e, b.as_ref())).collect()))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -265,33 +263,20 @@ pub async fn path_history(
         .ok_or_else(|| anyhow::anyhow!("repository {:?} not found", name))?;
 
     let history = ops::path_history(&db, repo.id, &q.path).await?;
-    Ok(Json(
-        history
-            .into_iter()
-            .map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() })
-            .collect(),
-    ))
+    Ok(Json(history.into_iter().map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() }).collect()))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /blobs/:digest/entries
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn list_blob_entries(
-    db: Db,
-    Path(digest_hex): Path<String>,
-) -> AppResult<Json<Vec<SnapshotEntry>>> {
+pub async fn list_blob_entries(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<Vec<SnapshotEntry>>> {
     let digest = hex::decode(&digest_hex).map_err(|_| anyhow::anyhow!("invalid digest hex"))?;
     let blob = ops::find_blob_by_digest(&db, &digest)
         .await?
         .ok_or_else(|| anyhow::anyhow!("blob {:?} not found", digest_hex))?;
     let entries = ops::entries_for_blob(&db, blob.id).await?;
-    Ok(Json(
-        entries
-            .into_iter()
-            .map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() })
-            .collect(),
-    ))
+    Ok(Json(entries.into_iter().map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() }).collect()))
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -349,19 +334,11 @@ pub async fn diff_snapshots(
     let entries1 = ops::entries_by_prefix(&db, snap_id1, &q.prefix).await?;
     let entries2 = ops::entries_by_prefix(&db, snap_id2, &q.prefix).await?;
 
-    let blob_ids: Vec<i64> = entries1
-        .iter()
-        .chain(entries2.iter())
-        .filter_map(|e| e.blob_id)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+    let blob_ids: Vec<i64> =
+        entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
 
-    let blobs: HashMap<String, BlobResponse> = ops::blobs_by_ids(&db, &blob_ids)
-        .await?
-        .into_iter()
-        .map(|b| (b.id.to_string(), b.into()))
-        .collect();
+    let blobs: HashMap<String, BlobResponse> =
+        ops::blobs_by_ids(&db, &blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, EntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
@@ -379,13 +356,7 @@ pub async fn diff_snapshots(
         entries.insert(eid, e.clone().into());
     }
 
-    Ok(Json(DiffResponse {
-        snapshot1: snap1.into(),
-        snapshot2: snap2.into(),
-        blobs,
-        entries,
-        diff,
-    }))
+    Ok(Json(DiffResponse { snapshot1: snap1.into(), snapshot2: snap2.into(), blobs, entries, diff }))
 }
 
 // ── GET /repositories/:name/files ────────────────────────────────────────────

@@ -13,28 +13,19 @@ async function get<T>(path: string): Promise<T> {
 export const api = {
   repositories: (): Promise<Repository[]> => get("/repositories"),
 
-  repository: (name: string): Promise<Repository> =>
-    get(`/repositories/${encodeURIComponent(name)}`),
+  repository: (name: string): Promise<Repository> => get(`/repositories/${encodeURIComponent(name)}`),
 
-  snapshots: (name: string): Promise<Snapshot[]> =>
-    get(`/repositories/${encodeURIComponent(name)}/snapshots`),
+  snapshots: (name: string): Promise<Snapshot[]> => get(`/repositories/${encodeURIComponent(name)}/snapshots`),
 
   entries: (id: string, prefix = ""): Promise<Entry[]> =>
-    get(
-      `/snapshots/${encodeURIComponent(id)}/entries` +
-        (prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""),
-    ),
+    get(`/snapshots/${encodeURIComponent(id)}/entries` + (prefix ? `?prefix=${encodeURIComponent(prefix)}` : "")),
 
-  blob: (digest: string): Promise<Blob> =>
-    get(`/blobs/${encodeURIComponent(digest)}`),
+  blob: (digest: string): Promise<Blob> => get(`/blobs/${encodeURIComponent(digest)}`),
 
-  blobEntries: (digest: string): Promise<SnapshotEntry[]> =>
-    get(`/blobs/${encodeURIComponent(digest)}/entries`),
+  blobEntries: (digest: string): Promise<SnapshotEntry[]> => get(`/blobs/${encodeURIComponent(digest)}/entries`),
 
   history: (name: string, path: string): Promise<SnapshotEntry[]> =>
-    get(
-      `/repositories/${encodeURIComponent(name)}/history?path=${encodeURIComponent(path)}`,
-    ),
+    get(`/repositories/${encodeURIComponent(name)}/history?path=${encodeURIComponent(path)}`),
 
   diff: (name: string, s1: string, s2: string, prefix = ""): Promise<DiffResponse> =>
     get(

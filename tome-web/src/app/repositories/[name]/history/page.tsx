@@ -74,9 +74,7 @@ export default async function HistoryPage({ params, searchParams }: Props) {
                       {s.id.slice(0, 10)}
                     </Link>
                   </td>
-                  <td className="px-3 py-1.5 text-gray-400">
-                    {new Date(s.created_at).toLocaleString()}
-                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
                   <td className="px-3 py-1.5">
                     {isPresent ? (
                       <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">present</span>
@@ -84,9 +82,7 @@ export default async function HistoryPage({ params, searchParams }: Props) {
                       <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600">deleted</span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-400">
-                    {e.mtime ? new Date(e.mtime).toLocaleString() : ""}
-                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
                   <td className="px-3 py-1.5 font-mono text-gray-400">
                     {e.digest ? (
                       <Link href={`/blobs/${e.digest}`} className="hover:underline text-blue-500">

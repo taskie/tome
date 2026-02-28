@@ -51,10 +51,7 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
         {repo && (
           <>
             {" / "}
-            <Link
-              href={`/repositories/${encodeURIComponent(repo)}`}
-              className="hover:underline text-gray-600"
-            >
+            <Link href={`/repositories/${encodeURIComponent(repo)}`} className="hover:underline text-gray-600">
               {repo}
             </Link>
           </>
@@ -80,10 +77,7 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
           className="text-xs border border-gray-300 rounded px-2 py-1 w-56"
         />
         {repo && <input type="hidden" name="repo" value={repo} />}
-        <button
-          type="submit"
-          className="text-xs px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-        >
+        <button type="submit" className="text-xs px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
           Filter
         </button>
         {prefix && (
@@ -119,10 +113,9 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
           <tbody>
             {sorted.map((e) => {
               const isPresent = e.status === 1;
-              const historyHref =
-                repo
-                  ? `/repositories/${encodeURIComponent(repo)}/history?path=${encodeURIComponent(e.path)}`
-                  : null;
+              const historyHref = repo
+                ? `/repositories/${encodeURIComponent(repo)}/history?path=${encodeURIComponent(e.path)}`
+                : null;
               return (
                 <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className={`px-3 py-1.5 ${isPresent ? "" : "line-through text-gray-300"}`}>
@@ -141,15 +134,10 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
                       <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600">deleted</span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-gray-400">
-                    {e.mtime ? new Date(e.mtime).toLocaleString() : ""}
-                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
                   <td className="px-3 py-1.5 font-mono text-gray-400">
                     {e.digest ? (
-                      <Link
-                        href={`/blobs/${e.digest}`}
-                        className="hover:underline text-blue-500"
-                      >
+                      <Link href={`/blobs/${e.digest}`} className="hover:underline text-blue-500">
                         {e.digest.slice(0, 12)}
                       </Link>
                     ) : (

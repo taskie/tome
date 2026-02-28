@@ -7,6 +7,17 @@
 **ブランチ:** feature/tome（再設計実装中）
 **コミットメッセージは英語で書くこと**
 
+### コミット前に必ず実行すること
+
+```bash
+# Rust — フォーマット & lint
+cargo fmt --all
+cargo clippy -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
+
+# tome-web — フォーマット & lint
+cd tome-web && npm run format && npm run lint
+```
+
 ---
 
 ## 1. クレート構成
@@ -96,11 +107,15 @@ objects/<hex[0:2]>/<hex[2:4]>/<full-hex>
 ```
 GET /health
 GET /repositories
-GET /repositories/:name
-GET /repositories/:name/snapshots
-GET /repositories/:name/latest
-GET /snapshots/:id/entries
-GET /blobs/:digest
+GET /repositories/{name}
+GET /repositories/{name}/snapshots
+GET /repositories/{name}/latest
+GET /repositories/{name}/files        ?prefix= &include_deleted= &page= &per_page=
+GET /repositories/{name}/diff         ?snapshot1= &snapshot2= &prefix=
+GET /repositories/{name}/history      ?path=
+GET /snapshots/{id}/entries           ?prefix=
+GET /blobs/{digest}
+GET /blobs/{digest}/entries
 ```
 
 - digest はバイナリで保存し、API レスポンスでは hex 文字列に変換して返す
@@ -110,7 +125,7 @@ GET /blobs/:digest
 
 ## 8. tome-web（Web フロントエンド）
 
-Next.js 15 + TypeScript + Tailwind CSS v4 + App Router（Server Components のみ）。
+Next.js 16 + TypeScript + Tailwind CSS v4 + App Router（Server Components のみ）。
 
 ### ディレクトリ構成
 
@@ -124,20 +139,28 @@ tome-web/
       layout.tsx   — ルートレイアウト（モノスペースフォント、ヘッダーナビ）
       page.tsx     — リポジトリ一覧（/）
       not-found.tsx
-      repositories/[name]/page.tsx  — スナップショット一覧
-      snapshots/[id]/page.tsx       — エントリ一覧
+      repositories/[name]/page.tsx        — スナップショット一覧
+      repositories/[name]/files/page.tsx  — 最新ファイル一覧（entry_cache）
+      repositories/[name]/diff/page.tsx   — スナップショット間 diff
+      repositories/[name]/history/page.tsx — パス履歴
+      snapshots/[id]/page.tsx             — エントリ一覧
+      blobs/[digest]/page.tsx             — blob 詳細
       globals.css  — Tailwind v4 (@import "tailwindcss")
-  env.local.example  — TOME_API_URL=http://localhost:3000
-  .nvmrc             — lts/*
+  eslint.config.mjs  — ESLint flat config (eslint-config-next 16)
+  .prettierrc.json   — Prettier 設定（printWidth: 120）
+  env.local.example  — TOME_API_URL=http://localhost:8080
+  .nvmrc             — 24
 ```
 
 ### 技術的注意事項
 
 - **`export const dynamic = "force-dynamic"`** — ビルド時 SSG を防ぐ。tome serve が起動していないとビルドに失敗するため全ページに必須
 - **Tailwind v4** — `@import "tailwindcss"` のみで動作。`tailwind.config.ts` は不要。PostCSS プラグインは `@tailwindcss/postcss`
-- **Node.js 18.18+** — Next.js 15 の要件。18.14.x 等は不可
+- **Node.js 20.9+** — Next.js 16 の要件（mise で Node 24 を使用）
 - **`env.local.example`（先頭ドットなし）** — ルートの `.gitignore` が `.env*` をブロックするため `.env.local.example` にできない
 - **API は全てサーバーサイドで呼ぶ** — CORS 不要。`TOME_API_URL` はサーバー環境変数（`NEXT_PUBLIC_` 不要）
+- **ESLint** — `eslint@9`（`eslint-plugin-react 7.x` が ESLint 10 非対応のため据え置き）
+- **Prettier** — `npm run format` でフォーマット、`npm run lint` で ESLint + Prettier チェック
 
 ---
 

@@ -30,17 +30,12 @@ export default async function RepositoriesPage() {
             {repos.map((r) => (
               <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50">
                 <td className="px-3 py-2">
-                  <Link
-                    href={`/repositories/${encodeURIComponent(r.name)}`}
-                    className="text-blue-600 hover:underline"
-                  >
+                  <Link href={`/repositories/${encodeURIComponent(r.name)}`} className="text-blue-600 hover:underline">
                     {r.name}
                   </Link>
                 </td>
                 <td className="px-3 py-2 text-gray-500">{r.description}</td>
-                <td className="px-3 py-2 text-gray-400">
-                  {new Date(r.created_at).toLocaleString()}
-                </td>
+                <td className="px-3 py-2 text-gray-400">{new Date(r.created_at).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

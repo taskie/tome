@@ -90,12 +90,8 @@ export default async function RepositoryPage({ params }: Props) {
                       {idShort}
                     </Link>
                   </td>
-                  <td className="px-3 py-2 text-gray-400">
-                    {new Date(s.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2 text-right text-gray-700">
-                    {s.metadata.scanned ?? "—"}
-                  </td>
+                  <td className="px-3 py-2 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right text-gray-700">{s.metadata.scanned ?? "—"}</td>
                   <td className="px-3 py-2 text-gray-500">
                     {fmtChanges(s.metadata)}
                     {hasErrors && (
@@ -104,9 +100,7 @@ export default async function RepositoryPage({ params }: Props) {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-gray-400 text-xs truncate max-w-48">
-                    {s.metadata.scan_root ?? ""}
-                  </td>
+                  <td className="px-3 py-2 text-gray-400 text-xs truncate max-w-48">{s.metadata.scan_root ?? ""}</td>
                 </tr>
               );
             })}

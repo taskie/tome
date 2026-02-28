@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -420,8 +420,7 @@ pub async fn list_cache_entries(
     db: &DatabaseConnection,
     p: &ListCacheEntriesParams,
 ) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
-    let mut q = entry_cache::Entity::find()
-        .filter(entry_cache::Column::RepositoryId.eq(p.repository_id));
+    let mut q = entry_cache::Entity::find().filter(entry_cache::Column::RepositoryId.eq(p.repository_id));
     if !p.include_deleted {
         q = q.filter(entry_cache::Column::Status.eq(1i16));
     }
@@ -431,12 +430,7 @@ pub async fn list_cache_entries(
 
     let total = q.clone().count(db).await?;
     let offset = p.page.saturating_sub(1) * p.per_page;
-    let rows = q
-        .order_by_asc(entry_cache::Column::Path)
-        .offset(offset)
-        .limit(p.per_page)
-        .all(db)
-        .await?;
+    let rows = q.order_by_asc(entry_cache::Column::Path).offset(offset).limit(p.per_page).all(db).await?;
     Ok((rows, total))
 }
 
@@ -565,8 +559,7 @@ pub async fn entries_with_digest(
     snapshot_id: i64,
     path_prefix: &str,
 ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>)>> {
-    let mut q = entry::Entity::find()
-        .filter(entry::Column::SnapshotId.eq(snapshot_id));
+    let mut q = entry::Entity::find().filter(entry::Column::SnapshotId.eq(snapshot_id));
     if !path_prefix.is_empty() {
         q = q.filter(entry::Column::Path.like(format!("{path_prefix}%")));
     }
@@ -583,9 +576,8 @@ pub async fn entries_by_prefix(
     snapshot_id: i64,
     path_prefix: &str,
 ) -> anyhow::Result<Vec<entry::Model>> {
-    let mut q = entry::Entity::find()
-        .filter(entry::Column::SnapshotId.eq(snapshot_id))
-        .filter(entry::Column::Status.eq(1i16));
+    let mut q =
+        entry::Entity::find().filter(entry::Column::SnapshotId.eq(snapshot_id)).filter(entry::Column::Status.eq(1i16));
     if !path_prefix.is_empty() {
         q = q.filter(entry::Column::Path.like(format!("{path_prefix}%")));
     }
@@ -608,8 +600,7 @@ pub async fn path_history(
         return Ok(vec![]);
     }
 
-    let snapshot_map: HashMap<i64, snapshot::Model> =
-        snapshots.iter().map(|s| (s.id, s.clone())).collect();
+    let snapshot_map: HashMap<i64, snapshot::Model> = snapshots.iter().map(|s| (s.id, s.clone())).collect();
     let snapshot_ids: Vec<i64> = snapshots.into_iter().map(|s| s.id).collect();
 
     let entries = entry::Entity::find()
@@ -618,10 +609,8 @@ pub async fn path_history(
         .all(db)
         .await?;
 
-    let mut result: Vec<(entry::Model, snapshot::Model)> = entries
-        .into_iter()
-        .filter_map(|e| snapshot_map.get(&e.snapshot_id).map(|s| (e, s.clone())))
-        .collect();
+    let mut result: Vec<(entry::Model, snapshot::Model)> =
+        entries.into_iter().filter_map(|e| snapshot_map.get(&e.snapshot_id).map(|s| (e, s.clone()))).collect();
     result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
     Ok(result)
 }
@@ -631,21 +620,13 @@ pub async fn entries_for_blob(
     db: &DatabaseConnection,
     blob_id: i64,
 ) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
-    let entries = entry::Entity::find()
-        .filter(entry::Column::BlobId.eq(blob_id))
-        .all(db)
-        .await?;
+    let entries = entry::Entity::find().filter(entry::Column::BlobId.eq(blob_id)).all(db).await?;
 
     if entries.is_empty() {
         return Ok(vec![]);
     }
 
-    let snapshot_ids: Vec<i64> = entries
-        .iter()
-        .map(|e| e.snapshot_id)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+    let snapshot_ids: Vec<i64> = entries.iter().map(|e| e.snapshot_id).collect::<HashSet<_>>().into_iter().collect();
 
     let snapshots: HashMap<i64, snapshot::Model> = snapshot::Entity::find()
         .filter(snapshot::Column::Id.is_in(snapshot_ids))
@@ -655,10 +636,8 @@ pub async fn entries_for_blob(
         .map(|s| (s.id, s))
         .collect();
 
-    let mut result: Vec<(entry::Model, snapshot::Model)> = entries
-        .into_iter()
-        .filter_map(|e| snapshots.get(&e.snapshot_id).map(|s| (e, s.clone())))
-        .collect();
+    let mut result: Vec<(entry::Model, snapshot::Model)> =
+        entries.into_iter().filter_map(|e| snapshots.get(&e.snapshot_id).map(|s| (e, s.clone()))).collect();
     result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
     Ok(result)
 }
@@ -668,8 +647,5 @@ pub async fn blobs_by_ids(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Resul
     if ids.is_empty() {
         return Ok(vec![]);
     }
-    Ok(blob::Entity::find()
-        .filter(blob::Column::Id.is_in(ids.iter().copied()))
-        .all(db)
-        .await?)
+    Ok(blob::Entity::find().filter(blob::Column::Id.is_in(ids.iter().copied())).all(db).await?)
 }
