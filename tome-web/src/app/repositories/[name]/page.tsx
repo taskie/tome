@@ -48,7 +48,13 @@ export default async function RepositoryPage({ params }: Props) {
       <h1 className="text-base font-semibold mb-2">
         Repository: <span className="text-blue-700">{repoName}</span>
       </h1>
-      <div className="mb-4">
+      <div className="mb-4 flex gap-2">
+        <Link
+          href={`/repositories/${name}/files`}
+          className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+        >
+          Files
+        </Link>
         <Link
           href={`/repositories/${name}/diff`}
           className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"

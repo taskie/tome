@@ -51,6 +51,25 @@ export type SnapshotEntry = {
   entry: Entry;
 };
 
+export type CacheEntry = {
+  path: string;
+  /** 0 = deleted, 1 = present */
+  status: number;
+  size: number | null;
+  mtime: string | null;
+  digest: string | null;
+  fast_digest: string | null;
+  snapshot_id: string;
+  entry_id: string;
+};
+
+export type FilesResponse = {
+  total: number;
+  page: number;
+  per_page: number;
+  items: CacheEntry[];
+};
+
 export type DiffResponse = {
   snapshot1: Snapshot;
   snapshot2: Snapshot;

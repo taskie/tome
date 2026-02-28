@@ -1,4 +1,4 @@
-import type { Blob, DiffResponse, Entry, Repository, Snapshot, SnapshotEntry } from "./types";
+import type { Blob, CacheEntry, DiffResponse, Entry, FilesResponse, Repository, Snapshot, SnapshotEntry } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
 
@@ -41,4 +41,17 @@ export const api = {
       `/repositories/${encodeURIComponent(name)}/diff` +
         `?snapshot1=${encodeURIComponent(s1)}&snapshot2=${encodeURIComponent(s2)}&prefix=${encodeURIComponent(prefix)}`,
     ),
+
+  files: (
+    name: string,
+    opts: { prefix?: string; includeDeleted?: boolean; page?: number; perPage?: number },
+  ): Promise<FilesResponse> => {
+    const p = new URLSearchParams();
+    if (opts.prefix) p.set("prefix", opts.prefix);
+    if (opts.includeDeleted) p.set("include_deleted", "true");
+    if (opts.page && opts.page > 1) p.set("page", String(opts.page));
+    if (opts.perPage) p.set("per_page", String(opts.perPage));
+    const qs = p.toString();
+    return get(`/repositories/${encodeURIComponent(name)}/files${qs ? `?${qs}` : ""}`);
+  },
 };
