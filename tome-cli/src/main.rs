@@ -30,6 +30,10 @@ enum Commands {
     Store(commands::store::StoreArgs),
     /// Manage sync peers and pull changes
     Sync(commands::sync::SyncArgs),
+    /// Manage blob tags (key=value metadata)
+    Tag(commands::tag::TagArgs),
+    /// Verify scanned files against entry cache (bit-rot detection)
+    Verify(commands::verify::VerifyArgs),
     /// Start the HTTP API server
     Serve(ServeArgs),
 }
@@ -65,6 +69,8 @@ async fn main() -> Result<()> {
         Commands::Restore(args) => commands::restore::run(&db, args).await?,
         Commands::Store(args) => commands::store::run(&db, args).await?,
         Commands::Sync(args) => commands::sync::run(&db, args).await?,
+        Commands::Tag(args) => commands::tag::run(&db, args).await?,
+        Commands::Verify(args) => commands::verify::run(&db, args).await?,
         Commands::Serve(args) => tome_server::serve(db, &args.addr).await?,
     }
 
