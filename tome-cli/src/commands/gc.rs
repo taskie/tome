@@ -138,6 +138,11 @@ pub async fn run(db: &DatabaseConnection, args: GcArgs) -> Result<()> {
     } else {
         // Execute Phase 1.
         if !prune_ids_vec.is_empty() {
+            // Clear entry_cache rows anchored to pruned snapshots FIRST.  Unchanged
+            // files keep their cache row pointing at the entry from the snapshot where
+            // they were last recorded, so we must remove those rows before deleting
+            // entries / snapshots (FK constraints would otherwise reject the deletion).
+            ops::delete_entry_cache_for_snapshots(db, &prune_ids_vec).await?;
             let entries_del = ops::delete_entries_in_snapshots(db, &prune_ids_vec).await?;
             let snaps_del = ops::delete_snapshot_records(db, &prune_ids_vec).await?;
             println!("pruned {} snapshot(s), removed {} entry record(s)", snaps_del, entries_del);

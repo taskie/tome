@@ -58,6 +58,24 @@ pub async fn delete_snapshot_records(db: &DatabaseConnection, ids: &[i64]) -> an
     Ok(res.rows_affected)
 }
 
+/// Delete all entry_cache rows whose snapshot_id is in the given set.
+///
+/// Must be called **before** `delete_entries_in_snapshots` to avoid FK constraint
+/// violations: unchanged files keep their entry_cache row pointing at the entry from
+/// the snapshot where they were first recorded.  Clearing those rows first is safe
+/// because the cache is rebuilt on the next scan.
+pub async fn delete_entry_cache_for_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<u64> {
+    if snapshot_ids.is_empty() {
+        return Ok(0);
+    }
+    use crate::entities::entry_cache;
+    let res = entry_cache::Entity::delete_many()
+        .filter(entry_cache::Column::SnapshotId.is_in(snapshot_ids.iter().copied()))
+        .exec(db)
+        .await?;
+    Ok(res.rows_affected)
+}
+
 /// Delete all entry records belonging to the given snapshot IDs; returns the count deleted.
 pub async fn delete_entries_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<u64> {
     if snapshot_ids.is_empty() {
