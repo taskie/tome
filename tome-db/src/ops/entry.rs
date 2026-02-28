@@ -85,11 +85,12 @@ pub async fn entries_by_prefix(
 }
 
 /// Fetch the history of a path across all snapshots in a repository, newest first.
+/// Returns `(entry, blob, snapshot)` triples; `blob` is `None` for deleted entries.
 pub async fn path_history(
     db: &DatabaseConnection,
     repository_id: i64,
     path: &str,
-) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
+) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>, snapshot::Model)>> {
     let snapshots = snapshot::Entity::find()
         .filter(snapshot::Column::RepositoryId.eq(repository_id))
         .order_by_desc(snapshot::Column::CreatedAt)
@@ -103,15 +104,16 @@ pub async fn path_history(
     let snapshot_map: HashMap<i64, snapshot::Model> = snapshots.iter().map(|s| (s.id, s.clone())).collect();
     let snapshot_ids: Vec<i64> = snapshots.into_iter().map(|s| s.id).collect();
 
-    let entries = entry::Entity::find()
+    let pairs = entry::Entity::find()
         .filter(entry::Column::SnapshotId.is_in(snapshot_ids))
         .filter(entry::Column::Path.eq(path))
+        .find_also_related(blob::Entity)
         .all(db)
         .await?;
 
-    let mut result: Vec<(entry::Model, snapshot::Model)> =
-        entries.into_iter().filter_map(|e| snapshot_map.get(&e.snapshot_id).map(|s| (e, s.clone()))).collect();
-    result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
+    let mut result: Vec<(entry::Model, Option<blob::Model>, snapshot::Model)> =
+        pairs.into_iter().filter_map(|(e, b)| snapshot_map.get(&e.snapshot_id).map(|s| (e, b, s.clone()))).collect();
+    result.sort_by(|a, b| b.2.created_at.cmp(&a.2.created_at));
     Ok(result)
 }
 

@@ -59,7 +59,12 @@ pub async fn path_history(
 ) -> AppResult<Json<Vec<SnapshotEntry>>> {
     let repo = find_repo_or_404(&db, &name).await?;
     let history = ops::path_history(&db, repo.id, &q.path).await?;
-    Ok(Json(history.into_iter().map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() }).collect()))
+    Ok(Json(
+        history
+            .into_iter()
+            .map(|(e, b, s)| SnapshotEntry { snapshot: s.into(), entry: EntryResponse::from_with_blob(e, b.as_ref()) })
+            .collect(),
+    ))
 }
 
 #[derive(Deserialize)]
