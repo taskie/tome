@@ -1,61 +1,54 @@
 # tome
 
+> **tome** /ˈtoʊm/ — *a large, heavy book, especially one dealing with a serious topic.*
+>
+> A chronicle of every file — recorded in hashes, preserved in snapshots.
+
 A file change tracking system written in Rust. Scans directories, detects changes via SHA-256 / xxHash64, and records snapshot history to SQLite or PostgreSQL.
 
-## Requirements
+## Getting Started
 
-- Rust 1.85+
-- Node.js 20.9+ (for tome-web only)
-
-## Install
+**Prerequisites:** Rust 1.85+ (Node.js 20.9+ for the web UI)
 
 ```bash
+# Install
 cargo install --path tome-cli
-```
 
-Or build manually:
-
-```bash
-cargo build -p tome-cli --release
-# Binary: target/release/tome
-```
-
-## Quick Start
-
-```bash
-# Scan the current directory (saved to tome.db)
+# Scan the current directory — creates tome.db
 tome scan
 
-# Scan with a custom repository name
+# Scan a specific directory with a named repository
 tome scan --repo myproject /path/to/project
 
-# Start the API server
+# Browse the results
 tome serve
 # → http://127.0.0.1:8080
 ```
 
-## Commands
+## CLI Reference
 
-### Global Options
+```
+tome [OPTIONS] <COMMAND>
 
-| Flag | Env Var | Default | Description |
-|------|---------|---------|-------------|
-| `--db <path\|URL>` | `TOME_DB` | `tome.db` | SQLite path or PostgreSQL URL |
-| `--machine-id <n>` | `TOME_MACHINE_ID` | `0` | Machine ID for ID generation (0–65535) |
+Options:
+  --db <PATH|URL>         SQLite path or PostgreSQL URL  [env: TOME_DB]  [default: tome.db]
+  --machine-id <N>        Machine ID for ID generation (0–65535)  [env: TOME_MACHINE_ID]  [default: 0]
+```
 
-### `tome scan [--repo <name>] [<path>]`
+### `tome scan [OPTIONS] [PATH]`
 
-Scans a directory and records a snapshot of file changes.
+Scan a directory and record a snapshot of file changes.
 
 ```bash
 tome scan                              # current directory
 tome scan --repo docs /srv/docs        # named repository
-tome --db /var/db/tome.db scan ~/data  # custom DB
+tome scan --no-ignore ~/data           # ignore .gitignore rules
+tome --db /var/db/tome.db scan ~/data  # custom DB path
 ```
 
-### `tome store`
+### `tome store <COMMAND>`
 
-Manages storage backends for file contents.
+Manage storage backends for file contents.
 
 ```bash
 tome store add <name> <url>              # register a store
@@ -65,17 +58,11 @@ tome store copy [--encrypt] [--key-file <path>] <src> <dst>  # copy between stor
 tome store verify <store>                # verify blob integrity
 ```
 
-Store URL formats:
+Supported URL schemes: `file:///path`, `ssh://user@host/path`, `s3://bucket/prefix`
 
-| Type | URL |
-|------|-----|
-| Local | `file:///path/to/dir` |
-| SSH | `ssh://user@host/path` |
-| S3-compatible | `s3://bucket/prefix` |
+### `tome sync <COMMAND>`
 
-### `tome sync`
-
-Synchronizes snapshot history between databases.
+Synchronize snapshot history between databases.
 
 ```bash
 tome sync add [--repo <name>] <name> <peer-db-url>  # register a peer
@@ -85,9 +72,9 @@ tome sync pull [--repo <name>] <name>                # pull incremental diffs
 
 ### `tome serve [--addr <host:port>]`
 
-Starts the HTTP API server (default: `127.0.0.1:8080`).
+Start the HTTP API server (default: `127.0.0.1:8080`).
 
-## Web UI (tome-web)
+## Web UI
 
 A Next.js 16 browser interface. Requires `tome serve` to be running.
 
@@ -99,9 +86,9 @@ npm run dev
 # → http://localhost:3000
 ```
 
-## Workflows
+## Examples
 
-### Local backup
+### Back up to an external drive
 
 ```bash
 tome scan ~/documents
@@ -109,10 +96,30 @@ tome store add backup file:///mnt/hdd/backup
 tome store push backup
 ```
 
-### Sync between machines
+### Sync between machines over NFS
 
 ```bash
-# On machine B, pull from A's SQLite over NFS
+# On machine B, pull snapshots from machine A's database
 tome sync add machineA sqlite:////mnt/nfs/machineA/tome.db
 tome sync pull machineA
+```
+
+### Encrypted remote backup
+
+```bash
+tome store add local file:///data/store
+tome store add remote s3://my-bucket/tome
+tome store push local
+tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
+```
+
+## Architecture
+
+```
+tome-core/     Hash computation, ID generation, shared models
+tome-db/       SeaORM entities, migrations, query operations
+tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
+tome-server/   HTTP API server (axum)
+tome-cli/      Unified CLI (scan / store / sync / serve)
+tome-web/      Next.js 16 web frontend
 ```
