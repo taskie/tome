@@ -32,14 +32,14 @@ sea-orm-migration = { version = "1.1", features = ["sqlx-sqlite", "sqlx-postgres
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-sonyflake = "0.2"
+sonyflake = "0.4"
 ssh2 = "0.9"
 tempfile = "3"
-thiserror = "1"
+thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-twox-hash = "1"
+twox-hash = "2"
 url = "2"
 ignore = "0.4"
 walkdir = "2"
