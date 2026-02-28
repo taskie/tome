@@ -54,7 +54,7 @@ name = "aether-cli"
 version = "0.1.0"
 dependencies = [
  "aether",
- "clap 4.5.60",
+ "clap",
  "rpassword",
  "tempfile",
  "tracing",
@@ -100,15 +100,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "ansi_term"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
@@ -240,17 +231,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "atty"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
-dependencies = [
- "hermit-abi 0.1.19",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -258,57 +238,27 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-config"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc6b3804dca60326e07205179847f17a4fce45af3a1106939177ad41ac08a6de"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-http",
- "aws-sdk-sso 0.30.0",
- "aws-sdk-sts 0.30.0",
- "aws-smithy-async 0.56.1",
- "aws-smithy-client",
- "aws-smithy-http 0.56.1",
- "aws-smithy-http-tower",
- "aws-smithy-json 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-types 0.56.1",
- "bytes",
- "fastrand",
- "hex",
- "http 0.2.12",
- "hyper 0.14.32",
- "ring 0.16.20",
- "time",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "aws-config"
 version = "1.8.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a8fc176d53d6fe85017f230405e3255cedb4a02221cb55ed6d76dccbbb099b2"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-runtime 1.7.1",
- "aws-sdk-sso 1.95.0",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-sdk-sso",
  "aws-sdk-ssooidc",
- "aws-sdk-sts 1.99.0",
- "aws-smithy-async 1.2.13",
+ "aws-sdk-sts",
+ "aws-smithy-async",
  "aws-smithy-http 0.63.5",
  "aws-smithy-json 0.62.4",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-types 1.3.13",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
  "bytes",
  "fastrand",
  "hex",
  "http 1.4.0",
- "ring 0.17.14",
+ "ring",
  "time",
  "tokio",
  "tracing",
@@ -318,47 +268,14 @@ dependencies = [
 
 [[package]]
 name = "aws-credential-types"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70a66ac8ef5fa9cf01c2d999f39d16812e90ec1467bd382cbbb74ba23ea86201"
-dependencies = [
- "aws-smithy-async 0.56.1",
- "aws-smithy-types 0.56.1",
- "fastrand",
- "tokio",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "aws-credential-types"
 version = "1.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d203b0bf2626dcba8665f5cd0871d7c2c0930223d6b6be9097592fea21242d0"
 dependencies = [
- "aws-smithy-async 1.2.13",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-async",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "zeroize",
-]
-
-[[package]]
-name = "aws-http"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e626370f9ba806ae4c439e49675fd871f5767b093075cdf4fef16cac42ba900"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-smithy-http 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-types 0.56.1",
- "bytes",
- "http 0.2.12",
- "http-body 0.4.6",
- "lazy_static",
- "percent-encoding",
- "pin-project-lite",
- "tracing",
 ]
 
 [[package]]
@@ -385,41 +302,19 @@ dependencies = [
 
 [[package]]
 name = "aws-runtime"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07ac5cf0ff19c1bca0cea7932e11b239d1025a45696a4f44f72ea86e2b8bdd07"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-http",
- "aws-sigv4 0.56.1",
- "aws-smithy-async 0.56.1",
- "aws-smithy-eventstream 0.56.1",
- "aws-smithy-http 0.56.1",
- "aws-smithy-runtime-api 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-types 0.56.1",
- "fastrand",
- "http 0.2.12",
- "percent-encoding",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "aws-runtime"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ede2ddc593e6c8acc6ce3358c28d6677a6dc49b65ba4b37a2befe14a11297e75"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-sigv4 1.4.1",
- "aws-smithy-async 1.2.13",
- "aws-smithy-eventstream 0.60.19",
+ "aws-credential-types",
+ "aws-sigv4",
+ "aws-smithy-async",
+ "aws-smithy-eventstream",
  "aws-smithy-http 0.63.5",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-types 1.3.13",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
  "bytes",
  "bytes-utils",
  "fastrand",
@@ -435,55 +330,23 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f7a233b27af6e70094eafd43d9ee11da6e78eb2c1a31e5a7de737b782c627d"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-http",
- "aws-runtime 0.56.1",
- "aws-sigv4 0.56.1",
- "aws-smithy-async 0.56.1",
- "aws-smithy-checksums 0.56.1",
- "aws-smithy-client",
- "aws-smithy-eventstream 0.56.1",
- "aws-smithy-http 0.56.1",
- "aws-smithy-json 0.56.1",
- "aws-smithy-runtime 0.56.1",
- "aws-smithy-runtime-api 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-smithy-xml 0.56.1",
- "aws-types 0.56.1",
- "bytes",
- "http 0.2.12",
- "http-body 0.4.6",
- "once_cell",
- "percent-encoding",
- "regex",
- "tokio-stream",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "aws-sdk-s3"
 version = "1.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d65fddc3844f902dfe1864acb8494db5f9342015ee3ab7890270d36fbd2e01c"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-runtime 1.7.1",
- "aws-sigv4 1.4.1",
- "aws-smithy-async 1.2.13",
- "aws-smithy-checksums 0.63.12",
- "aws-smithy-eventstream 0.60.19",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-sigv4",
+ "aws-smithy-async",
+ "aws-smithy-checksums",
+ "aws-smithy-eventstream",
  "aws-smithy-http 0.62.6",
  "aws-smithy-json 0.61.9",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-smithy-xml 0.60.14",
- "aws-types 1.3.13",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "aws-types",
  "bytes",
  "fastrand",
  "hex",
@@ -501,44 +364,20 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-sso"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "903f888ff190e64f6f5c83fb0f8d54f9c20481f1dc26359bb8896f5d99908949"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-http",
- "aws-runtime 0.56.1",
- "aws-smithy-async 0.56.1",
- "aws-smithy-client",
- "aws-smithy-http 0.56.1",
- "aws-smithy-json 0.56.1",
- "aws-smithy-runtime 0.56.1",
- "aws-smithy-runtime-api 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-types 0.56.1",
- "bytes",
- "http 0.2.12",
- "regex",
- "tokio-stream",
- "tracing",
-]
-
-[[package]]
-name = "aws-sdk-sso"
 version = "1.95.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00c5ff27c6ba2cbd95e6e26e2e736676fdf6bcf96495b187733f521cfe4ce448"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-runtime 1.7.1",
- "aws-smithy-async 1.2.13",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
  "aws-smithy-http 0.63.5",
  "aws-smithy-json 0.62.4",
  "aws-smithy-observability",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-types 1.3.13",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
  "bytes",
  "fastrand",
  "http 0.2.12",
@@ -553,45 +392,21 @@ version = "1.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d186f1e5a3694a188e5a0640b3115ccc6e084d104e16fd6ba968dca072ffef8"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-runtime 1.7.1",
- "aws-smithy-async 1.2.13",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
  "aws-smithy-http 0.63.5",
  "aws-smithy-json 0.62.4",
  "aws-smithy-observability",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-types 1.3.13",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
  "bytes",
  "fastrand",
  "http 0.2.12",
  "http 1.4.0",
  "regex-lite",
- "tracing",
-]
-
-[[package]]
-name = "aws-sdk-sts"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a47ad6bf01afc00423d781d464220bf69fb6a674ad6629cbbcb06d88cdc2be82"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-http",
- "aws-runtime 0.56.1",
- "aws-smithy-async 0.56.1",
- "aws-smithy-client",
- "aws-smithy-http 0.56.1",
- "aws-smithy-json 0.56.1",
- "aws-smithy-query 0.56.1",
- "aws-smithy-runtime 0.56.1",
- "aws-smithy-runtime-api 0.56.1",
- "aws-smithy-types 0.56.1",
- "aws-smithy-xml 0.56.1",
- "aws-types 0.56.1",
- "http 0.2.12",
- "regex",
  "tracing",
 ]
 
@@ -601,18 +416,18 @@ version = "1.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9acba7c62f3d4e2408fa998a3a8caacd8b9a5b5549cf36e2372fbdae329d5449"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-runtime 1.7.1",
- "aws-smithy-async 1.2.13",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
  "aws-smithy-http 0.63.5",
  "aws-smithy-json 0.62.4",
  "aws-smithy-observability",
- "aws-smithy-query 0.60.14",
- "aws-smithy-runtime 1.10.2",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
- "aws-smithy-xml 0.60.14",
- "aws-types 1.3.13",
+ "aws-smithy-query",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "aws-types",
  "fastrand",
  "http 0.2.12",
  "http 1.4.0",
@@ -622,36 +437,15 @@ dependencies = [
 
 [[package]]
 name = "aws-sigv4"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7b28f4910bb956b7ab320b62e98096402354eca976c587d1eeccd523d9bac03"
-dependencies = [
- "aws-smithy-eventstream 0.56.1",
- "aws-smithy-http 0.56.1",
- "bytes",
- "form_urlencoded",
- "hex",
- "hmac",
- "http 0.2.12",
- "once_cell",
- "percent-encoding",
- "regex",
- "sha2",
- "time",
- "tracing",
-]
-
-[[package]]
-name = "aws-sigv4"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37411f8e0f4bea0c3ca0958ce7f18f6439db24d555dbd809787262cd00926aa9"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-smithy-eventstream 0.60.19",
+ "aws-credential-types",
+ "aws-smithy-eventstream",
  "aws-smithy-http 0.63.5",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "bytes",
  "crypto-bigint 0.5.5",
  "form_urlencoded",
@@ -661,24 +455,12 @@ dependencies = [
  "http 1.4.0",
  "p256",
  "percent-encoding",
- "ring 0.17.14",
+ "ring",
  "sha2",
  "subtle",
  "time",
  "tracing",
  "zeroize",
-]
-
-[[package]]
-name = "aws-smithy-async"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cdb73f85528b9d19c23a496034ac53703955a59323d581c06aa27b4e4e247af"
-dependencies = [
- "futures-util",
- "pin-project-lite",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -694,33 +476,12 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-checksums"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afb15946af1b8d3beeff53ad991d9bff68ac22426b6d40372b958a75fa61eaed"
-dependencies = [
- "aws-smithy-http 0.56.1",
- "aws-smithy-types 0.56.1",
- "bytes",
- "crc32c",
- "crc32fast",
- "hex",
- "http 0.2.12",
- "http-body 0.4.6",
- "md-5",
- "pin-project-lite",
- "sha1",
- "sha2",
- "tracing",
-]
-
-[[package]]
-name = "aws-smithy-checksums"
 version = "0.63.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87294a084b43d649d967efe58aa1f9e0adc260e13a6938eb904c0ae9b45824ae"
 dependencies = [
  "aws-smithy-http 0.62.6",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-types",
  "bytes",
  "crc-fast",
  "hex",
@@ -734,72 +495,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "aws-smithy-client"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c27b2756264c82f830a91cb4d2d485b2d19ad5bea476d9a966e03d27f27ba59a"
-dependencies = [
- "aws-smithy-async 0.56.1",
- "aws-smithy-http 0.56.1",
- "aws-smithy-http-tower",
- "aws-smithy-types 0.56.1",
- "bytes",
- "fastrand",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.32",
- "hyper-rustls 0.24.2",
- "lazy_static",
- "pin-project-lite",
- "rustls 0.21.12",
- "tokio",
- "tower 0.4.13",
- "tracing",
-]
-
-[[package]]
-name = "aws-smithy-eventstream"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "850233feab37b591b7377fd52063aa37af615687f5896807abe7f49bd4e1d25b"
-dependencies = [
- "aws-smithy-types 0.56.1",
- "bytes",
- "crc32fast",
-]
-
-[[package]]
 name = "aws-smithy-eventstream"
 version = "0.60.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c0b3e587fbaa5d7f7e870544508af8ce82ea47cd30376e69e1e37c4ac746f79"
 dependencies = [
- "aws-smithy-types 1.4.5",
+ "aws-smithy-types",
  "bytes",
  "crc32fast",
-]
-
-[[package]]
-name = "aws-smithy-http"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54cdcf365d8eee60686885f750a34c190e513677db58bbc466c44c588abf4199"
-dependencies = [
- "aws-smithy-eventstream 0.56.1",
- "aws-smithy-types 0.56.1",
- "bytes",
- "bytes-utils",
- "futures-core",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.32",
- "once_cell",
- "percent-encoding",
- "pin-project-lite",
- "pin-utils",
- "tokio",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -808,9 +511,9 @@ version = "0.62.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "826141069295752372f8203c17f28e30c464d22899a43a0c9fd9c458d469c88b"
 dependencies = [
- "aws-smithy-eventstream 0.60.19",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-eventstream",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "bytes",
  "bytes-utils",
  "futures-core",
@@ -830,8 +533,8 @@ version = "0.63.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d619373d490ad70966994801bc126846afaa0d1ee920697a031f0cf63f2568e7"
 dependencies = [
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "bytes",
  "bytes-utils",
  "futures-core",
@@ -851,9 +554,9 @@ version = "1.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00ccbb08c10f6bcf912f398188e42ee2eab5f1767ce215a02a73bc5df1bbdd95"
 dependencies = [
- "aws-smithy-async 1.2.13",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-async",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "h2 0.3.27",
  "h2 0.4.13",
  "http 0.2.12",
@@ -867,37 +570,12 @@ dependencies = [
  "pin-project-lite",
  "rustls 0.21.12",
  "rustls 0.23.37",
- "rustls-native-certs 0.8.3",
+ "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.26.4",
- "tower 0.5.3",
+ "tower",
  "tracing",
-]
-
-[[package]]
-name = "aws-smithy-http-tower"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "822de399d0ce62829a69dfa8c5cd08efdbe61a7426b953e2268f8b8b52a607bd"
-dependencies = [
- "aws-smithy-http 0.56.1",
- "aws-smithy-types 0.56.1",
- "bytes",
- "http 0.2.12",
- "http-body 0.4.6",
- "pin-project-lite",
- "tower 0.4.13",
- "tracing",
-]
-
-[[package]]
-name = "aws-smithy-json"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb1e7ab8fa7ad10c193af7ae56d2420989e9f4758bf03601a342573333ea34f"
-dependencies = [
- "aws-smithy-types 0.56.1",
 ]
 
 [[package]]
@@ -906,7 +584,7 @@ version = "0.61.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49fa1213db31ac95288d981476f78d05d9cbb0353d22cdf3472cc05bb02f6551"
 dependencies = [
- "aws-smithy-types 1.4.5",
+ "aws-smithy-types",
 ]
 
 [[package]]
@@ -915,7 +593,7 @@ version = "0.62.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27b3a779093e18cad88bbae08dc4261e1d95018c4c5b9356a52bcae7c0b6e9bb"
 dependencies = [
- "aws-smithy-types 1.4.5",
+ "aws-smithy-types",
 ]
 
 [[package]]
@@ -924,17 +602,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d3f39d5bb871aaf461d59144557f16d5927a5248a983a40654d9cf3b9ba183b"
 dependencies = [
- "aws-smithy-runtime-api 1.11.5",
-]
-
-[[package]]
-name = "aws-smithy-query"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28556a3902091c1f768a34f6c998028921bdab8d47d92586f363f14a4a32d047"
-dependencies = [
- "aws-smithy-types 0.56.1",
- "urlencoding",
+ "aws-smithy-runtime-api",
 ]
 
 [[package]]
@@ -943,30 +611,8 @@ version = "0.60.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f76a580e3d8f8961e5d48763214025a2af65c2fa4cd1fb7f270a0e107a71b0"
 dependencies = [
- "aws-smithy-types 1.4.5",
+ "aws-smithy-types",
  "urlencoding",
-]
-
-[[package]]
-name = "aws-smithy-runtime"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "745e096b3553e7e0f40622aa04971ce52765af82bebdeeac53aa6fc82fe801e6"
-dependencies = [
- "aws-smithy-async 0.56.1",
- "aws-smithy-client",
- "aws-smithy-http 0.56.1",
- "aws-smithy-runtime-api 0.56.1",
- "aws-smithy-types 0.56.1",
- "bytes",
- "fastrand",
- "http 0.2.12",
- "http-body 0.4.6",
- "once_cell",
- "pin-project-lite",
- "pin-utils",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -975,12 +621,12 @@ version = "1.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22ccf7f6eba8b2dcf8ce9b74806c6c185659c311665c4bf8d6e71ebd454db6bf"
 dependencies = [
- "aws-smithy-async 1.2.13",
+ "aws-smithy-async",
  "aws-smithy-http 0.63.5",
  "aws-smithy-http-client",
  "aws-smithy-observability",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "bytes",
  "fastrand",
  "http 0.2.12",
@@ -996,27 +642,12 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-runtime-api"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93d0ae0c9cfd57944e9711ea610b48a963fb174a53aabacc08c5794a594b1d02"
-dependencies = [
- "aws-smithy-async 0.56.1",
- "aws-smithy-http 0.56.1",
- "aws-smithy-types 0.56.1",
- "bytes",
- "http 0.2.12",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "aws-smithy-runtime-api"
 version = "1.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4af6e5def28be846479bbeac55aa4603d6f7986fc5da4601ba324dd5d377516"
 dependencies = [
- "aws-smithy-async 1.2.13",
- "aws-smithy-types 1.4.5",
+ "aws-smithy-async",
+ "aws-smithy-types",
  "bytes",
  "http 0.2.12",
  "http 1.4.0",
@@ -1024,20 +655,6 @@ dependencies = [
  "tokio",
  "tracing",
  "zeroize",
-]
-
-[[package]]
-name = "aws-smithy-types"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d90dbc8da2f6be461fa3c1906b20af8f79d14968fe47f2b7d29d086f62a51728"
-dependencies = [
- "base64-simd",
- "itoa",
- "num-integer",
- "ryu",
- "serde",
- "time",
 ]
 
 [[package]]
@@ -1068,15 +685,6 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-xml"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e01d2dedcdd8023043716cfeeb3c6c59f2d447fce365d8e194838891794b23b6"
-dependencies = [
- "xmlparser",
-]
-
-[[package]]
-name = "aws-smithy-xml"
 version = "0.60.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b53543b4b86ed43f051644f704a98c7291b3618b67adf057ee77a366fa52fcaa"
@@ -1086,65 +694,15 @@ dependencies = [
 
 [[package]]
 name = "aws-types"
-version = "0.56.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85aa0451bf8af1bf22a4f028d5d28054507a14be43cb8ac0597a8471fba9edfe"
-dependencies = [
- "aws-credential-types 0.56.1",
- "aws-smithy-async 0.56.1",
- "aws-smithy-client",
- "aws-smithy-http 0.56.1",
- "aws-smithy-types 0.56.1",
- "http 0.2.12",
- "rustc_version",
- "tracing",
-]
-
-[[package]]
-name = "aws-types"
 version = "1.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0470cc047657c6e286346bdf10a8719d26efd6a91626992e0e64481e44323e96"
 dependencies = [
- "aws-credential-types 1.2.13",
- "aws-smithy-async 1.2.13",
- "aws-smithy-runtime-api 1.11.5",
- "aws-smithy-types 1.4.5",
+ "aws-credential-types",
+ "aws-smithy-async",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "rustc_version",
- "tracing",
-]
-
-[[package]]
-name = "axum"
-version = "0.6.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b829e4e32b91e643de6eafe82b1d90675f5874230191a4ffbc1b336dec4d6bf"
-dependencies = [
- "async-trait",
- "axum-core 0.3.4",
- "axum-macros",
- "bitflags 1.3.2",
- "bytes",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.32",
- "itoa",
- "matchit 0.7.3",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "rustversion",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "serde_urlencoded",
- "sync_wrapper 0.1.2",
- "tokio",
- "tower 0.4.13",
- "tower-layer",
- "tower-service",
  "tracing",
 ]
 
@@ -1154,7 +712,7 @@ version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
 dependencies = [
- "axum-core 0.5.6",
+ "axum-core",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -1164,7 +722,7 @@ dependencies = [
  "hyper 1.8.1",
  "hyper-util",
  "itoa",
- "matchit 0.8.4",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -1173,27 +731,9 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
- "sync_wrapper 1.0.2",
+ "sync_wrapper",
  "tokio",
- "tower 0.5.3",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "759fa577a247914fd3f7f76d62972792636412fbfd634cd452f6a385a74d2d2c"
-dependencies = [
- "async-trait",
- "bytes",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "mime",
- "rustversion",
+ "tower",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1212,22 +752,10 @@ dependencies = [
  "http-body-util",
  "mime",
  "pin-project-lite",
- "sync_wrapper 1.0.2",
+ "sync_wrapper",
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "axum-macros"
-version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdca6a10ecad987bda04e95606ef85a5417dcaac1a78455242d72e031e2b6b62"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -1277,12 +805,6 @@ dependencies = [
  "num-traits",
  "serde",
 ]
-
-[[package]]
-name = "bitflags"
-version = "1.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
@@ -1470,21 +992,6 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "2.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0610544180c38b88101fecf2dd634b174a62eef6946f84dfc6a7127512b381c"
-dependencies = [
- "ansi_term",
- "atty",
- "bitflags 1.3.2",
- "strsim 0.8.0",
- "textwrap",
- "unicode-width",
- "vec_map",
-]
-
-[[package]]
-name = "clap"
 version = "4.5.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2797f34da339ce31042b27d23607e051786132987f595b02ba4f6a6dffb7030a"
@@ -1502,7 +1009,7 @@ dependencies = [
  "anstream",
  "anstyle",
  "clap_lex",
- "strsim 0.11.1",
+ "strsim",
 ]
 
 [[package]]
@@ -1561,16 +1068,6 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "core-foundation"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
-name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
@@ -1620,15 +1117,6 @@ dependencies = [
  "rand 0.9.2",
  "regex",
  "rustversion",
-]
-
-[[package]]
-name = "crc32c"
-version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
-dependencies = [
- "rustc_version",
 ]
 
 [[package]]
@@ -1722,18 +1210,8 @@ version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc7f46116c46ff9ab3eb1597a45688b6715c6e628b5c133e288e709a29bcb4ee"
 dependencies = [
- "darling_core 0.20.11",
- "darling_macro 0.20.11",
-]
-
-[[package]]
-name = "darling"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cdf337090841a411e2a7f3deb9187445851f91b309c0c0a29e05f74a00a48c0"
-dependencies = [
- "darling_core 0.21.3",
- "darling_macro 0.21.3",
+ "darling_core",
+ "darling_macro",
 ]
 
 [[package]]
@@ -1746,21 +1224,6 @@ dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
- "strsim 0.11.1",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "darling_core"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1247195ecd7e3c85f83c8d2a366e4210d588e802133e1e355180a9870b517ea4"
-dependencies = [
- "fnv",
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim 0.11.1",
  "syn 2.0.117",
 ]
 
@@ -1770,61 +1233,9 @@ version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
 dependencies = [
- "darling_core 0.20.11",
+ "darling_core",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "darling_macro"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
-dependencies = [
- "darling_core 0.21.3",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "deadpool"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb84100978c1c7b37f09ed3ce3e5f843af02c2a2c431bae5b19230dad2c1b490"
-dependencies = [
- "async-trait",
- "deadpool-runtime",
- "num_cpus",
- "tokio",
-]
-
-[[package]]
-name = "deadpool-diesel"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa8404d25ddc6cb0676d4a863bbd007613ee3fffb54db23e0e6341e1fe61c3e"
-dependencies = [
- "deadpool",
- "deadpool-sync",
- "diesel",
-]
-
-[[package]]
-name = "deadpool-runtime"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
-dependencies = [
- "tokio",
-]
-
-[[package]]
-name = "deadpool-sync"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524bc3df0d57e98ecd022e21ba31166c2625e7d3e5bcc4510efaeeab4abcab04"
-dependencies = [
- "deadpool-runtime",
 ]
 
 [[package]]
@@ -1881,66 +1292,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "diesel"
-version = "2.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b6c2fc184a6fb6ebcf5f9a5e3bbfa84d8fd268cdfcce4ed508979a6259494d"
-dependencies = [
- "bigdecimal",
- "bitflags 2.11.0",
- "byteorder",
- "chrono",
- "diesel_derives",
- "downcast-rs",
- "ipnetwork 0.21.1",
- "itoa",
- "libc",
- "libsqlite3-sys",
- "num-bigint",
- "num-integer",
- "num-traits",
- "pq-sys",
- "r2d2",
- "serde_json",
- "sqlite-wasm-rs",
- "time",
- "uuid",
-]
-
-[[package]]
-name = "diesel_derives"
-version = "2.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47618bf0fac06bb670c036e48404c26a865e6a71af4114dfd97dfe89936e404e"
-dependencies = [
- "diesel_table_macro_syntax",
- "dsl_auto_type",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "diesel_migrations"
-version = "2.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "745fd255645f0f1135f9ec55c7b00e0882192af9683ab4731e4bba3da82b8f9c"
-dependencies = [
- "diesel",
- "migrations_internals",
- "migrations_macros",
-]
-
-[[package]]
-name = "diesel_table_macro_syntax"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe2444076b48641147115697648dc743c2c00b61adade0f01ce67133c7babe8c"
-dependencies = [
- "syn 2.0.117",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1985,36 +1336,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
-
-[[package]]
 name = "dotenvy"
 version = "0.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
-
-[[package]]
-name = "downcast-rs"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
-
-[[package]]
-name = "dsl_auto_type"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd122633e4bef06db27737f21d3738fb89c8f6d5360d6d9d7635dda142a7757e"
-dependencies = [
- "darling 0.21.3",
- "either",
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
 
 [[package]]
 name = "dunce"
@@ -2061,19 +1386,6 @@ dependencies = [
  "sec1",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cd405aab171cb85d6735e5c8d9db038c17d3ca007a4d2c25f337935c3d90580"
-dependencies = [
- "humantime",
- "is-terminal",
- "log",
- "regex",
- "termcolor",
 ]
 
 [[package]]
@@ -2144,7 +1456,7 @@ checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
 dependencies = [
  "futures-core",
  "futures-sink",
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -2158,12 +1470,6 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
-
-[[package]]
-name = "foldhash"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "form_urlencoded"
@@ -2412,7 +1718,7 @@ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "allocator-api2",
  "equivalent",
- "foldhash 0.1.5",
+ "foldhash",
 ]
 
 [[package]]
@@ -2420,9 +1726,6 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-dependencies = [
- "foldhash 0.2.0",
-]
 
 [[package]]
 name = "hashlink"
@@ -2431,15 +1734,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
  "hashbrown 0.15.5",
-]
-
-[[package]]
-name = "heck"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
-dependencies = [
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -2453,21 +1747,6 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
-
-[[package]]
-name = "hermit-abi"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "hermit-abi"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
 name = "hex"
@@ -2558,12 +1837,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-range-header"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "add0ab9360ddbd88cfeb3bd9574a1d85cfdfa14db10b3e21d3700dbc4328758f"
-
-[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2574,12 +1847,6 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "humantime"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
 
 [[package]]
 name = "hyper"
@@ -2639,7 +1906,6 @@ dependencies = [
  "hyper 0.14.32",
  "log",
  "rustls 0.21.12",
- "rustls-native-certs 0.6.3",
  "tokio",
  "tokio-rustls 0.24.1",
 ]
@@ -2654,7 +1920,7 @@ dependencies = [
  "hyper 1.8.1",
  "hyper-util",
  "rustls 0.23.37",
- "rustls-native-certs 0.8.3",
+ "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.26.4",
@@ -2706,107 +1972,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "ichno"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "diesel",
- "diesel_migrations",
- "log",
- "optional_derive",
- "serde",
- "sha-1",
- "sha2",
- "sonyflake 0.2.0",
- "treblo",
- "twox-hash 1.6.3",
- "url",
-]
-
-[[package]]
-name = "ichno_cli"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "diesel",
- "dotenv",
- "env_logger",
- "ichno",
- "ignore",
- "itertools",
- "log",
- "structopt",
- "twox-hash 1.6.3",
-]
-
-[[package]]
-name = "ichnome"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "aws-config 0.56.1",
- "aws-sdk-s3 0.34.0",
- "chrono",
- "diesel",
- "diesel_migrations",
- "ichno",
- "log",
- "optional_derive",
- "serde",
- "sha-1",
- "sha2",
- "sonyflake 0.2.0",
- "ssh2",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "treblo",
- "twox-hash 1.6.3",
- "url",
-]
-
-[[package]]
-name = "ichnome_cli"
-version = "0.1.0"
-dependencies = [
- "aws-config 0.56.1",
- "aws-sdk-s3 0.34.0",
- "chrono",
- "diesel",
- "dotenv",
- "env_logger",
- "ichno",
- "ichnome",
- "ignore",
- "log",
- "ssh2",
- "structopt",
- "tokio",
- "twox-hash 1.6.3",
-]
-
-[[package]]
-name = "ichnome_web"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum 0.6.20",
- "chrono",
- "deadpool-diesel",
- "diesel",
- "dotenv",
- "ichnome",
- "serde",
- "structopt",
- "tokio",
- "tower-http 0.4.4",
- "tracing",
- "tracing-subscriber",
- "treblo",
- "url",
 ]
 
 [[package]]
@@ -2987,36 +2152,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "ipnetwork"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
-
-[[package]]
-name = "is-terminal"
-version = "0.4.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
-dependencies = [
- "hermit-abi 0.5.2",
- "libc",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
-
-[[package]]
-name = "itertools"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
-]
 
 [[package]]
 name = "itoa"
@@ -3050,7 +2189,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -3077,7 +2216,7 @@ version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
  "libc",
  "redox_syscall 0.7.3",
 ]
@@ -3166,12 +2305,6 @@ dependencies = [
 
 [[package]]
 name = "matchit"
-version = "0.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
-
-[[package]]
-name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
@@ -3191,27 +2324,6 @@ name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
-
-[[package]]
-name = "migrations_internals"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c791ecdf977c99f45f23280405d7723727470f6689a5e6dbf513ac547ae10d"
-dependencies = [
- "serde",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "migrations_macros"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36fc5ac76be324cfd2d3f2cf0fdf5d5d3c4f14ed8aaebadb09e304ba42282703"
-dependencies = [
- "migrations_internals",
- "proc-macro2",
- "quote",
-]
 
 [[package]]
 name = "mime"
@@ -3308,16 +2420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num_cpus"
-version = "1.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91df4bbde75afed763b708b7eee1e8e7651e02d97f6d5dd763e89367e957b23b"
-dependencies = [
- "hermit-abi 0.5.2",
- "libc",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3334,12 +2436,6 @@ name = "opaque-debug"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
-
-[[package]]
-name = "openssl-probe"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
 name = "openssl-probe"
@@ -3364,16 +2460,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "optional_derive"
-version = "0.1.0"
-dependencies = [
- "darling 0.20.11",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
 
 [[package]]
 name = "ordered-float"
@@ -3490,26 +2576,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pin-project"
-version = "1.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1749c7ed4bcaf4c3d0a3efc28538844fb29bcdd7d2b67b2be7e20ba861ff517"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b20ed30f105399776b9c883e68e536ef602a16ae6f596d2c473591d6ad64c6"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3559,29 +2625,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
-name = "pnet"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd959a8268165518e2bf5546ba84c7b3222744435616381df3c456fe8d983576"
-dependencies = [
- "ipnetwork 0.20.0",
- "pnet_base 0.33.0",
- "pnet_datalink 0.33.0",
- "pnet_packet",
- "pnet_sys 0.33.0",
- "pnet_transport",
-]
-
-[[package]]
-name = "pnet_base"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "872e46346144ebf35219ccaa64b1dffacd9c6f188cd7d012bd6977a2a838f42e"
-dependencies = [
- "no-std-net",
-]
-
-[[package]]
 name = "pnet_base"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3592,70 +2635,14 @@ dependencies = [
 
 [[package]]
 name = "pnet_datalink"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c302da22118d2793c312a35fb3da6846cb0fab6c3ad53fd67e37809b06cdafce"
-dependencies = [
- "ipnetwork 0.20.0",
- "libc",
- "pnet_base 0.33.0",
- "pnet_sys 0.33.0",
- "winapi",
-]
-
-[[package]]
-name = "pnet_datalink"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e79e70ec0be163102a332e1d2d5586d362ad76b01cec86f830241f2b6452a7b7"
 dependencies = [
- "ipnetwork 0.20.0",
+ "ipnetwork",
  "libc",
- "pnet_base 0.35.0",
- "pnet_sys 0.35.0",
- "winapi",
-]
-
-[[package]]
-name = "pnet_macros"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a780e80005c2e463ec25a6e9f928630049a10b43945fea83207207d4a7606f4"
-dependencies = [
- "proc-macro2",
- "quote",
- "regex",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "pnet_macros_support"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6d932134f32efd7834eb8b16d42418dac87086347d1bc7d142370ef078582bc"
-dependencies = [
- "pnet_base 0.33.0",
-]
-
-[[package]]
-name = "pnet_packet"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bde678bbd85cb1c2d99dc9fc596e57f03aa725f84f3168b0eaf33eeccb41706"
-dependencies = [
- "glob",
- "pnet_base 0.33.0",
- "pnet_macros",
- "pnet_macros_support",
-]
-
-[[package]]
-name = "pnet_sys"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "faf7a58b2803d818a374be9278a1fe8f88fce14b936afbe225000cfcd9c73f16"
-dependencies = [
- "libc",
+ "pnet_base",
+ "pnet_sys",
  "winapi",
 ]
 
@@ -3667,18 +2654,6 @@ checksum = "7d4643d3d4db6b08741050c2f3afa9a892c4244c085a72fcda93c9c2c9a00f4b"
 dependencies = [
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "pnet_transport"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "813d1c0e4defbe7ee22f6fe1755f122b77bfb5abe77145b1b5baaf463cab9249"
-dependencies = [
- "libc",
- "pnet_base 0.33.0",
- "pnet_packet",
- "pnet_sys 0.33.0",
 ]
 
 [[package]]
@@ -3718,17 +2693,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pq-sys"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "574ddd6a267294433f140b02a726b0640c43cf7c6f717084684aaa3b285aba61"
-dependencies = [
- "libc",
- "pkg-config",
- "vcpkg",
-]
-
-[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3745,30 +2709,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219cb19e96be00ab2e37d6e299658a0cfa83e52429179969b0f0121b4ac46983"
 dependencies = [
  "toml_edit 0.23.10+spec-1.0.0",
-]
-
-[[package]]
-name = "proc-macro-error"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
-dependencies = [
- "proc-macro-error-attr",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
-dependencies = [
- "proc-macro2",
- "quote",
- "version_check",
 ]
 
 [[package]]
@@ -3851,17 +2791,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
-name = "r2d2"
-version = "0.8.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51de85fb3fb6524929c8a2eb85e6b6d363de4e8c48f9e2c2eac4944abc181c93"
-dependencies = [
- "log",
- "parking_lot",
- "scheduled-thread-pool",
-]
-
-[[package]]
 name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3932,7 +2861,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
 ]
 
 [[package]]
@@ -3941,7 +2870,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce70a74e890531977d37e532c34d45e9055d2409ed08ddba14529471ed0be16"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
 ]
 
 [[package]]
@@ -4012,21 +2941,6 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.16.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
-dependencies = [
- "cc",
- "libc",
- "once_cell",
- "spin 0.5.2",
- "untrusted 0.7.1",
- "web-sys",
- "winapi",
-]
-
-[[package]]
-name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
@@ -4035,7 +2949,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.17",
  "libc",
- "untrusted 0.9.0",
+ "untrusted",
  "windows-sys 0.52.0",
 ]
 
@@ -4100,16 +3014,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsqlite-vfs"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8a1f2315036ef6b1fbacd1972e8ee7688030b0a2121edfc2a6550febd41574d"
-dependencies = [
- "hashbrown 0.16.1",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "rtoolbox"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4150,7 +3054,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -4164,7 +3068,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
  "log",
- "ring 0.17.14",
+ "ring",
  "rustls-webpki 0.101.7",
  "sct",
 ]
@@ -4177,7 +3081,7 @@ checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
- "ring 0.17.14",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki 0.103.9",
  "subtle",
@@ -4186,35 +3090,14 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9aace74cb666635c918e9c12bc0d348266037aa8eb599b5cba565709a8dff00"
-dependencies = [
- "openssl-probe 0.1.6",
- "rustls-pemfile",
- "schannel",
- "security-framework 2.11.1",
-]
-
-[[package]]
-name = "rustls-native-certs"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
 dependencies = [
- "openssl-probe 0.2.1",
+ "openssl-probe",
  "rustls-pki-types",
  "schannel",
- "security-framework 3.7.0",
-]
-
-[[package]]
-name = "rustls-pemfile"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c74cae0a4cf6ccbbf5f359f08efdf8ee7e1dc532573bf0db71968cb56b1448c"
-dependencies = [
- "base64 0.21.7",
+ "security-framework",
 ]
 
 [[package]]
@@ -4232,8 +3115,8 @@ version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring 0.17.14",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -4243,9 +3126,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
 dependencies = [
  "aws-lc-rs",
- "ring 0.17.14",
+ "ring",
  "rustls-pki-types",
- "untrusted 0.9.0",
+ "untrusted",
 ]
 
 [[package]]
@@ -4279,15 +3162,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scheduled-thread-pool"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cbc66816425a074528352f5789333ecff06ca41b36b0b0efdfbb29edc391a19"
-dependencies = [
- "parking_lot",
-]
-
-[[package]]
 name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4299,8 +3173,8 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
- "ring 0.17.14",
- "untrusted 0.9.0",
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -4353,7 +3227,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c94492e2ab6c045b4cc38013809ce255d14c3d352c9f0d11e6b920e2adc948ad"
 dependencies = [
  "chrono",
- "clap 4.5.60",
+ "clap",
  "dotenvy",
  "glob",
  "regex",
@@ -4386,7 +3260,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7315c0cadb7e60fb17ee2bb282aa27d01911fc2a7e5836ec1d4ac37d19250bb4"
 dependencies = [
  "async-trait",
- "clap 4.5.60",
+ "clap",
  "dotenvy",
  "sea-orm",
  "sea-orm-cli",
@@ -4434,7 +3308,7 @@ version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bae0cbad6ab996955664982739354128c58d16e126114fe88c2a493642502aab"
 dependencies = [
- "darling 0.20.11",
+ "darling",
  "heck 0.4.1",
  "proc-macro2",
  "quote",
@@ -4489,25 +3363,12 @@ dependencies = [
 
 [[package]]
 name = "security-framework"
-version = "2.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
-dependencies = [
- "bitflags 2.11.0",
- "core-foundation 0.9.4",
- "core-foundation-sys",
- "libc",
- "security-framework-sys",
-]
-
-[[package]]
-name = "security-framework"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
 dependencies = [
- "bitflags 2.11.0",
- "core-foundation 0.10.1",
+ "bitflags",
+ "core-foundation",
  "core-foundation-sys",
  "libc",
  "security-framework-sys",
@@ -4590,15 +3451,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "serde_spanned"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8bbf91e5a4d6315eee45e704372590b30e260ee83af6639d64557f51b067776"
-dependencies = [
- "serde_core",
 ]
 
 [[package]]
@@ -4734,31 +3586,14 @@ dependencies = [
 
 [[package]]
 name = "sonyflake"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd887737d30ba9b1a2c1e1d5c86934c043ad7281d019f0b07902621e268cbbb0"
-dependencies = [
- "chrono",
- "pnet",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "sonyflake"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e573317adfcc882c0f17a73a53d4d4fc2880850a7da01bab0a8e87965af206c"
 dependencies = [
  "chrono",
- "pnet_datalink 0.35.0",
+ "pnet_datalink",
  "thiserror 1.0.69",
 ]
-
-[[package]]
-name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
@@ -4787,18 +3622,6 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der 0.7.10",
-]
-
-[[package]]
-name = "sqlite-wasm-rs"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4206ed3a67690b9c29b77d728f6acc3ce78f16bf846d83c94f76400320181b"
-dependencies = [
- "cc",
- "js-sys",
- "rsqlite-vfs",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -4902,7 +3725,7 @@ dependencies = [
  "atoi",
  "base64 0.22.1",
  "bigdecimal",
- "bitflags 2.11.0",
+ "bitflags",
  "byteorder",
  "bytes",
  "chrono",
@@ -4949,7 +3772,7 @@ dependencies = [
  "atoi",
  "base64 0.22.1",
  "bigdecimal",
- "bitflags 2.11.0",
+ "bitflags",
  "byteorder",
  "chrono",
  "crc",
@@ -5016,7 +3839,7 @@ version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f84d13b3b8a0d4e91a2629911e951db1bb8671512f5c09d7d4ba34500ba68c8"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
  "libc",
  "libssh2-sys",
  "parking_lot",
@@ -5047,39 +3870,9 @@ dependencies = [
 
 [[package]]
 name = "strsim"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
-
-[[package]]
-name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
-
-[[package]]
-name = "structopt"
-version = "0.3.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c6b5c64445ba8094a6ab0c3cd2ad323e07171012d9c98b0b15651daf1787a10"
-dependencies = [
- "clap 2.34.0",
- "lazy_static",
- "structopt-derive",
-]
-
-[[package]]
-name = "structopt-derive"
-version = "0.4.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcb5ae327f9cc13b68763b5749770cb9e048a99bd9dfdfa58d0cf05d5f64afe0"
-dependencies = [
- "heck 0.3.3",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "strum"
@@ -5117,12 +3910,6 @@ dependencies = [
 
 [[package]]
 name = "sync_wrapper"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
-
-[[package]]
-name = "sync_wrapper"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
@@ -5155,24 +3942,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "termcolor"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
-dependencies = [
- "winapi-util",
-]
-
-[[package]]
-name = "textwrap"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
-dependencies = [
- "unicode-width",
 ]
 
 [[package]]
@@ -5358,7 +4127,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "clap 4.5.60",
+ "clap",
  "dirs",
  "ignore",
  "sea-orm",
@@ -5370,7 +4139,7 @@ dependencies = [
  "tome-db",
  "tome-server",
  "tome-store",
- "toml 0.8.23",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]
@@ -5382,15 +4151,15 @@ dependencies = [
  "anyhow",
  "blake3",
  "chrono",
- "clap 4.5.60",
+ "clap",
  "serde",
  "serde_json",
  "sha2",
- "sonyflake 0.4.0",
+ "sonyflake",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
- "twox-hash 2.1.2",
+ "twox-hash",
 ]
 
 [[package]]
@@ -5414,7 +4183,7 @@ name = "tome-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum 0.8.8",
+ "axum",
  "chrono",
  "hex",
  "sea-orm",
@@ -5424,7 +4193,7 @@ dependencies = [
  "tokio",
  "tome-core",
  "tome-db",
- "tower-http 0.6.8",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]
@@ -5436,8 +4205,8 @@ dependencies = [
  "aether",
  "anyhow",
  "async-trait",
- "aws-config 1.8.14",
- "aws-sdk-s3 1.119.0",
+ "aws-config",
+ "aws-sdk-s3",
  "chrono",
  "ssh2",
  "tempfile",
@@ -5455,22 +4224,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
 dependencies = [
  "serde",
- "serde_spanned 0.6.9",
+ "serde_spanned",
  "toml_datetime 0.6.11",
  "toml_edit 0.22.27",
-]
-
-[[package]]
-name = "toml"
-version = "0.9.12+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
-dependencies = [
- "serde_core",
- "serde_spanned 1.0.4",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "winnow",
 ]
 
 [[package]]
@@ -5499,7 +4255,7 @@ checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
 dependencies = [
  "indexmap",
  "serde",
- "serde_spanned 0.6.9",
+ "serde_spanned",
  "toml_datetime 0.6.11",
  "toml_write",
  "winnow",
@@ -5534,22 +4290,6 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "tower"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8fa9be0de6cf49e536ce1851f987bd21a43b771b09473c3549a6c853db37c1c"
-dependencies = [
- "futures-core",
- "futures-util",
- "pin-project",
- "pin-project-lite",
- "tokio",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
@@ -5557,27 +4297,8 @@ dependencies = [
  "futures-core",
  "futures-util",
  "pin-project-lite",
- "sync_wrapper 1.0.2",
+ "sync_wrapper",
  "tokio",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "tower-http"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c5bb1d698276a2443e5ecfabc1008bf15a36c12e6a7176e7bf089ea9131140"
-dependencies = [
- "bitflags 2.11.0",
- "bytes",
- "futures-core",
- "futures-util",
- "http 0.2.12",
- "http-body 0.4.6",
- "http-range-header",
- "pin-project-lite",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -5589,7 +4310,7 @@ version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
  "bytes",
  "http 1.4.0",
  "http-body 1.0.1",
@@ -5688,14 +4409,14 @@ name = "treblo-cli"
 version = "0.1.1"
 dependencies = [
  "byteorder",
- "clap 4.5.60",
+ "clap",
  "ignore",
  "serde",
  "serde_json",
  "sha-1",
  "sha2",
  "treblo",
- "twox-hash 2.1.2",
+ "twox-hash",
 ]
 
 [[package]]
@@ -5703,17 +4424,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "twox-hash"
-version = "1.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
-dependencies = [
- "cfg-if",
- "rand 0.8.5",
- "static_assertions",
-]
 
 [[package]]
 name = "twox-hash"
@@ -5758,18 +4468,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
 
 [[package]]
-name = "unicode-segmentation"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
-
-[[package]]
-name = "unicode-width"
-version = "0.1.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
-
-[[package]]
 name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5784,12 +4482,6 @@ dependencies = [
  "crypto-common",
  "subtle",
 ]
-
-[[package]]
-name = "untrusted"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"
@@ -5849,12 +4541,6 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
-
-[[package]]
-name = "vec_map"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "version_check"
@@ -5990,20 +4676,10 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags 2.11.0",
+ "bitflags",
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
-]
-
-[[package]]
-name = "web-sys"
-version = "0.3.91"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "854ba17bb104abfb26ba36da9729addc7ce7f06f5c0f90f3c391f8461cca21f9"
-dependencies = [
- "js-sys",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -6422,7 +5098,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags 2.11.0",
+ "bitflags",
  "indexmap",
  "log",
  "serde",

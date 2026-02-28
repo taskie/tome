@@ -1,15 +1,9 @@
 [workspace]
 members = [
-    "optional_derive",
     "treblo",
     "treblo-cli",
     "aether",
     "aether-cli",
-    "ichno",
-    "ichno_cli",
-    "ichnome",
-    "ichnome_cli",
-    "ichnome_web",
     "tome-core",
     "tome-db",
     "tome-store",

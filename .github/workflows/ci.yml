@@ -37,23 +37,13 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: >
-          cargo clippy
-          -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
-          -p aether -p aether-cli -p treblo -p treblo-cli
-          --no-deps -- -D warnings
+        run: cargo clippy --all --no-deps -- -D warnings
 
       - name: Build
-        run: >
-          cargo build
-          -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
-          -p aether -p aether-cli -p treblo -p treblo-cli
+        run: cargo build --all
 
       - name: Test
-        run: >
-          cargo test
-          -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
-          -p aether -p aether-cli -p treblo -p treblo-cli
+        run: cargo test --all
 
       # ── tome-web (Next.js) ──────────────────────────────────
       - name: Setup Node.js

@@ -16,7 +16,7 @@
 ```bash
 # Rust — フォーマット & lint
 cargo fmt --all
-cargo clippy -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli -p treblo -p treblo-cli -p aether -p aether-cli
+cargo clippy --all --no-deps -- -D warnings
 
 # tome-web — フォーマット & lint
 cd tome-web && npm run format && npm run lint
