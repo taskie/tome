@@ -1,4 +1,4 @@
-import type { Blob, CacheEntry, DiffResponse, Entry, FilesResponse, Repository, Snapshot, SnapshotEntry } from "./types";
+import type { Blob, DiffResponse, Entry, FilesResponse, Repository, Snapshot, SnapshotEntry } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
 
