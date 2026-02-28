@@ -9,19 +9,25 @@ use tracing::info;
 use crate::{StoreError, error::Result, storage::Storage};
 
 /// A `Storage` wrapper that transparently encrypts on upload and decrypts on download
-/// using `aether` (AES-256-GCM + Argon2id).
+/// using `aether` (AES-256-GCM or ChaCha20-Poly1305 + Argon2id).
 ///
 /// Remote paths are unchanged by this wrapper — the caller is responsible for
 /// using a suitable path (e.g. from `aether::Cipher::encrypt_file_name`).
 pub struct EncryptedStorage<S> {
     inner: S,
     key: [u8; 32],
+    algorithm: aether::CipherAlgorithm,
 }
 
 impl<S: Storage> EncryptedStorage<S> {
-    /// Wrap `inner` with a 32-byte raw key.
+    /// Wrap `inner` with a 32-byte raw key (defaults to AES-256-GCM).
     pub fn new(inner: S, key: [u8; 32]) -> Self {
-        Self { inner, key }
+        Self { inner, key, algorithm: aether::CipherAlgorithm::default() }
+    }
+
+    /// Wrap `inner` with a 32-byte raw key and explicit cipher algorithm.
+    pub fn with_algorithm(inner: S, key: [u8; 32], algorithm: aether::CipherAlgorithm) -> Self {
+        Self { inner, key, algorithm }
     }
 }
 
@@ -37,11 +43,12 @@ impl<S: Storage> Storage for EncryptedStorage<S> {
         let tmp_path = tmp.path().to_owned();
         let local_file = local_file.to_owned();
         let key = self.key;
+        let algorithm = self.algorithm;
 
         tokio::task::spawn_blocking(move || -> Result<()> {
             let src = std::fs::File::open(&local_file)?;
             let dst = std::fs::File::create(&tmp_path)?;
-            let mut cipher = aether::Cipher::with_key_slice(&key);
+            let mut cipher = aether::Cipher::with_key_slice_algorithm(&key, algorithm);
             cipher
                 .encrypt(BufReader::new(src), BufWriter::new(dst))
                 .map_err(|e| StoreError::Encryption(e.to_string()))?;

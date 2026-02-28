@@ -6,6 +6,7 @@ pub mod s3;
 pub mod ssh;
 pub mod storage;
 
+pub use aether::CipherAlgorithm;
 pub use error::StoreError;
 pub use factory::open_storage;
 pub use storage::Storage;

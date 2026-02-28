@@ -13,7 +13,7 @@ tome-store/   Async Storage trait + implementations: Local, SSH, S3, Encrypted
 tome-server/  HTTP API server (axum 0.8)
 tome-cli/     Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve
 tome-web/     Next.js 16 web frontend (Server Components, Tailwind CSS v4)
-aether/       AES-256-GCM + Argon2id encryption library (internal)
+aether/       AEAD encryption library: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF
 treblo/       Hash algorithms (xxHash64/SHA-256/BLAKE3), file-tree walk, and hex utilities
 ```
 
@@ -71,7 +71,7 @@ The digest algorithm is configured per repository via `repositories.config["dige
 
 ## Encryption
 
-`aether` crate (internal): AES-256-GCM authenticated encryption with Argon2id key derivation.
+`aether` crate (internal): AES-256-GCM or ChaCha20-Poly1305 authenticated encryption with Argon2id key derivation.
 
 Key storage:
 ```

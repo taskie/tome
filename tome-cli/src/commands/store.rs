@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use tome_core::hash::{self, DigestAlgorithm};
 use tome_db::ops;
-use tome_store::{Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
+use tome_store::{CipherAlgorithm, Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
 
 use crate::config::{self, StoreConfig};
 
@@ -64,6 +64,9 @@ pub struct StoreCopyArgs {
     /// Path to 32-byte binary key file (required when --encrypt is set)
     #[arg(long)]
     pub key_file: Option<std::path::PathBuf>,
+    /// Cipher algorithm for encryption: aes256gcm (default) or chacha20-poly1305
+    #[arg(long, default_value = "aes256gcm")]
+    pub cipher: String,
 }
 
 #[derive(Args)]
@@ -277,7 +280,8 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
         let upload_result = if let Some(key) = key {
             // Open dst storage wrapped with encryption.
             let dst_inner = factory::open_storage(&dst_store.url).await?;
-            let enc = EncryptedStorage::new(dst_inner, key);
+            let cipher_algo: CipherAlgorithm = args.cipher.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+            let enc = EncryptedStorage::with_algorithm(dst_inner, key, cipher_algo);
             enc.upload(&dst_path, &tmp_file).await
         } else {
             let dst_storage = factory::open_storage(&dst_store.url).await?;
