@@ -1,4 +1,13 @@
-import type { Blob, DiffResponse, Entry, FilesResponse, Repository, Snapshot, SnapshotEntry } from "./types";
+import type {
+  Blob,
+  DiffResponse,
+  Entry,
+  FilesResponse,
+  RepoDiffResponse,
+  Repository,
+  Snapshot,
+  SnapshotEntry,
+} from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
 
@@ -32,6 +41,13 @@ export const api = {
       `/repositories/${encodeURIComponent(name)}/diff` +
         `?snapshot1=${encodeURIComponent(s1)}&snapshot2=${encodeURIComponent(s2)}&prefix=${encodeURIComponent(prefix)}`,
     ),
+
+  repoDiff: (repo1: string, prefix1: string, repo2: string, prefix2: string): Promise<RepoDiffResponse> => {
+    const p = new URLSearchParams({ repo1, repo2 });
+    if (prefix1) p.set("prefix1", prefix1);
+    if (prefix2) p.set("prefix2", prefix2);
+    return get(`/diff?${p.toString()}`);
+  },
 
   files: (
     name: string,

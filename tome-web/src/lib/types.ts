@@ -78,3 +78,13 @@ export type DiffResponse = {
   /** blob_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2] */
   diff: Record<string, [string[], string[]]>;
 };
+
+export type RepoDiffResponse = {
+  repo1: Repository;
+  repo2: Repository;
+  blobs: Record<string, Blob>;
+  /** "1:{path}" or "2:{path}" → CacheEntry */
+  entries: Record<string, CacheEntry>;
+  /** blob_id → [entry_keys_in_repo1, entry_keys_in_repo2] */
+  diff: Record<string, [string[], string[]]>;
+};
