@@ -5,7 +5,7 @@ A file change tracking system written in Rust. Scans directories, detects change
 ## Requirements
 
 - Rust 1.85+
-- Node.js 18.18+ (for tome-web only)
+- Node.js 20.9+ (for tome-web only)
 
 ## Install
 
@@ -89,7 +89,7 @@ Starts the HTTP API server (default: `127.0.0.1:8080`).
 
 ## Web UI (tome-web)
 
-A Next.js 15 browser interface. Requires `tome serve` to be running.
+A Next.js 16 browser interface. Requires `tome serve` to be running.
 
 ```bash
 cd tome-web
