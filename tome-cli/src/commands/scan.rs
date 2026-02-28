@@ -84,7 +84,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
                     None
                 }
             })
-            .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+            .filter(|e| e.file_type().is_some_and(|ft| ft.is_file()))
             .collect();
         stats.errors += walk_errors;
         entries
