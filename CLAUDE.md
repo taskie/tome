@@ -66,8 +66,6 @@ tome-web/     — Next.js 16 Web フロントエンド
 
 | 優先度 | 内容 |
 |--------|------|
-| 中 | `tome tag` — blob への key=value タグ付与・検索。tags テーブルは定義済み、CLI/API が未実装 |
-| 中 | `tome verify`（ローカル） — スキャン済みファイルを再ハッシュし entry_cache と比較。ビットロット検知 |
 | 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
 | 中 | スナップショット注釈 — `tome scan --message "..."` で snapshots.message に手動メッセージを付与 |
 | 低 | `tome gc` — 未参照 blob/replica の検出・削除。保持ポリシー（N世代 or N日）付き |
