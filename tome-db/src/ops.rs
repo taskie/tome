@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, RelationTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, RelationTrait,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -403,6 +403,41 @@ pub async fn present_cache_entries(
         .filter(entry_cache::Column::Status.eq(1i16))
         .all(db)
         .await?)
+}
+
+pub struct ListCacheEntriesParams {
+    pub repository_id: i64,
+    pub include_deleted: bool,
+    pub prefix: String,
+    /// 1-based page number.
+    pub page: u64,
+    pub per_page: u64,
+}
+
+/// List entries from entry_cache for a repository with prefix filter and pagination.
+/// Returns `(items, total_count)`.
+pub async fn list_cache_entries(
+    db: &DatabaseConnection,
+    p: &ListCacheEntriesParams,
+) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
+    let mut q = entry_cache::Entity::find()
+        .filter(entry_cache::Column::RepositoryId.eq(p.repository_id));
+    if !p.include_deleted {
+        q = q.filter(entry_cache::Column::Status.eq(1i16));
+    }
+    if !p.prefix.is_empty() {
+        q = q.filter(entry_cache::Column::Path.like(format!("{}%", p.prefix)));
+    }
+
+    let total = q.clone().count(db).await?;
+    let offset = p.page.saturating_sub(1) * p.per_page;
+    let rows = q
+        .order_by_asc(entry_cache::Column::Path)
+        .offset(offset)
+        .limit(p.per_page)
+        .all(db)
+        .await?;
+    Ok((rows, total))
 }
 
 /// Get the latest snapshot for a repository (for metadata/scan_root).
