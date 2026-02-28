@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use clap::Args;
 use sea_orm::DatabaseConnection;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use tome_core::{hash, models::EntryStatus};
 use tome_db::ops;
@@ -116,7 +116,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
             Ok(e) => {
                 ops::upsert_cache_deleted(db, repo.id, &path, snapshot.id, e.id).await?;
                 stats.deleted += 1;
-                info!("deleted: {}", path);
+                info!("deleted    {}", path);
             }
             Err(e) => {
                 warn!("error recording deletion of {:?}: {}", path, e);
@@ -168,6 +168,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
                 if cached_size == size as i64 && cached_mtime_secs == mtime_secs && cached_mtime_nanos == mtime_nanos {
                     // mtime + size unchanged — skip hashing.
                     ctx.stats.unchanged += 1;
+                    debug!("unchanged  size={:<10}  {}", size, rel_path);
                     return Ok(());
                 }
             }
@@ -178,6 +179,12 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
             if let Some(cached_fast) = cached.fast_digest {
                 if cached_fast == file_hash.fast_digest {
                     // Content unchanged — update mtime in cache only.
+                    debug!(
+                        "unchanged  size={:<10}  sha256={}  {}",
+                        file_hash.size,
+                        tome_core::hash::hex_encode(&file_hash.digest)[..12].to_owned(),
+                        rel_path,
+                    );
                     let mtime_dt = make_mtime(mtime_secs, mtime_nanos);
                     ops::upsert_cache_present(
                         ctx.db,
@@ -247,12 +254,13 @@ async fn record_present_file(
     // Remove from cache map so it won't appear as "deleted" in the second pass.
     ctx.cache.remove(rel_path);
 
+    let sha256_short = tome_core::hash::hex_encode(&file_hash.digest)[..12].to_owned();
     if modified {
         ctx.stats.modified += 1;
-        info!("modified: {}", rel_path);
+        info!("modified   size={:<10}  sha256={}  {}", file_hash.size, sha256_short, rel_path);
     } else {
         ctx.stats.added += 1;
-        info!("added: {}", rel_path);
+        info!("added      size={:<10}  sha256={}  {}", file_hash.size, sha256_short, rel_path);
     }
 
     Ok(())
