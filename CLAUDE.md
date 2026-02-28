@@ -96,35 +96,22 @@ Header `flags` 下位 1 ビットでアルゴリズム識別（0 = AES, 1 = ChaC
 
 ---
 
-## リファクタリング方針
+## リファクタリング方針（実装済み）
 
-### Phase 1: tome-db/src/ops.rs 分割 【優先度: 高】
+### Phase 1: tome-db/src/ops.rs 分割 ✅
 
-~1040 行・60+ 関数を機能ドメインごとにモジュール分割する。
+~1040 行・60+ 関数を `tome-db/src/ops/` 以下 11 モジュールに分割済み。
+`mod.rs` の `pub use` で既存の `use tome_db::ops::*` パスを維持。
 
-```
-tome-db/src/ops/
-  mod.rs          — pub use で再エクスポート（既存の use パスを維持）
-  repository.rs   — get_or_create_repository, *_digest_algorithm
-  blob.rs         — get_or_create_blob, find_blob_by_*
-  snapshot.rs     — create_snapshot, create_snapshot_with_source, latest_snapshot
-  entry.rs        — insert_entry_*, entries_*
-  entry_cache.rs  — upsert_cache_*, present_cache_entries
-  store.rs        — get_or_create_store, find_store_by_*
-  replica.rs      — replica_exists, insert_replica, replicas_*
-  sync_peer.rs    — insert_sync_peer, find/list/update_sync_peer
-  machine.rs      — register_machine, list_machines, find/update_machine
-  tag.rs          — upsert_tag, delete_tags, list_tags
-  gc.rs           — unreferenced_blobs, delete_*
-```
+### Phase 2: tome-server/src/routes.rs 分割 ✅
 
-### Phase 2: tome-server/src/routes.rs 分割 【優先度: 中】
+~670 行を `tome-server/src/routes/` 以下 6 モジュールに分割済み。
+`find_repo_or_404()` ヘルパーでリポジトリ取得 + 404 処理を共通化。
 
-~580 行を構造化。リポジトリ取得 + 404 処理を共通ヘルパー `find_repo_or_404()` に抽出。
+### Phase 3: tome-cli コマンドの共通化 ✅
 
-### Phase 3: tome-cli コマンドの共通化 【優先度: 中】
-
-store.rs の重複解消（ストア解決・進捗カウンタ）、scan.rs の process_file 分解。
+`helpers.rs` に `resolve_store()` / `resolve_scan_root()` を抽出し、
+store.rs（4 箇所）と verify.rs（1 箇所）の重複を解消。
 
 ---
 
@@ -420,7 +407,6 @@ machines_roles テーブル:
 
 | 優先度 | 内容 |
 |--------|------|
-| 高 | リファクタリング Phase 1–3 — 上記のリファクタリング方針を参照 |
 | 高 | API トークン認証（層 2）— machines.api_token_hash + Axum middleware |
 | 中 | 暗号鍵管理 — key_source による外部シークレットマネージャ統合 |
 | 中 | Web UI 認証（層 3）— NextAuth.js + GitHub OAuth |
