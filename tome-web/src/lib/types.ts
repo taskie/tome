@@ -87,6 +87,8 @@ export type RepoDiffResponse = {
   entries: Record<string, CacheEntry>;
   /** blob_id → [entry_keys_in_repo1, entry_keys_in_repo2] */
   diff: Record<string, [string[], string[]]>;
+  /** Entry keys for deleted paths (status=0, blob_id=null) */
+  deleted: string[];
 };
 
 export type Store = {

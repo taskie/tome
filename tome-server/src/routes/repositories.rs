@@ -230,14 +230,16 @@ pub struct RepoDiffResponse {
     pub entries: HashMap<String, CacheEntryResponse>,
     /// blob_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
     pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
+    /// Entry keys for deleted paths (status=0, blob_id=NULL)
+    pub deleted: Vec<String>,
 }
 
 pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Json<RepoDiffResponse>> {
     let repo1 = find_repo_or_404(&db, &q.repo1).await?;
     let repo2 = find_repo_or_404(&db, &q.repo2).await?;
 
-    let entries1 = ops::cache_entries_by_prefix(&db, repo1.id, &q.prefix1).await?;
-    let entries2 = ops::cache_entries_by_prefix(&db, repo2.id, &q.prefix2).await?;
+    let entries1 = ops::cache_entries_by_prefix(&db, repo1.id, &q.prefix1, true).await?;
+    let entries2 = ops::cache_entries_by_prefix(&db, repo2.id, &q.prefix2, true).await?;
 
     const MAX_ENTRIES: usize = 10_000;
     if entries1.len() > MAX_ENTRIES || entries2.len() > MAX_ENTRIES {
@@ -252,21 +254,24 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
 
     let mut entries: HashMap<String, CacheEntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+    let mut deleted: Vec<String> = Vec::new();
 
     for e in &entries1 {
         let key = format!("1:{}", e.path);
-        if let Some(blob_id) = e.blob_id {
-            diff.entry(blob_id.to_string()).or_default().0.push(key.clone());
+        match e.blob_id {
+            Some(blob_id) => diff.entry(blob_id.to_string()).or_default().0.push(key.clone()),
+            None => deleted.push(key.clone()),
         }
         entries.insert(key, cache_entry_to_response(e));
     }
     for e in &entries2 {
         let key = format!("2:{}", e.path);
-        if let Some(blob_id) = e.blob_id {
-            diff.entry(blob_id.to_string()).or_default().1.push(key.clone());
+        match e.blob_id {
+            Some(blob_id) => diff.entry(blob_id.to_string()).or_default().1.push(key.clone()),
+            None => deleted.push(key.clone()),
         }
         entries.insert(key, cache_entry_to_response(e));
     }
 
-    Ok(Json(RepoDiffResponse { repo1: repo1.into(), repo2: repo2.into(), blobs, entries, diff }))
+    Ok(Json(RepoDiffResponse { repo1: repo1.into(), repo2: repo2.into(), blobs, entries, diff, deleted }))
 }

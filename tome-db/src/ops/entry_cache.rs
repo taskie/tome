@@ -108,15 +108,18 @@ pub async fn upsert_cache_deleted(
     Ok(())
 }
 
-/// Get present (status=1) entries from entry_cache filtered by path prefix, for diff.
+/// Get entries from entry_cache filtered by path prefix.
+/// When `include_deleted` is false, only status=1 (present) entries are returned.
 pub async fn cache_entries_by_prefix(
     db: &DatabaseConnection,
     repository_id: i64,
     prefix: &str,
+    include_deleted: bool,
 ) -> anyhow::Result<Vec<entry_cache::Model>> {
-    let mut q = entry_cache::Entity::find()
-        .filter(entry_cache::Column::RepositoryId.eq(repository_id))
-        .filter(entry_cache::Column::Status.eq(1i16));
+    let mut q = entry_cache::Entity::find().filter(entry_cache::Column::RepositoryId.eq(repository_id));
+    if !include_deleted {
+        q = q.filter(entry_cache::Column::Status.eq(1i16));
+    }
     if !prefix.is_empty() {
         q = q.filter(entry_cache::Column::Path.like(format!("{prefix}%")));
     }

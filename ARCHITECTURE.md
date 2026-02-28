@@ -136,9 +136,22 @@ Notes:
 - `GET /diff` compares current state (`entry_cache`) across two repositories, with independent path prefixes per side. Entry keys are namespaced as `"1:{path}"` / `"2:{path}"` to avoid collisions. Limit: 10,000 entries per side.
 - `GET /repositories/{name}/diff` compares two **snapshots** within one repository.
 
-### Known issue: `GET /diff` omits deleted files
+#### `GET /diff` response shape
 
-Entries with `blob_id = NULL` (i.e. `status = 0`, deleted) are stored in the `entries` map of the response but do **not** appear in the `diff` map, because the diff is keyed by `blob_id`. Deleted files are therefore silently excluded from cross-repository diff results.
+```jsonc
+{
+  "repo1": { ... },
+  "repo2": { ... },
+  "blobs": { "<blob_id>": { ... } },
+  "entries": { "1:<path>": { ... }, "2:<path>": { ... } },
+  // blob_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
+  "diff": { "<blob_id>": [["1:<path>"], ["2:<path>"]] },
+  // Entry keys for deleted paths (status=0, blob_id=null)
+  "deleted": ["1:<path>", ...]
+}
+```
+
+Deleted entries (status=0) are returned in the `deleted` list and also present in `entries`. They are excluded from `diff` (which is keyed by `blob_id`) to keep the two concerns separate.
 
 ---
 
@@ -207,14 +220,12 @@ tome-web/
 
 `entry_cache` is a materialized view of the latest snapshot per path. It cannot answer "what did the repository look like at time T?" without re-querying the `entries` + `snapshots` tables. Features like `tome restore` (restoring a historical snapshot) must bypass `entry_cache` entirely.
 
-### 2. Cross-repo diff silently omits deleted files
-
-`GET /diff` groups results by `blob_id`. Files deleted in the scanned repository have `blob_id = NULL`, so they never appear in the `diff` map — even though they exist in `entry_cache`. A future fix could add a separate `deleted` list to `RepoDiffResponse`.
-
-### 3. `tome restore` requires store availability
+### 2. `tome restore` requires store availability
 
 To restore a file from a historical snapshot, the corresponding blob must exist in at least one reachable store. There is currently no API to check replica availability before attempting a restore.
 
-### 4. ID generation depends on machine-id and start-time
+### 3. ID generation depends on machine-id and start-time
+
+### 3. ID generation depends on machine-id and start-time
 
 Sonyflake IDs (`i64`) are generated from `(timestamp, machine_id, sequence)`. The epoch is fixed at `2023-09-01 00:00:00 UTC`. Changing either `start_time` or `machine_id` mid-stream breaks ID ordering and risks collisions.

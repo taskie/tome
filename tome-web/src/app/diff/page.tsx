@@ -22,6 +22,7 @@ type DiffRow = {
   size: number;
   paths1: string[];
   paths2: string[];
+  isDeleted: boolean;
 };
 
 function buildRows(data: RepoDiffResponse): DiffRow[] {
@@ -31,7 +32,22 @@ function buildRows(data: RepoDiffResponse): DiffRow[] {
     size: data.blobs[blobId]?.size ?? 0,
     paths1: keys1.map((k) => data.entries[k]?.path ?? ""),
     paths2: keys2.map((k) => data.entries[k]?.path ?? ""),
+    isDeleted: false,
   }));
+
+  for (const key of data.deleted ?? []) {
+    const entry = data.entries[key];
+    if (!entry) continue;
+    const isRepo1 = key.startsWith("1:");
+    rows.push({
+      blobId: "",
+      digest: "",
+      size: 0,
+      paths1: isRepo1 ? [entry.path] : [],
+      paths2: isRepo1 ? [] : [entry.path],
+      isDeleted: true,
+    });
+  }
 
   rows.sort((a, b) => {
     const aOnly1 = a.paths2.length === 0;
@@ -146,16 +162,23 @@ export default async function RepoDiffPage({ searchParams }: Props) {
       {diffData && (
         <>
           <p className="text-xs text-gray-400 mb-3">
-            <span className="text-red-600">−{rows.filter((r) => r.paths2.length === 0).length}</span>
+            <span className="text-red-600">−{rows.filter((r) => !r.isDeleted && r.paths2.length === 0).length}</span>
             {" only in "}
             <span className="font-medium text-gray-600">{diffData.repo1.name}</span>
             {", "}
-            <span className="text-green-700">+{rows.filter((r) => r.paths1.length === 0).length}</span>
+            <span className="text-green-700">+{rows.filter((r) => !r.isDeleted && r.paths1.length === 0).length}</span>
             {" only in "}
             <span className="font-medium text-gray-600">{diffData.repo2.name}</span>
             {", "}
-            {rows.filter((r) => r.paths1.length > 0 && r.paths2.length > 0).length}
+            {rows.filter((r) => !r.isDeleted && r.paths1.length > 0 && r.paths2.length > 0).length}
             {" in both"}
+            {rows.some((r) => r.isDeleted) && (
+              <>
+                {", "}
+                <span className="text-gray-500">✗{rows.filter((r) => r.isDeleted).length}</span>
+                {" deleted"}
+              </>
+            )}
           </p>
 
           {rows.length === 0 ? (
@@ -176,13 +199,16 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                   const isOnly1 = row.paths2.length === 0;
                   const isOnly2 = row.paths1.length === 0;
                   const isSame =
+                    !row.isDeleted &&
                     !isOnly1 &&
                     !isOnly2 &&
                     row.paths1.length === row.paths2.length &&
                     row.paths1.every((p, i) => p === row.paths2[i]);
 
-                  const rowBg = isOnly2 ? "bg-green-50" : isOnly1 ? "bg-red-50" : "";
-                  const badge = isOnly2 ? (
+                  const rowBg = row.isDeleted ? "bg-gray-50" : isOnly2 ? "bg-green-50" : isOnly1 ? "bg-red-50" : "";
+                  const badge = row.isDeleted ? (
+                    <span className="px-1 py-0.5 rounded bg-gray-200 text-gray-500">✗</span>
+                  ) : isOnly2 ? (
                     <span className="px-1 py-0.5 rounded bg-green-100 text-green-700">+</span>
                   ) : isOnly1 ? (
                     <span className="px-1 py-0.5 rounded bg-red-100 text-red-600">−</span>
@@ -192,9 +218,11 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                     <span className="px-1 py-0.5 rounded bg-yellow-100 text-yellow-700">~</span>
                   );
 
+                  const pathClass = row.isDeleted ? "line-through text-gray-400" : "hover:underline text-blue-600";
+
                   return (
                     <tr
-                      key={row.blobId || `no-blob-${row.paths1[0]}`}
+                      key={row.blobId || `deleted-${row.paths1[0] ?? row.paths2[0]}`}
                       className={`border-b border-gray-100 hover:bg-gray-50 ${rowBg}`}
                     >
                       <td className="px-3 py-1.5">{badge}</td>
@@ -202,12 +230,16 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                         {row.paths1.length > 0 ? (
                           row.paths1.map((p) => (
                             <div key={p}>
-                              <Link
-                                href={`/repositories/${encodeURIComponent(repo1)}/history?path=${encodeURIComponent(p)}`}
-                                className="hover:underline text-blue-600"
-                              >
-                                {p}
-                              </Link>
+                              {row.isDeleted ? (
+                                <span className={pathClass}>{p}</span>
+                              ) : (
+                                <Link
+                                  href={`/repositories/${encodeURIComponent(repo1)}/history?path=${encodeURIComponent(p)}`}
+                                  className={pathClass}
+                                >
+                                  {p}
+                                </Link>
+                              )}
                             </div>
                           ))
                         ) : (
@@ -218,12 +250,16 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                         {row.paths2.length > 0 ? (
                           row.paths2.map((p) => (
                             <div key={p}>
-                              <Link
-                                href={`/repositories/${encodeURIComponent(repo2)}/history?path=${encodeURIComponent(p)}`}
-                                className="hover:underline text-blue-600"
-                              >
-                                {p}
-                              </Link>
+                              {row.isDeleted ? (
+                                <span className={pathClass}>{p}</span>
+                              ) : (
+                                <Link
+                                  href={`/repositories/${encodeURIComponent(repo2)}/history?path=${encodeURIComponent(p)}`}
+                                  className={pathClass}
+                                >
+                                  {p}
+                                </Link>
+                              )}
                             </div>
                           ))
                         ) : (
