@@ -791,3 +791,117 @@ pub async fn blobs_by_ids(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Resul
     }
     Ok(blob::Entity::find().filter(blob::Column::Id.is_in(ids.iter().copied())).all(db).await?)
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GC helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// List all snapshots for a repository, ordered by created_at DESC (newest first).
+pub async fn list_snapshots_for_repo(
+    db: &DatabaseConnection,
+    repository_id: i64,
+) -> anyhow::Result<Vec<snapshot::Model>> {
+    Ok(snapshot::Entity::find()
+        .filter(snapshot::Column::RepositoryId.eq(repository_id))
+        .order_by_desc(snapshot::Column::CreatedAt)
+        .all(db)
+        .await?)
+}
+
+/// Return all snapshot IDs in the database.
+pub async fn all_snapshot_ids(db: &DatabaseConnection) -> anyhow::Result<Vec<i64>> {
+    Ok(snapshot::Entity::find().select_only().column(snapshot::Column::Id).into_tuple::<i64>().all(db).await?)
+}
+
+/// Return the set of blob IDs referenced by any entry in the given snapshots.
+pub async fn blob_ids_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<HashSet<i64>> {
+    if snapshot_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let ids: Vec<i64> = entry::Entity::find()
+        .filter(entry::Column::SnapshotId.is_in(snapshot_ids.iter().copied()))
+        .filter(entry::Column::BlobId.is_not_null())
+        .select_only()
+        .column(entry::Column::BlobId)
+        .into_tuple::<Option<i64>>()
+        .all(db)
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
+    Ok(ids.into_iter().collect())
+}
+
+/// Return blobs that are not referenced by any entry (truly orphaned).
+pub async fn unreferenced_blobs(db: &DatabaseConnection) -> anyhow::Result<Vec<blob::Model>> {
+    let referenced: HashSet<i64> = entry::Entity::find()
+        .filter(entry::Column::BlobId.is_not_null())
+        .select_only()
+        .column(entry::Column::BlobId)
+        .into_tuple::<Option<i64>>()
+        .all(db)
+        .await?
+        .into_iter()
+        .flatten()
+        .collect();
+
+    let all = blob::Entity::find().all(db).await?;
+    Ok(all.into_iter().filter(|b| !referenced.contains(&b.id)).collect())
+}
+
+/// Return replica records paired with their store for the given blob IDs.
+pub async fn replicas_for_blobs(
+    db: &DatabaseConnection,
+    blob_ids: &[i64],
+) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
+    if blob_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(replica::Entity::find()
+        .filter(replica::Column::BlobId.is_in(blob_ids.iter().copied()))
+        .find_also_related(store::Entity)
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|(r, s)| s.map(|s| (r, s)))
+        .collect())
+}
+
+/// Delete replica records by IDs; returns the count deleted.
+pub async fn delete_replica_records(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let res = replica::Entity::delete_many().filter(replica::Column::Id.is_in(ids.iter().copied())).exec(db).await?;
+    Ok(res.rows_affected)
+}
+
+/// Delete blob records by IDs; returns the count deleted.
+pub async fn delete_blob_records(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let res = blob::Entity::delete_many().filter(blob::Column::Id.is_in(ids.iter().copied())).exec(db).await?;
+    Ok(res.rows_affected)
+}
+
+/// Delete snapshot records by IDs; returns the count deleted.
+pub async fn delete_snapshot_records(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let res = snapshot::Entity::delete_many().filter(snapshot::Column::Id.is_in(ids.iter().copied())).exec(db).await?;
+    Ok(res.rows_affected)
+}
+
+/// Delete all entry records belonging to the given snapshot IDs; returns the count deleted.
+pub async fn delete_entries_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<u64> {
+    if snapshot_ids.is_empty() {
+        return Ok(0);
+    }
+    let res = entry::Entity::delete_many()
+        .filter(entry::Column::SnapshotId.is_in(snapshot_ids.iter().copied()))
+        .exec(db)
+        .await?;
+    Ok(res.rows_affected)
+}

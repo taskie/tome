@@ -34,6 +34,8 @@ enum Commands {
     Tag(commands::tag::TagArgs),
     /// Verify scanned files against entry cache (bit-rot detection)
     Verify(commands::verify::VerifyArgs),
+    /// Garbage-collect unreferenced blobs and old snapshots
+    Gc(commands::gc::GcArgs),
     /// Start the HTTP API server
     Serve(ServeArgs),
 }
@@ -71,6 +73,7 @@ async fn main() -> Result<()> {
         Commands::Sync(args) => commands::sync::run(&db, args).await?,
         Commands::Tag(args) => commands::tag::run(&db, args).await?,
         Commands::Verify(args) => commands::verify::run(&db, args).await?,
+        Commands::Gc(args) => commands::gc::run(&db, args).await?,
         Commands::Serve(args) => tome_server::serve(db, &args.addr).await?,
     }
 
