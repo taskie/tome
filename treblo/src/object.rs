@@ -21,11 +21,7 @@ impl FileMode {
     pub const SYMLINK: FileMode = FileMode(0o120000);
 
     fn is_executable(md: fs::Metadata) -> bool {
-        if cfg!(unix) {
-            md.permissions().mode() & 0o111 != 0
-        } else {
-            false
-        }
+        if cfg!(unix) { md.permissions().mode() & 0o111 != 0 } else { false }
     }
 
     pub fn from(md: fs::Metadata) -> FileMode {

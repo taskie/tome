@@ -7,9 +7,10 @@ use std::{
 use digest::Digest;
 use ignore;
 use sha1;
+use tracing::warn;
 
 use crate::{
-    object::{blob_from_path, tree_from_entries, FileMode, TreeEntry},
+    object::{FileMode, TreeEntry, blob_from_path, tree_from_entries},
     path::PathWalkState,
 };
 use sha1::Sha1;

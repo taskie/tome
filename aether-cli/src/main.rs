@@ -1,8 +1,7 @@
 use std::{
     env,
-    error::Error,
     ffi::OsStr,
-    fs::{metadata, set_permissions, File},
+    fs::{File, metadata, set_permissions},
     io::{BufRead, BufWriter, Read, Write},
     os::unix::{ffi::OsStrExt, fs::PermissionsExt as _},
     path::{Path, PathBuf},
@@ -10,36 +9,35 @@ use std::{
 };
 
 use aether::Cipher;
-use log::error;
-use structopt::StructOpt;
+use clap::Parser;
 use tempfile::NamedTempFile;
+use tracing::error;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "aether")]
-#[structopt(long_version(option_env!("LONG_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))))]
+#[derive(Debug, Parser)]
+#[command(name = "aether")]
 pub struct Opt {
-    #[structopt(short = "c", long)]
+    #[arg(short = 'c', long)]
     pub stdout: bool,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub decrypt: bool,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pub password_prompt: bool,
 
-    #[structopt(short = "P", long)]
+    #[arg(short = 'P', long)]
     pub password_env: Option<String>,
 
-    #[structopt(short, long, env = "AETHER_KEY_FILE")]
+    #[arg(short, long, env = "AETHER_KEY_FILE")]
     pub key_file: Option<PathBuf>,
 
-    #[structopt(short = "K", long)]
+    #[arg(short = 'K', long)]
     pub key_env: Option<String>,
 
-    #[structopt(name = "INPUT")]
+    #[arg(value_name = "INPUT")]
     pub input: Option<PathBuf>,
 }
 
@@ -57,13 +55,18 @@ impl Opt {
     }
 }
 
-fn load_key<R: Read>(mut r: R) -> Result<Vec<u8>, Box<dyn Error>> {
+fn load_key<R: Read>(mut r: R) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut buf = Vec::with_capacity(aether::KEY_SIZE);
     r.read_to_end(&mut buf)?;
     Ok(buf)
 }
 
-fn execute<R: BufRead, W: Write>(cipher: &mut Cipher, r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn Error>> {
+fn execute<R: BufRead, W: Write>(
+    cipher: &mut Cipher,
+    r: R,
+    w: BufWriter<W>,
+    opt: &Opt,
+) -> Result<(), Box<dyn std::error::Error>> {
     if opt.decrypt {
         cipher.decrypt(r, w)?;
     } else {
@@ -72,7 +75,7 @@ fn execute<R: BufRead, W: Write>(cipher: &mut Cipher, r: R, w: BufWriter<W>, opt
     Ok(())
 }
 
-fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn Error>> {
+fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn std::error::Error>> {
     let mut cipher = if let Some(key_file) = opt.key_file.as_ref() {
         let key = if Opt::path_is_stdin(key_file) {
             load_key(std::io::stdin().lock())?
@@ -131,7 +134,7 @@ fn append_ext(s: &Path) -> PathBuf {
 }
 
 fn remove_ext(s: &Path) -> PathBuf {
-    if let Some(last) = s.components().last() {
+    if let Some(last) = s.components().next_back() {
         let basename = last.as_os_str().as_bytes();
         if basename.ends_with(EXT) {
             let basename = &basename[..basename.len() - EXT.len()];
@@ -142,16 +145,12 @@ fn remove_ext(s: &Path) -> PathBuf {
 }
 
 fn auto_ext(s: &Path, decrypt: bool) -> PathBuf {
-    if decrypt {
-        remove_ext(s)
-    } else {
-        append_ext(s)
-    }
+    if decrypt { remove_ext(s) } else { append_ext(s) }
 }
 
-fn main_with_error() -> Result<i32, Box<dyn Error>> {
-    env_logger::init();
-    let opt = Opt::from_args();
+fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
+    let opt = Opt::parse();
 
     if opt.key_file_is_stdin() && opt.input_is_stdin() {
         return Err("key and input are both stdin".into());
@@ -165,8 +164,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             let w = w.lock();
             let w = BufWriter::new(w);
             process(r, w, &opt)?;
-        } else {
-            let output = opt.output.as_ref().unwrap();
+        } else if let Some(output) = opt.output.as_ref() {
             let tempfile = NamedTempFile::new_in(output.parent().unwrap())?;
             {
                 let f = tempfile.reopen()?;
@@ -178,8 +176,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
             perms.set_mode(0o644);
             set_permissions(output, perms)?;
         }
-    } else {
-        let input = opt.input.as_ref().unwrap();
+    } else if let Some(input) = opt.input.as_ref() {
         let r = File::open(input)?;
         let r = std::io::BufReader::new(r);
         if opt.stdout {
@@ -208,7 +205,7 @@ fn main_with_error() -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     match main_with_error() {
         Ok(code) => exit(code),
         Err(e) => {

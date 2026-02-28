@@ -5,8 +5,8 @@ use std::{
 };
 
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
+    aead::{Aead, AeadCore, KeyInit, OsRng},
 };
 use argon2::Argon2;
 use base64::Engine;

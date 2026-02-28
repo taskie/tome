@@ -1,0 +1,23 @@
+[package]
+name = "treblo-cli"
+version = "0.1.1"
+authors = ["taskie <t@skie.jp>"]
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[[bin]]
+path = "src/main.rs"
+name = "treblo"
+doc = false
+
+[dependencies]
+byteorder = "1"
+clap = { workspace = true }
+ignore = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha-1 = "0.10"
+sha2 = { workspace = true }
+treblo = { path = "../treblo" }
+twox-hash = { workspace = true }

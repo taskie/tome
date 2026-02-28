@@ -1,56 +1,54 @@
-use std::{env, ffi::OsStr, io::stdout, path::PathBuf};
+use std::{ffi::OsStr, io::stdout, path::PathBuf};
 
 use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::Sha256;
 use std::io::{Error, Write};
-use structopt::{clap, StructOpt};
 use treblo::{hex::to_hex_string, walk, walk::Hasher};
 use twox_hash::XxHash64;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "treblo")]
-#[structopt(long_version(option_env!("LONG_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))))]
-#[structopt(setting(clap::AppSettings::ColoredHelp))]
+#[derive(Debug, Parser)]
+#[command(name = "treblo")]
 pub struct Opt {
-    #[structopt(name = "PATHS")]
+    #[arg(value_name = "PATHS")]
     paths: Vec<PathBuf>,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     summarize: bool,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     depth: Option<usize>,
 
-    #[structopt(short = "S", long = "no-self", parse(from_flag = std::ops::Not::not))]
+    #[arg(short = 'S', long = "no-self", action = clap::ArgAction::SetFalse)]
     show_self: bool,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     json: bool,
 
-    #[structopt(short = "H", long, default_value = "sha1")]
+    #[arg(short = 'H', long, default_value = "sha1")]
     hasher: String,
 
-    #[structopt(short, long)]
+    #[arg(short, long)]
     blob_only: bool,
 
-    #[structopt(short = "E", long)]
+    #[arg(short = 'E', long)]
     no_error: bool,
 
-    #[structopt(long = "no-ignore", parse(from_flag = std::ops::Not::not))]
+    #[arg(long = "no-ignore", action = clap::ArgAction::SetFalse)]
     ignore: bool,
 
-    #[structopt(long = "no-ignore-dot", parse(from_flag = std::ops::Not::not))]
+    #[arg(long = "no-ignore-dot", action = clap::ArgAction::SetFalse)]
     ignore_dot: bool,
 
-    #[structopt(long = "no-ignore-vcs", parse(from_flag = std::ops::Not::not))]
+    #[arg(long = "no-ignore-vcs", action = clap::ArgAction::SetFalse)]
     ignore_vcs: bool,
 
-    #[structopt(long = "no-ignore-global", parse(from_flag = std::ops::Not::not))]
+    #[arg(long = "no-ignore-global", action = clap::ArgAction::SetFalse)]
     ignore_global: bool,
 
-    #[structopt(long = "no-ignore-exclude", parse(from_flag = std::ops::Not::not))]
+    #[arg(long = "no-ignore-exclude", action = clap::ArgAction::SetFalse)]
     ignore_exclude: bool,
 }
 
@@ -113,7 +111,7 @@ impl Hasher for XxHash64Holder {
 }
 
 fn main() {
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     let path_is_default: bool = opt.paths.is_empty();
     let base_paths: Vec<PathBuf> = if path_is_default { vec![PathBuf::from(".")] } else { opt.paths.clone() };
     for base_path in base_paths.iter() {
@@ -153,8 +151,8 @@ fn main() {
                 return;
             }
             let object_type = if is_tree { "tree" } else { "blob" };
-            let path = if path_is_default { p.strip_prefix(&base_path).unwrap() } else { p };
-            let path = if path.to_str().map_or(false, |p| p.is_empty()) { base_path.as_ref() } else { path };
+            let path = if path_is_default { p.strip_prefix(base_path).unwrap() } else { p };
+            let path = if path.to_str().is_some_and(|p| p.is_empty()) { base_path.as_ref() } else { path };
             let depth = path.iter().count();
             if !opt.show_self && !opt.summarize && is_tree && p == base_path {
                 return;
@@ -179,7 +177,7 @@ fn main() {
                         };
                         serde_json::to_vec(&record).unwrap()
                     };
-                    record_json.push('\n' as u8);
+                    record_json.push(b'\n');
                     let out = stdout();
                     let mut lock = out.lock();
                     lock.write_all(&record_json).unwrap();

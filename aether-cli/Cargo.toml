@@ -1,0 +1,20 @@
+[package]
+name = "aether-cli"
+version = "0.1.0"
+authors = ["taskie <t@skie.jp>"]
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[[bin]]
+path = "src/main.rs"
+name = "aether"
+doc = false
+
+[dependencies]
+aether = { path = "../aether" }
+clap = { workspace = true }
+rpassword = "7"
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

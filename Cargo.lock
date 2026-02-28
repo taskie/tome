@@ -46,20 +46,19 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "crypto-bigint 0.5.5",
- "log",
  "typenum",
 ]
 
 [[package]]
-name = "aether_cli"
+name = "aether-cli"
 version = "0.1.0"
 dependencies = [
  "aether",
- "env_logger",
- "log",
+ "clap 4.5.60",
  "rpassword",
- "structopt",
  "tempfile",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5680,24 +5679,23 @@ version = "0.1.0"
 dependencies = [
  "digest",
  "ignore",
- "log",
  "sha-1",
+ "tracing",
 ]
 
 [[package]]
-name = "treblo_cli"
+name = "treblo-cli"
 version = "0.1.1"
 dependencies = [
  "byteorder",
- "env_logger",
+ "clap 4.5.60",
  "ignore",
  "serde",
  "serde_json",
  "sha-1",
  "sha2",
- "structopt",
  "treblo",
- "twox-hash 1.6.3",
+ "twox-hash 2.1.2",
 ]
 
 [[package]]
