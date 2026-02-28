@@ -143,7 +143,7 @@ async fn sync_pull(local_db: &DatabaseConnection, args: SyncPullArgs) -> Result<
     for remote_snap in &new_snapshots {
         // Create a corresponding local snapshot.
         let local_parent = ops::latest_snapshot(local_db, local_repo.id).await?.map(|s| s.id);
-        let local_snap = ops::create_snapshot(local_db, local_repo.id, local_parent).await?;
+        let local_snap = ops::create_snapshot(local_db, local_repo.id, local_parent, "").await?;
 
         // Pull entries from remote snapshot.
         let remote_entries = ops::entries_in_snapshot(&peer_db, remote_snap.id).await?;

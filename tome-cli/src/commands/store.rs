@@ -7,6 +7,8 @@ use tome_core::hash;
 use tome_db::ops;
 use tome_store::{Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
 
+use crate::config::{self, StoreConfig};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
@@ -44,8 +46,8 @@ pub struct StorePushArgs {
     /// Repository name to push (default: "default")
     #[arg(long, short = 'r', default_value = "default")]
     pub repo: String,
-    /// Store name to push to
-    pub store: String,
+    /// Store name to push to [config: store.default_store]
+    pub store: Option<String>,
     /// Root directory where scanned files reside (overrides snapshot metadata)
     pub path: Option<std::path::PathBuf>,
 }
@@ -74,12 +76,12 @@ pub struct StoreVerifyArgs {
 // Dispatch
 // ──────────────────────────────────────────────────────────────────────────────
 
-pub async fn run(db: &DatabaseConnection, args: StoreArgs) -> Result<()> {
+pub async fn run(db: &DatabaseConnection, args: StoreArgs, cfg: &StoreConfig) -> Result<()> {
     match args.command {
         StoreCommands::Add(a) => store_add(db, a).await,
         StoreCommands::List => store_list(db).await,
-        StoreCommands::Push(a) => store_push(db, a).await,
-        StoreCommands::Copy(a) => store_copy(db, a).await,
+        StoreCommands::Push(a) => store_push(db, a, cfg).await,
+        StoreCommands::Copy(a) => store_copy(db, a, cfg).await,
         StoreCommands::Verify(a) => store_verify(db, a).await,
     }
 }
@@ -116,12 +118,17 @@ async fn store_list(db: &DatabaseConnection) -> Result<()> {
 // store push
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn store_push(db: &DatabaseConnection, args: StorePushArgs) -> Result<()> {
+async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreConfig) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
 
-    let store = ops::find_store_by_name(db, &args.store)
+    let store_name = args
+        .store
+        .or_else(|| cfg.default_store.clone())
+        .ok_or_else(|| anyhow::anyhow!("store name required (pass <store> or set store.default_store in tome.toml)"))?;
+
+    let store = ops::find_store_by_name(db, &store_name)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.store))?;
+        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", store_name))?;
 
     // Determine scan root: CLI arg > snapshot metadata > error
     let scan_root = if let Some(p) = args.path {
@@ -145,7 +152,7 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs) -> Result<()> 
         return Ok(());
     }
 
-    println!("pushing {} file(s) to store {:?} ...", entries.len(), args.store);
+    println!("pushing {} file(s) to store {:?} ...", entries.len(), store_name);
     let mut pushed = 0u64;
     let mut skipped = 0u64;
     let mut errors = 0u64;
@@ -194,7 +201,7 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs) -> Result<()> 
 // store copy
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs) -> Result<()> {
+async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreConfig) -> Result<()> {
     let src_store = ops::find_store_by_name(db, &args.src)
         .await?
         .ok_or_else(|| anyhow::anyhow!("source store {:?} not found", args.src))?;
@@ -203,14 +210,17 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs) -> Result<()> 
         .ok_or_else(|| anyhow::anyhow!("destination store {:?} not found", args.dst))?;
 
     // Resolve encryption key if needed.
+    // Priority: --key-file CLI arg > store.key_file in tome.toml.
     let key: Option<[u8; 32]> = if args.encrypt {
-        let key_path = match args.key_file {
-            Some(ref p) => p.clone(),
-            None => {
+        let key_path =
+            args.key_file.or_else(|| cfg.key_file.as_ref().map(|p| config::expand_tilde(p))).ok_or_else(|| {
                 let default_dir = factory::key_dir();
-                bail!("--key-file is required when --encrypt is set (default key dir: {:?})", default_dir)
-            }
-        };
+                anyhow::anyhow!(
+                    "--key-file is required when --encrypt is set \
+                     (or set store.key_file in tome.toml; default key dir: {:?})",
+                    default_dir
+                )
+            })?;
         Some(factory::read_key_file(&key_path)?)
     } else {
         None

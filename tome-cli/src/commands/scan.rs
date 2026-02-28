@@ -22,6 +22,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub no_ignore: bool,
 
+    /// Optional message to attach to this snapshot
+    #[arg(long, short = 'm', default_value = "")]
+    pub message: String,
+
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
 }
@@ -50,7 +54,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     let parent_id = parent.as_ref().map(|s| s.id);
 
     // 3. Create a new snapshot.
-    let snapshot = ops::create_snapshot(db, repo.id, parent_id).await?;
+    let snapshot = ops::create_snapshot(db, repo.id, parent_id, &args.message).await?;
 
     // 4. Load entry cache (previous state).
     let mut cache = ops::load_entry_cache(db, repo.id).await?;

@@ -63,13 +63,14 @@ pub async fn create_snapshot(
     db: &DatabaseConnection,
     repository_id: i64,
     parent_id: Option<i64>,
+    message: &str,
 ) -> anyhow::Result<snapshot::Model> {
     let now = Utc::now().fixed_offset();
     let am = snapshot::ActiveModel {
         id: Set(next_id()?),
         repository_id: Set(repository_id),
         parent_id: Set(parent_id),
-        message: Set(String::new()),
+        message: Set(message.to_owned()),
         metadata: Set(serde_json::json!({})),
         created_at: Set(now),
     };

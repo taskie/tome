@@ -62,13 +62,267 @@ tome-web/     — Next.js 16 Web フロントエンド
 
 ---
 
+## BLAKE3 導入方針
+
+SHA-256 の代わりに BLAKE3 を選択可能にする。BLAKE3 はデフォルト出力が 32 バイトのため、
+`Digest256` 型・DB スキーマ (`VarBinary` / BLOB)・ストレージパス (`objects/xx/yy/hex`)
+はすべて **変更不要**。
+
+### 変更箇所
+
+1. **tome-core/src/hash.rs** — ハッシュ計算の抽象化
+   - `blake3` クレートを `Cargo.toml` に追加（feature flag `blake3`）
+   - `DigestAlgorithm` enum (`Sha256`, `Blake3`) を新設
+   - `hash_file()` / `sha256_reader()` 等を `DigestAlgorithm` でディスパッチ
+   - 公開 API 例:
+     ```rust
+     pub enum DigestAlgorithm { Sha256, Blake3 }
+     pub fn hash_file(path: &Path, algo: DigestAlgorithm) -> io::Result<FileHash>
+     ```
+   - `Digest256` 型名は `ContentDigest` 等にリネームしてもよい（BLAKE3 も 32 バイト）
+
+2. **tome-db: `repositories.config`** — リポジトリ単位でアルゴリズム選択
+   - 既存の JSON `config` カラムに `"digest_algorithm": "sha256" | "blake3"` を格納
+   - デフォルトは `"sha256"`（後方互換）
+   - `tome-db/src/ops.rs` の `get_or_create_blob` / scan 系処理で config を参照
+
+3. **tome-cli** — CLI オプション
+   - `tome scan --digest-algorithm blake3` でリポジトリ作成時に設定
+   - 既存リポジトリはアルゴリズム変更不可（digest の一貫性保持）
+
+4. **tome-core/Cargo.toml** — feature gate
+   ```toml
+   [features]
+   default = []
+   blake3 = ["dep:blake3"]
+
+   [dependencies]
+   blake3 = { version = "1", optional = true }
+   ```
+
+### 変更不要な箇所
+
+| 箇所 | 理由 |
+|------|------|
+| DB スキーマ (`blobs.digest`) | `VarBinary(None)` — 長さ非固定、32 バイトのまま |
+| `entry_cache.digest` | 同上（非正規化コピー） |
+| `blob_path()` | hex 文字列ベース — アルゴリズム非依存 |
+| `hex_encode()` | バイト列→hex — 汎用 |
+| `find_blob_by_hex()` | `prefix_bytes.len() == 32` の判定は BLAKE3 でも同じ |
+| HTTP API レスポンス | hex 文字列を返すだけ — 変更不要 |
+| `tome-web` | API レスポンスを表示するだけ — 変更不要 |
+
+### 制約・注意事項
+
+- **同一リポジトリ内でアルゴリズム混在は禁止** — digest の比較が壊れる
+- **既存リポジトリのアルゴリズム変更は不可** — 全 blob の再ハッシュが必要になるため
+- `blake3` クレートは `no_std` 対応・SIMD 自動検出で高速（SHA-256 比 5〜15 倍）
+- feature flag でオプショナルにし、BLAKE3 不要な環境ではバイナリサイズを抑える
+
+---
+
+## ChaCha20-Poly1305 導入方針
+
+AES-256-GCM に加えて ChaCha20-Poly1305 を選択可能にする。
+両アルゴリズムとも鍵長 32 バイト・nonce 12 バイト・認証タグ 16 バイトで一致するため、
+`aether` の内部フォーマット（Header 構造・チャンク分割・CounteredNonce）は **ほぼ変更不要**。
+
+### 現状の構造（aether クレート）
+
+- `Cipher` 構造体が `Aes256Gcm` を直接保持
+- ファイルフォーマット: `[Header 32B][encrypted chunks...]`
+- Header: `magic(2B) + flags(2B) + iv/nonce(12B) + integrity(16B)`
+- `flags` フィールドは現在 **常に 0** — アルゴリズム識別に利用可能
+
+### 変更箇所
+
+1. **aether/Cargo.toml** — 依存追加
+   ```toml
+   chacha20poly1305 = "0.10"   # aes-gcm と同じ RustCrypto AEAD API
+   ```
+
+2. **aether/src/lib.rs** — AEAD 抽象化
+   - `CipherAlgorithm` enum を新設:
+     ```rust
+     pub enum CipherAlgorithm { Aes256Gcm, ChaCha20Poly1305 }
+     ```
+   - `Cipher` 内部を `Box<dyn AeadInPlace>` または enum ディスパッチに変更:
+     ```rust
+     enum AeadInner { Aes(Aes256Gcm), ChaCha(ChaCha20Poly1305) }
+     ```
+   - `chacha20poly1305` クレートは `aes_gcm` と同じ `aead` trait
+     (`Aead`, `AeadCore`, `KeyInit`) を実装するため、差し替えは機械的
+   - `Key<Aes256Gcm>` → `&[u8; 32]` に一般化（両方 32 バイト鍵）
+
+3. **aether Header `flags`** — アルゴリズム識別
+   - `flags` の下位 1 ビットで暗号アルゴリズムを記録:
+     - `0b0000_0000_0000_0000` = AES-256-GCM（既存データと後方互換）
+     - `0b0000_0000_0000_0001` = ChaCha20-Poly1305
+   - 復号時は `flags` を読みアルゴリズムを自動判別 → 鍵さえあれば透過的に復号
+
+4. **tome-store/src/encrypted.rs** — `EncryptedStorage` 拡張
+   - `EncryptedStorage` にアルゴリズム選択フィールドを追加:
+     ```rust
+     pub struct EncryptedStorage<S> {
+         inner: S,
+         key: [u8; 32],
+         algorithm: CipherAlgorithm,  // 新規
+     }
+     ```
+   - 暗号化時にアルゴリズムを `Cipher` に渡す
+   - 復号時は Header の `flags` から自動判別するため指定不要
+
+5. **tome-cli** — CLI オプション
+   - `tome store copy --encrypt --cipher chacha20` で選択
+   - デフォルトは `aes256gcm`（後方互換）
+
+6. **stores.config** — ストア単位のデフォルト暗号（オプショナル）
+   - `stores.config` JSON に `"cipher": "chacha20-poly1305"` を格納可
+   - CLI の `--cipher` が明示されればそちらが優先
+
+### 変更不要な箇所
+
+| 箇所 | 理由 |
+|------|------|
+| Header サイズ (32B) | nonce(12B)・integrity(16B) は両アルゴリズムで同一 |
+| `CounteredNonce` | nonce 12 バイト — 両方同じ |
+| チャンク暗号化ロジック | AEAD trait が共通。認証タグ 16B も同一 |
+| `BUFFER_SIZE` / チャンクサイズ | アルゴリズム非依存 |
+| `replicas.encrypted` | bool のまま（アルゴリズムは blob 内 Header に記録） |
+| DB スキーマ | 変更なし |
+| Argon2id 鍵導出 | 出力 32 バイト — 両アルゴリズムで共用可 |
+
+### 制約・注意事項
+
+- **復号はアルゴリズム自動判別** — Header `flags` を読むだけなので、混在保存でも問題なし
+- **既存の暗号化ファイル** — `flags == 0` は AES-256-GCM として解釈（後方互換）
+- ChaCha20-Poly1305 は AES-NI 非搭載環境（ARM 等）で AES-256-GCM より高速
+- AES-NI 搭載環境では AES-256-GCM の方が高速なため、デフォルトは AES-256-GCM を維持
+- `chacha20poly1305` クレートは `aes-gcm` と同じ RustCrypto プロジェクト — API 互換
+
+---
+
+## 設定ファイル (tome.toml) 導入方針 【優先度: 高】
+
+現在すべての設定が CLI 引数・環境変数・ハードコードで管理されている。
+`tome.toml` を導入し、繰り返し指定する設定を永続化する。
+
+### 読み込み優先順位（後勝ち）
+
+```
+1. デフォルト値（コード内ハードコード）
+2. ~/.config/tome/tome.toml   — グローバル設定
+3. ./tome.toml                — プロジェクトローカル設定
+4. 環境変数 (TOME_*)
+5. CLI 引数 (--db, --machine-id, ...)
+```
+
+上位ソースが下位を上書きする。部分指定可（未指定キーはフォールバック）。
+
+### 設定ファイルの形式
+
+```toml
+# ~/.config/tome/tome.toml (グローバル) または ./tome.toml (プロジェクト)
+
+# --- 基本設定 ---
+db = "tome.db"                    # DB パス or URL (現: --db / TOME_DB)
+machine_id = 0                    # Sonyflake ID (現: --machine-id / TOME_MACHINE_ID)
+
+# --- scan ---
+[scan]
+repo = "default"                  # デフォルトリポジトリ名 (現: --repo)
+no_ignore = false                 # .gitignore 無視 (現: --no-ignore)
+
+# --- store ---
+[store]
+default_store = "backup"          # デフォルトストア名
+key_file = "~/.config/tome/keys/main.key"  # 暗号化鍵 (現: --key-file)
+cipher = "aes256gcm"              # 暗号アルゴリズム (将来: ChaCha20-Poly1305 方針参照)
+
+# --- serve ---
+[serve]
+addr = "127.0.0.1:8080"          # リッスンアドレス (現: --addr)
+```
+
+### 変更箇所
+
+1. **tome-cli/Cargo.toml** — 依存追加
+   ```toml
+   toml = "0.8"
+   serde = { version = "1", features = ["derive"] }
+   dirs = "6"        # XDG 準拠パス解決（現在の手動 HOME 参照を置換）
+   ```
+
+2. **tome-cli/src/config.rs** — 新規: 設定読み込みロジック
+   - `TomeConfig` 構造体を `#[derive(Default, Deserialize)]` で定義
+   - 読み込み関数:
+     ```rust
+     pub fn load_config() -> TomeConfig {
+         let mut config = TomeConfig::default();
+         // 1. ~/.config/tome/tome.toml
+         if let Some(global) = dirs::config_dir() {
+             merge_file(&mut config, global.join("tome/tome.toml"));
+         }
+         // 2. ./tome.toml
+         merge_file(&mut config, PathBuf::from("tome.toml"));
+         config
+     }
+     ```
+   - `merge_file()` は TOML をパースし、`None` でないフィールドのみ上書き
+   - 各フィールドは `Option<T>` で定義し、未指定を明示的に区別
+
+3. **tome-cli/src/main.rs** — clap との統合
+   - `main()` 冒頭で `load_config()` を呼び出し
+   - clap の `default_value` を設定ファイル値で動的に差し替え:
+     ```rust
+     let config = config::load_config();
+     let cli = Cli::parse();
+     // CLI > env > config > default の順で解決
+     let db = cli.db_or(config.db.as_deref().unwrap_or("tome.db"));
+     ```
+   - 環境変数は clap の `env = "TOME_*"` がそのまま処理
+
+4. **tome-store/src/factory.rs** — `key_dir()` 改善
+   - `dirs::config_dir()` を使用（`HOME` 直参照を廃止）
+   - `tome.toml` の `store.key_file` をデフォルトパスとして参照
+
+### 変更不要な箇所
+
+| 箇所 | 理由 |
+|------|------|
+| tome-core | 設定に依存しない純粋な計算ライブラリ |
+| tome-db | DB 接続 URL は tome-cli から渡される |
+| tome-server | addr は tome-cli から渡される |
+| tome-store | factory 以外は URL/key を引数で受け取るだけ |
+| tome-web | 独立した Next.js アプリ（TOME_API_URL で設定済み） |
+
+### 設計判断
+
+- **toml クレート直接利用** — figment / config クレートは多機能すぎる。
+  TOML パース + 手動マージで十分（設定項目が少ない）
+- **`./tome.toml`（ドットなし）** — `.gitignore` が `.*` をブロックする環境との互換。
+  DB ファイルも `tome.db` でドットなし命名に統一済み
+- **`~` 展開** — `key_file` 等のパスで `~` を `dirs::home_dir()` に展開する
+- **XDG 準拠** — `dirs` クレートで `$XDG_CONFIG_HOME` を尊重
+  （未設定時は `~/.config`）
+- **サブコマンド固有設定** — `[scan]`, `[store]`, `[serve]` セクションで分離。
+  将来のサブコマンド追加時もトップレベルが汚れない
+
+### 制約・注意事項
+
+- **tome.toml に機密情報を書かない** — DB パスワード・暗号化鍵はファイルパス参照のみ
+- **設定ファイルは任意** — なくても全機能が動く（既存動作を壊さない）
+- **`--config <PATH>` オプション** は将来追加可（初期実装では不要）
+
+---
+
 ## 残タスク
 
 | 優先度 | 内容 |
 |--------|------|
 | 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
-| 中 | スナップショット注釈 — `tome scan --message "..."` で snapshots.message に手動メッセージを付与 |
-| 低 | `tome gc` — 未参照 blob/replica の検出・削除。保持ポリシー（N世代 or N日）付き |
+| 中 | BLAKE3 導入 — 上記の BLAKE3 導入方針を参照 |
+| 中 | ChaCha20-Poly1305 導入 — 上記の ChaCha20-Poly1305 導入方針を参照 |
 | 低 | 重複レポート — blob の content-addressing を活かしリポジトリ横断でファイル重複を報告 |
 | 低 | PostgreSQL 中央同期 — 複数マシンが一つの PostgreSQL に push/pull（現在は SQLite↔SQLite のみ） |
 | 低 | Webhook / 通知 — スキャン完了時に変更サマリを POST（Slack, Discord 等） |

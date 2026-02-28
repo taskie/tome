@@ -1,100 +1,119 @@
 @startuml er_puml
 
-entity footprints {
+entity repositories {
     + id [PK]
+    + name [UQ]
     --
-    + digest
+    + description
+    + config
+    + created_at
+    + updated_at
+}
+
+entity snapshots {
+    + id [PK]
+    + repository_id [FK]
+    --
+      parent_id [FK, self]
+    + message
+    + metadata
+    + created_at
+}
+
+snapshots }o--|| repositories
+snapshots }o--o| snapshots : parent
+
+entity blobs {
+    + id [PK]
+    + digest [UQ]
+    --
     + size
     + fast_digest
+    + created_at
 }
 
-entity contents {
+entity entries {
     + id [PK]
-    + footprint_id [UQ1, FK1]
+    + snapshot_id [FK]
     --
-    + body
-}
-
-contents |o--|| footprints
-
-entity workspaces {
-    + id [PK]
-    + name [UQ1]
-    --
-    + description
+    + path
     + status
-}
-
-entity groups {
-    + id [PK, UQ1.2]
-    + workspace_id [FK1, UQ1.1, UQ2.1]
-    + name [UQ2.2]
-    --
-    + url
-    + type
-    + description
-    + status
-      group_stat_id
-}
-
-groups }o--|| workspaces
-
-entity histories {
-    + id [PK]
-    + workspace_id [FK1.1]
-    + group_id [UQ1.1, FK1.2]
-    + path [UQ1.2]
-    + version [UQ1.3]
-    --
-    + status
+      blob_id [FK]
+      mode
       mtime
-      footprint_id [FK2]
-      digest
+    + created_at
 }
 
-histories }o--|| groups
-histories }o--o| footprints
+entries }o--|| snapshots
+entries }o--o| blobs
 
-entity stats {
-    + id [PK]
-    + workspace_id [FK1.1]
-    + group_id [UQ1.1, FK1.2]
-    + path [UQ1.2]
+entity entry_cache {
+    + repository_id [PK.1, FK]
+    + path [PK.2]
     --
-    + history_id [FK2]
-    + version
+    + snapshot_id [FK]
+    + entry_id [FK]
     + status
+      blob_id
       mtime
-      footprint_id [FK3]
       digest
       size
       fast_digest
+    + updated_at
 }
 
-stats }o--|| groups
-stats }o--|| histories
-stats }o--o| footprints
+entry_cache }o--|| repositories
+entry_cache }o--|| snapshots
+entry_cache }o--|| entries
 
-groups }o-ri-|| stats
-
-entity attrs {
+entity stores {
     + id [PK]
-    + workspace_id [UQ1.1, FK1]
-    + target_footprint_id [UQ1.2, FK2]
-    + key [UQ1.3]
+    + name [UQ]
     --
-    + target_digest
-    + value_type
-    + value_footprint_id [FK3]
-    + value_digest
-      value_text
-    + status
-      attr_stat_id [FK4]
+    + url
+    + config
+    + created_at
+    + updated_at
 }
 
-attrs }o--|| workspaces
-attrs }o--|| footprints
-attrs }o--|| footprints
-attrs }o--o| stats
+entity replicas {
+    + id [PK]
+    + blob_id [FK]
+    + store_id [FK]
+    --
+    + path
+    + encrypted
+      verified_at
+    + created_at
+}
+
+replicas }o--|| blobs
+replicas }o--|| stores
+
+entity tags {
+    + id [PK]
+    + blob_id [FK]
+    --
+    + key
+      value
+    + created_at
+}
+
+tags }o--|| blobs
+
+entity sync_peers {
+    + id [PK]
+    + repository_id [FK]
+    --
+    + name
+    + url
+      last_synced_at
+      last_snapshot_id
+    + config
+    + created_at
+    + updated_at
+}
+
+sync_peers }o--|| repositories
 
 @enduml
