@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    routing::{get, put},
+    routing::{get, post, put},
 };
 use sea_orm::DatabaseConnection;
 use tower_http::trace::TraceLayer;
@@ -28,6 +28,8 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/stores", get(routes::list_stores))
         .route("/tags", get(routes::list_all_tags))
         .route("/sync-peers", get(routes::list_all_sync_peers))
+        .route("/sync/pull", get(routes::sync::pull))
+        .route("/sync/push", post(routes::sync::push))
         .layer(TraceLayer::new_for_http())
         .with_state(db);
 

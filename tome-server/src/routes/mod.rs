@@ -4,6 +4,7 @@ mod machines;
 mod repositories;
 pub mod responses;
 mod snapshots;
+pub mod sync;
 
 use axum::{Json, extract::State, http::StatusCode};
 use sea_orm::DatabaseConnection;

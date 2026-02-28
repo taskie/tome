@@ -93,6 +93,21 @@ pub async fn latest_snapshot_metadata(
         .map(|s| s.metadata))
 }
 
+/// Find a snapshot by its source provenance (for idempotency in HTTP sync push).
+pub async fn find_snapshot_by_source(
+    db: &DatabaseConnection,
+    repository_id: i64,
+    source_machine_id: i16,
+    source_snapshot_id: i64,
+) -> anyhow::Result<Option<snapshot::Model>> {
+    Ok(snapshot::Entity::find()
+        .filter(snapshot::Column::RepositoryId.eq(repository_id))
+        .filter(snapshot::Column::SourceMachineId.eq(source_machine_id))
+        .filter(snapshot::Column::SourceSnapshotId.eq(source_snapshot_id))
+        .one(db)
+        .await?)
+}
+
 /// Get snapshots for a repository created after `last_snapshot_id` (ordered by created_at ASC).
 pub async fn snapshots_after(
     db: &DatabaseConnection,

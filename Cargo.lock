@@ -4301,6 +4301,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
+ "hex",
  "hostname",
  "ignore",
  "reqwest",
