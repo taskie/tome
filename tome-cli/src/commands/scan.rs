@@ -18,6 +18,10 @@ pub struct ScanArgs {
     #[arg(long, short = 'r', default_value = "default")]
     pub repo: String,
 
+    /// Do not respect .gitignore / .ignore files
+    #[arg(long)]
+    pub no_ignore: bool,
+
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
 }
@@ -55,21 +59,25 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     let mut seen_paths: HashSet<String> = HashSet::new();
 
     // 5. Collect directory entries (errors counted separately to avoid borrow conflict).
-    let dir_entries: Vec<walkdir::DirEntry> = {
+    let dir_entries: Vec<ignore::DirEntry> = {
         let mut walk_errors = 0u64;
-        let entries: Vec<_> = walkdir::WalkDir::new(&scan_root)
-            .follow_links(false)
-            .sort_by_file_name()
-            .into_iter()
+        let use_ignore = !args.no_ignore;
+        let entries: Vec<_> = ignore::WalkBuilder::new(&scan_root)
+            .hidden(false)
+            .git_ignore(use_ignore)
+            .git_global(use_ignore)
+            .git_exclude(use_ignore)
+            .sort_by_file_name(|a, b| a.cmp(b))
+            .build()
             .filter_map(|e| match e {
                 Ok(e) => Some(e),
                 Err(err) => {
-                    warn!("walkdir error: {}", err);
+                    warn!("walk error: {}", err);
                     walk_errors += 1;
                     None
                 }
             })
-            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
             .collect();
         stats.errors += walk_errors;
         entries

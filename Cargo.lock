@@ -4809,6 +4809,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap 4.5.60",
+ "ignore",
  "sea-orm",
  "serde_json",
  "tempfile",
@@ -4819,7 +4820,6 @@ dependencies = [
  "tome-store",
  "tracing",
  "tracing-subscriber",
- "walkdir",
 ]
 
 [[package]]
