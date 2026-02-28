@@ -9,7 +9,10 @@ use clap::Args;
 use sea_orm::DatabaseConnection;
 use tracing::{debug, info, warn};
 
-use tome_core::{hash, models::EntryStatus};
+use tome_core::{
+    hash::{self, DigestAlgorithm},
+    models::EntryStatus,
+};
 use tome_db::ops;
 
 #[derive(Args)]
@@ -25,6 +28,11 @@ pub struct ScanArgs {
     /// Optional message to attach to this snapshot
     #[arg(long, short = 'm', default_value = "")]
     pub message: String,
+
+    /// Digest algorithm for new repositories: sha256 (default) or blake3
+    /// Existing repositories use their stored algorithm; this arg is ignored.
+    #[arg(long, value_enum, default_value = "sha256")]
+    pub digest_algorithm: DigestAlgorithm,
 
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
@@ -53,16 +61,19 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     let parent = ops::latest_snapshot(db, repo.id).await?;
     let parent_id = parent.as_ref().map(|s| s.id);
 
-    // 3. Create a new snapshot.
+    // 3. Resolve digest algorithm (set in repo.config on first use).
+    let algo = ops::get_or_init_repository_digest_algorithm(db, &repo, args.digest_algorithm).await?;
+
+    // 4. Create a new snapshot.
     let snapshot = ops::create_snapshot(db, repo.id, parent_id, &args.message).await?;
 
-    // 4. Load entry cache (previous state).
+    // 5. Load entry cache (previous state).
     let mut cache = ops::load_entry_cache(db, repo.id).await?;
 
     let mut stats = ScanStats::default();
     let mut seen_paths: HashSet<String> = HashSet::new();
 
-    // 5. Collect directory entries (errors counted separately to avoid borrow conflict).
+    // 6. Collect directory entries (errors counted separately to avoid borrow conflict).
     let dir_entries: Vec<ignore::DirEntry> = {
         let mut walk_errors = 0u64;
         let use_ignore = !args.no_ignore;
@@ -94,9 +105,15 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         entries
     };
 
-    // 6. Process each file entry.
-    let mut ctx =
-        ScanContext { db, snapshot_id: snapshot.id, repository_id: repo.id, cache: &mut cache, stats: &mut stats };
+    // 7. Process each file entry.
+    let mut ctx = ScanContext {
+        db,
+        snapshot_id: snapshot.id,
+        repository_id: repo.id,
+        algo,
+        cache: &mut cache,
+        stats: &mut stats,
+    };
     for dir_entry in dir_entries {
         let abs_path = dir_entry.path();
         let rel_path = match abs_path.strip_prefix(&scan_root) {
@@ -120,7 +137,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         }
     }
 
-    // 7. Detect deleted files: paths in cache that were not seen in the walk.
+    // 8. Detect deleted files: paths in cache that were not seen in the walk.
     let deleted_paths: Vec<String> = cache
         .keys()
         .filter(|p| {
@@ -144,7 +161,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         }
     }
 
-    // 8. Update snapshot metadata with scan statistics.
+    // 9. Update snapshot metadata with scan statistics.
     let metadata = serde_json::json!({
         "scan_root": scan_root.to_string_lossy(),
         "scanned": stats.scanned,
@@ -168,6 +185,7 @@ struct ScanContext<'a> {
     db: &'a DatabaseConnection,
     snapshot_id: i64,
     repository_id: i64,
+    algo: DigestAlgorithm,
     cache: &'a mut std::collections::HashMap<String, tome_db::entities::entry_cache::Model>,
     stats: &'a mut ScanStats,
 }
@@ -193,7 +211,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
             }
 
             // Stage 2: compute xxHash64 and compare.
-            let file_hash = hash::hash_file(abs_path)?;
+            let file_hash = hash::hash_file(abs_path, ctx.algo)?;
 
             if let Some(cached_fast) = cached.fast_digest {
                 if cached_fast == file_hash.fast_digest {
@@ -232,7 +250,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
     }
 
     // No cache entry or previously deleted — full hash.
-    let file_hash = hash::hash_file(abs_path)?;
+    let file_hash = hash::hash_file(abs_path, ctx.algo)?;
     record_present_file(ctx, rel_path, &meta, &file_hash, false).await?;
     Ok(())
 }

@@ -5,7 +5,10 @@ use sea_orm::{
 };
 use std::collections::{HashMap, HashSet};
 
-use tome_core::{hash::FileHash, id::next_id};
+use tome_core::{
+    hash::{DigestAlgorithm, FileHash},
+    id::next_id,
+};
 
 use crate::entities::{blob, entry, entry_cache, replica, repository, snapshot, store, sync_peer, tag};
 
@@ -29,6 +32,44 @@ pub async fn get_or_create_repository(db: &DatabaseConnection, name: &str) -> an
         updated_at: Set(now),
     };
     Ok(am.insert(db).await?)
+}
+
+/// Read the digest algorithm stored in `repo.config["digest_algorithm"]`.
+/// Returns `Sha256` if the key is absent (legacy repos default to SHA-256).
+pub fn get_repository_digest_algorithm(repo: &repository::Model) -> anyhow::Result<DigestAlgorithm> {
+    match repo.config.get("digest_algorithm").and_then(|v| v.as_str()) {
+        Some(s) => s.parse::<DigestAlgorithm>(),
+        None => Ok(DigestAlgorithm::Sha256),
+    }
+}
+
+/// Persist `algo` into `repositories.config["digest_algorithm"]`.
+pub async fn set_repository_digest_algorithm(
+    db: &DatabaseConnection,
+    repo: &repository::Model,
+    algo: DigestAlgorithm,
+) -> anyhow::Result<()> {
+    let mut config = repo.config.clone();
+    config["digest_algorithm"] = serde_json::Value::String(algo.as_str().to_owned());
+    let mut am: repository::ActiveModel = repo.clone().into();
+    am.config = Set(config);
+    am.updated_at = Set(Utc::now().fixed_offset());
+    am.update(db).await?;
+    Ok(())
+}
+
+/// Return the digest algorithm for a repository, initialising it in the config
+/// if not already set.  On first use `default_algo` is persisted.
+pub async fn get_or_init_repository_digest_algorithm(
+    db: &DatabaseConnection,
+    repo: &repository::Model,
+    default_algo: DigestAlgorithm,
+) -> anyhow::Result<DigestAlgorithm> {
+    if repo.config.get("digest_algorithm").is_some() {
+        return get_repository_digest_algorithm(repo);
+    }
+    set_repository_digest_algorithm(db, repo, default_algo).await?;
+    Ok(default_algo)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

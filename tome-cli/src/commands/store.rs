@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use sea_orm::DatabaseConnection;
 use tracing::{info, warn};
 
-use tome_core::hash;
+use tome_core::hash::{self, DigestAlgorithm};
 use tome_db::ops;
 use tome_store::{Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
 
@@ -70,6 +70,9 @@ pub struct StoreCopyArgs {
 pub struct StoreVerifyArgs {
     /// Store name to verify
     pub store: String,
+    /// Digest algorithm used when the blobs were scanned [default: sha256]
+    #[arg(long, value_enum, default_value = "sha256")]
+    pub digest_algorithm: DigestAlgorithm,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -345,7 +348,7 @@ async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<
             }
         }
 
-        let file_hash = match hash::hash_file(&tmp_file) {
+        let file_hash = match hash::hash_file(&tmp_file, args.digest_algorithm) {
             Ok(h) => h,
             Err(e) => {
                 warn!("hash failed for {}: {}", digest_hex, e);

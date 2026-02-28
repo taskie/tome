@@ -28,6 +28,7 @@ pub struct VerifyArgs {
 
 pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let algo = ops::get_repository_digest_algorithm(&repo)?;
 
     // Determine scan root: CLI arg > snapshot metadata > error.
     let scan_root = if let Some(p) = args.path {
@@ -67,7 +68,7 @@ pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
             continue;
         }
 
-        let file_hash = match hash::hash_file(&abs_path) {
+        let file_hash = match hash::hash_file(&abs_path, algo) {
             Ok(h) => h,
             Err(e) => {
                 println!("ERROR      {}  ({})", entry.path, e);
