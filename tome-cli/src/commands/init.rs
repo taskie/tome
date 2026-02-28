@@ -55,7 +55,7 @@ pub async fn run(args: InitArgs) -> Result<()> {
     });
 
     // Register with the central server.
-    let url = format!("{}/api/machines/register", args.server.trim_end_matches('/'));
+    let url = format!("{}/machines", args.server.trim_end_matches('/'));
     info!("registering machine {:?} at {}", machine_name, url);
 
     let client = reqwest::Client::new();

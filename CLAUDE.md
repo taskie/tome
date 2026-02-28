@@ -163,7 +163,7 @@ store.rs の重複解消（ストア解決・進捗カウンタ）、scan.rs の
 
 ### machine_id 払い出し
 
-`POST /api/machines/register` で中央サーバが未使用 machine_id を自動割当。
+`POST /machines` で中央サーバが未使用 machine_id を自動割当。
 `tome init --server <url>` で取得し `~/.config/tome/tome.toml` に書き込み。
 `machine_id = 0` はローカル専用として予約。
 
@@ -366,11 +366,11 @@ where
 | `GET /health` | 不要 | ヘルスチェック |
 | `GET /repositories/*` | 必要 | メタデータ閲覧 |
 | `GET /blobs/*` | 必要 | メタデータ閲覧 |
-| `POST /api/machines/register` | 特別 | 下記参照 |
-| `PUT /api/machines/*` | 必要 | マシン更新 |
+| `POST /machines` | 特別 | 下記参照 |
+| `PUT /machines/*` | 必要 | マシン更新 |
 
 **machine 登録の認証:**
-- 初回登録（`POST /api/machines/register`）は「登録用シークレット」で保護
+- 初回登録（`POST /machines`）は「登録用シークレット」で保護
 - `tome-server` 起動時に `--registration-secret` or 環境変数 `TOME_REGISTRATION_SECRET` で指定
 - `tome init --server <url> --secret <registration-secret>` で初回登録
 
@@ -410,7 +410,7 @@ machines_roles テーブル:
 
 1. **層 1: ネットワーク制限** — ドキュメントとデプロイガイドで対応（コード変更なし）
 2. **層 2: API トークン認証** — `machines.api_token_hash` + Axum middleware
-3. **層 2: 登録用シークレット** — `POST /api/machines/register` の保護
+3. **層 2: 登録用シークレット** — `POST /machines` の保護
 4. **層 3: Web UI 認証** — NextAuth.js + GitHub OAuth（tome-web 側のみ）
 5. **層 4: RBAC** — `machines_roles` テーブル + 権限チェック middleware
 
