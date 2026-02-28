@@ -10,7 +10,19 @@ async fn open_test_db(db_dir: &tempfile::TempDir) -> sea_orm::DatabaseConnection
 
 /// Run a scan of `dir` using repo `"default"`.
 async fn scan(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
-    let args = ScanArgs { repo: "default".to_owned(), path: Some(dir.to_path_buf()) };
+    let args = ScanArgs { repo: "default".to_owned(), path: Some(dir.to_path_buf()), no_ignore: false };
+    scan_run(db, args).await.expect("scan failed");
+}
+
+/// Run a scan with a custom repo name.
+async fn scan_repo(db: &sea_orm::DatabaseConnection, repo: &str, dir: &std::path::Path) {
+    let args = ScanArgs { repo: repo.to_owned(), path: Some(dir.to_path_buf()), no_ignore: false };
+    scan_run(db, args).await.expect("scan failed");
+}
+
+/// Run a scan with no_ignore=true.
+async fn scan_no_ignore(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
+    let args = ScanArgs { repo: "default".to_owned(), path: Some(dir.to_path_buf()), no_ignore: true };
     scan_run(db, args).await.expect("scan failed");
 }
 
@@ -147,4 +159,135 @@ async fn test_scan_subdirectory() {
         "nested file should be in cache; keys: {:?}",
         cache.keys().collect::<Vec<_>>()
     );
+}
+
+#[tokio::test]
+async fn test_scan_respects_gitignore() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let files_dir = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    // The `ignore` crate requires a .git directory to recognize .gitignore.
+    std::fs::create_dir(files_dir.path().join(".git")).unwrap();
+    std::fs::write(files_dir.path().join(".gitignore"), b"ignored.txt\n").unwrap();
+    std::fs::write(files_dir.path().join("tracked.txt"), b"tracked").unwrap();
+    std::fs::write(files_dir.path().join("ignored.txt"), b"ignored").unwrap();
+
+    scan(&db, files_dir.path()).await;
+
+    let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
+    let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
+
+    assert!(cache.contains_key("tracked.txt"));
+    assert!(cache.contains_key(".gitignore"));
+    assert!(!cache.contains_key("ignored.txt"), "ignored.txt should not be scanned");
+}
+
+#[tokio::test]
+async fn test_scan_no_ignore_overrides_gitignore() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let files_dir = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    std::fs::create_dir(files_dir.path().join(".git")).unwrap();
+    std::fs::write(files_dir.path().join(".gitignore"), b"ignored.txt\n").unwrap();
+    std::fs::write(files_dir.path().join("tracked.txt"), b"tracked").unwrap();
+    std::fs::write(files_dir.path().join("ignored.txt"), b"ignored").unwrap();
+
+    scan_no_ignore(&db, files_dir.path()).await;
+
+    let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
+    let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
+
+    assert!(cache.contains_key("tracked.txt"));
+    assert!(cache.contains_key("ignored.txt"), "ignored.txt should be scanned with --no-ignore");
+}
+
+#[tokio::test]
+async fn test_scan_multiple_repos() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let dir_a = tempfile::tempdir().unwrap();
+    let dir_b = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    std::fs::write(dir_a.path().join("a.txt"), b"alpha").unwrap();
+    std::fs::write(dir_b.path().join("b.txt"), b"bravo").unwrap();
+
+    scan_repo(&db, "repo_a", dir_a.path()).await;
+    scan_repo(&db, "repo_b", dir_b.path()).await;
+
+    let repo_a = ops::get_or_create_repository(&db, "repo_a").await.unwrap();
+    let repo_b = ops::get_or_create_repository(&db, "repo_b").await.unwrap();
+    assert_ne!(repo_a.id, repo_b.id);
+
+    let cache_a = ops::load_entry_cache(&db, repo_a.id).await.unwrap();
+    let cache_b = ops::load_entry_cache(&db, repo_b.id).await.unwrap();
+    assert_eq!(cache_a.len(), 1);
+    assert_eq!(cache_b.len(), 1);
+    assert!(cache_a.contains_key("a.txt"));
+    assert!(cache_b.contains_key("b.txt"));
+}
+
+#[tokio::test]
+async fn test_scan_empty_directory() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let files_dir = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    scan(&db, files_dir.path()).await;
+
+    let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
+    let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
+    assert!(cache.is_empty(), "empty directory should produce no cache entries");
+
+    let snapshot = ops::latest_snapshot(&db, repo.id).await.unwrap().unwrap();
+    let entries = ops::entries_in_snapshot(&db, snapshot.id).await.unwrap();
+    assert!(entries.is_empty());
+}
+
+#[tokio::test]
+async fn test_scan_identical_content_shares_blob() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let files_dir = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    let content = b"identical content";
+    std::fs::write(files_dir.path().join("file_a.txt"), content).unwrap();
+    std::fs::write(files_dir.path().join("file_b.txt"), content).unwrap();
+
+    scan(&db, files_dir.path()).await;
+
+    let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
+    let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
+    let blob_a = cache["file_a.txt"].blob_id;
+    let blob_b = cache["file_b.txt"].blob_id;
+    assert_eq!(blob_a, blob_b, "files with identical content should share the same blob");
+}
+
+#[tokio::test]
+async fn test_scan_snapshot_parent_chain() {
+    let db_dir = tempfile::tempdir().unwrap();
+    let files_dir = tempfile::tempdir().unwrap();
+    let db = open_test_db(&db_dir).await;
+
+    std::fs::write(files_dir.path().join("f.txt"), b"v1").unwrap();
+    scan(&db, files_dir.path()).await;
+
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::fs::write(files_dir.path().join("f.txt"), b"v2").unwrap();
+    scan(&db, files_dir.path()).await;
+
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    std::fs::write(files_dir.path().join("f.txt"), b"v3").unwrap();
+    scan(&db, files_dir.path()).await;
+
+    let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
+    let mut snapshots = ops::snapshots_after(&db, repo.id, None).await.unwrap();
+    assert_eq!(snapshots.len(), 3);
+
+    snapshots.sort_by_key(|s| s.id);
+    // First snapshot has no parent; subsequent ones chain to the previous.
+    assert!(snapshots[0].parent_id.is_none(), "first snapshot should have no parent");
+    assert_eq!(snapshots[1].parent_id, Some(snapshots[0].id));
+    assert_eq!(snapshots[2].parent_id, Some(snapshots[1].id));
 }

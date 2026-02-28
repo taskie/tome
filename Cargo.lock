@@ -5310,6 +5310,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sonyflake 0.4.0",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "twox-hash 2.1.2",
