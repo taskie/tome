@@ -54,3 +54,27 @@ jobs:
           cargo test
           -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
           -p aether -p aether-cli -p treblo -p treblo-cli
+
+      # ── tome-web (Next.js) ──────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: tome-web/.nvmrc
+          cache: npm
+          cache-dependency-path: tome-web/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: tome-web
+
+      - name: Lint (ESLint + Prettier)
+        run: npm run lint
+        working-directory: tome-web
+
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: tome-web
+
+      - name: Build
+        run: npm run build
+        working-directory: tome-web
