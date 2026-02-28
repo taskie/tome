@@ -182,4 +182,14 @@ tome-web/
 
 | 優先度 | 内容 |
 |--------|------|
+| 高 | `tome restore` — スナップショット + store からファイルを復元（store download + entries_in_snapshot の組み合わせ） |
+| 高 | `tome diff` CLI 版 — 2スナップショット間の差分を CLI で表示（`--stat` / `--name-only`）。API は既存 |
+| 中 | `tome tag` — blob への key=value タグ付与・検索。tags テーブルは定義済み、CLI/API が未実装 |
+| 中 | `tome verify`（ローカル） — スキャン済みファイルを再ハッシュし entry_cache と比較。ビットロット検知 |
+| 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
+| 中 | スナップショット注釈 — `tome scan --message "..."` で snapshots.message に手動メッセージを付与 |
+| 低 | `tome gc` — 未参照 blob/replica の検出・削除。保持ポリシー（N世代 or N日）付き |
+| 低 | 重複レポート — blob の content-addressing を活かしリポジトリ横断でファイル重複を報告 |
+| 低 | PostgreSQL 中央同期 — 複数マシンが一つの PostgreSQL に push/pull（現在は SQLite↔SQLite のみ） |
+| 低 | Webhook / 通知 — スキャン完了時に変更サマリを POST（Slack, Discord 等） |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |
