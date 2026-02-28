@@ -188,12 +188,14 @@ Manage storage backends for file blobs.
 ```bash
 tome store add <name> <url>                                    # register a store
 tome store list                                                 # list stores
-tome store push [--repo <name>] [<store>]                      # upload blobs
-tome store copy [--encrypt] [--key-file <path>] <src> <dst>   # copy between stores
+tome store push [--repo <name>] [<store>] [<path>]             # upload blobs
+tome store copy [--encrypt] [--key-file <path>] [--cipher <alg>] <src> <dst>
 tome store verify <store>                                       # verify integrity
 ```
 
 Supported URL schemes: `file:///path`, `ssh://user@host/path`, `s3://bucket/prefix`
+
+Cipher options for `--cipher`: `aes256gcm` (default), `chacha20-poly1305`
 
 ### `tome gc [OPTIONS]`
 
@@ -218,12 +220,27 @@ tome tag search <key> [value]          # find blobs by tag
 
 ### `tome sync <COMMAND>`
 
-Synchronize snapshot history between SQLite databases.
+Synchronize snapshot history with a peer database or HTTP server.
+
+Peers can be specified as a **PostgreSQL URL** (`postgres://...`) for direct DB access,
+or an **HTTP URL** (`http://...` / `https://...`) to sync via the `tome serve` API.
 
 ```bash
-tome sync add [--repo <name>] <name> <peer-db-url>  # register a sync peer
-tome sync list                                        # list peers
-tome sync pull <name>                                 # pull incremental snapshots
+tome sync add [--repo <name>] <name> <peer-url>   # register a sync peer
+tome sync add --peer-repo docs central postgres://central/tome  # remote repo name differs
+tome sync list                                      # list peers
+tome sync pull <name>                               # pull incremental snapshots from peer
+tome sync push <name> [--machine-id <N>]            # push local snapshots to peer
+```
+
+### `tome init`
+
+Register this machine with a central `tome serve` instance.
+
+```bash
+tome init --server https://sync.example.com
+tome init --server https://sync.example.com --name my-laptop --description "dev machine"
+tome init --server https://sync.example.com --force   # overwrite existing machine_id
 ```
 
 ### `tome serve [--addr <host:port>]`

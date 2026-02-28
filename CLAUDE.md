@@ -491,7 +491,6 @@ CLI コマンドの主要な DB/IO 操作に `.context("...")` を追加し、
 | 高 | `tome push` / `tome pull` 統合コマンド — scan + store push + sync push を一括実行 |
 | 高 | `tome restore` — snapshot + replica 情報から store 経由でファイルを復元 |
 | 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
-| 中 | HTTP sync API — `tome serve` に `/sync/push`, `/sync/pull` を追加し DB 直接接続を不要にする |
 | 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |
 | 中 | sync push 時のコンフリクト検知 — 中央 DB の分岐を検出し警告 |
 | 中 | sync フィルタ — `--include` / `--exclude` でパスを絞った選択的同期 |
@@ -500,3 +499,10 @@ CLI コマンドの主要な DB/IO 操作に `.context("...")` を追加し、
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
 | 低 | 鍵ローテーション — Header 拡張 + `store reencrypt` コマンド |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |
+
+### 実装済み
+
+- HTTP sync API（`/sync/push`, `/sync/pull`）— DB 直接接続と HTTP の二重モード対応
+- `GET /diff` 削除ファイル対応
+- `path_history` API の digest 欠落修正（blob JOIN）
+- エラーハンドリング改善（AppError 構造化、Mutex パニック除去、Context 付与）

@@ -129,12 +129,15 @@ PUT /machines/{id}                     update machine (name, description)
 GET /stores
 GET /tags
 GET /sync-peers
+GET /sync/pull                     ?repo= &after=  (incremental snapshot pull)
+POST /sync/push                    ?repo=           (push snapshots, entries, replicas)
 ```
 
 Notes:
 - Digests are stored as binary in the DB and returned as lowercase hex strings in responses.
 - `GET /diff` compares current state (`entry_cache`) across two repositories, with independent path prefixes per side. Entry keys are namespaced as `"1:{path}"` / `"2:{path}"` to avoid collisions. Limit: 10,000 entries per side.
 - `GET /repositories/{name}/diff` compares two **snapshots** within one repository.
+- `POST /sync/push` is idempotent: duplicate pushes from the same `(source_machine_id, source_snapshot_id)` return the existing snapshot.
 
 #### `GET /diff` response shape
 
@@ -223,8 +226,6 @@ tome-web/
 ### 2. `tome restore` requires store availability
 
 To restore a file from a historical snapshot, the corresponding blob must exist in at least one reachable store. There is currently no API to check replica availability before attempting a restore.
-
-### 3. ID generation depends on machine-id and start-time
 
 ### 3. ID generation depends on machine-id and start-time
 
