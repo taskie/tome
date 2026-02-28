@@ -41,11 +41,11 @@ impl TrebloWalk {
     fn resolve<P, F>(&self, resolving_map: &mut BTreeMap<PathBuf, TreeEntry>, parent: P, f: &mut F)
     where
         P: AsRef<Path>,
-        F: FnMut(&Path, &TreeEntry, bool) -> (),
+        F: FnMut(&Path, &TreeEntry, bool),
     {
         let mut paths = Vec::new();
         let mut entries = Vec::new();
-        for (path, entry) in resolving_map.range(parent.as_ref().to_owned()..).into_iter() {
+        for (path, entry) in resolving_map.range(parent.as_ref().to_owned()..) {
             if !path.starts_with(parent.as_ref()) {
                 break;
             }
@@ -55,7 +55,7 @@ impl TrebloWalk {
         entries.sort_by_key(|e| {
             let mut bs = e.name.as_bytes().to_vec();
             if e.file_mode == FileMode::DIR {
-                bs.push('/' as u8);
+                bs.push(b'/');
             }
             bs
         });
@@ -73,7 +73,7 @@ impl TrebloWalk {
 
     pub fn walk<P: AsRef<Path>, F>(&self, path: P, walk: ignore::Walk, f: &mut F)
     where
-        F: FnMut(&Path, &TreeEntry, bool) -> (),
+        F: FnMut(&Path, &TreeEntry, bool),
     {
         let mut resolving_map = BTreeMap::<PathBuf, TreeEntry>::new();
         let is_dir = path.as_ref().is_dir();

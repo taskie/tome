@@ -14,7 +14,7 @@ impl PathWalkState<PathBuf> {
     pub fn process<P, F>(&mut self, item: Option<P>, f: &mut F)
     where
         P: AsRef<Path>,
-        F: FnMut(&Path) -> (),
+        F: FnMut(&Path),
     {
         let parent = item.and_then(|p| p.as_ref().parent().map(|p| p.to_owned()));
         if let Some(parent) = parent {
@@ -23,7 +23,7 @@ impl PathWalkState<PathBuf> {
                 if &parent == last || parent.starts_with(last) {
                     break;
                 }
-                f(&last);
+                f(last);
                 self.parent_stack.pop();
             }
             let last = self.parent_stack.last();
@@ -47,8 +47,7 @@ impl PathWalkState<PathBuf> {
                 self.parent_stack.push(pb.to_owned());
             }
         } else {
-            while !self.parent_stack.is_empty() {
-                let last = self.parent_stack.pop().unwrap();
+            while let Some(last) = self.parent_stack.pop() {
                 f(&last);
             }
         }

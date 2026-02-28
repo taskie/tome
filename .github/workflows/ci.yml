@@ -36,18 +36,21 @@ jobs:
       - name: Check format
         run: cargo fmt --all -- --check
 
-      - name: Clippy (tome-* crates only)
+      - name: Clippy
         run: >
           cargo clippy
           -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
+          -p aether -p aether-cli -p treblo -p treblo-cli
           --no-deps -- -D warnings
 
-      - name: Build (tome-* crates only)
+      - name: Build
         run: >
           cargo build
           -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
+          -p aether -p aether-cli -p treblo -p treblo-cli
 
-      - name: Test (tome-* crates only)
+      - name: Test
         run: >
           cargo test
           -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
+          -p aether -p aether-cli -p treblo -p treblo-cli

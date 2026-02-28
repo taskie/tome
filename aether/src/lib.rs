@@ -42,7 +42,7 @@ impl Cipher {
 
     pub fn with_key_slice(key: &[u8]) -> Cipher {
         let key = Key::<Aes256Gcm>::from_slice(key);
-        Cipher::new(&key)
+        Cipher::new(key)
     }
 
     pub fn with_key_b64(s: &str) -> Cipher {
@@ -66,7 +66,7 @@ impl Cipher {
         let mut key = [0u8; KEY_SIZE];
         argon2.hash_password_into(password, &salt, &mut key).unwrap();
         let key = Key::<Aes256Gcm>::from_slice(&key);
-        Cipher::new0(key, Some(salt.clone()))
+        Cipher::new0(key, Some(salt))
     }
 
     pub fn encrypt<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<(), std::io::Error> {
@@ -88,10 +88,7 @@ impl Cipher {
                 break;
             }
             let nonce = countered_nonce.next();
-            let ciphertext = self
-                .gcm
-                .encrypt(&nonce, &buf[..pos])
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let ciphertext = self.gcm.encrypt(&nonce, &buf[..pos]).map_err(|e| std::io::Error::other(e.to_string()))?;
             w.write_all(&ciphertext)?;
         }
         Ok(())
@@ -100,8 +97,7 @@ impl Cipher {
     pub fn encrypt_bytes(&mut self, bs: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         let mut result = Vec::with_capacity(NONCE_SIZE + bs.len() + 16);
         let nonce = self.countered_nonce.next();
-        let mut enc =
-            self.gcm.encrypt(&nonce, bs).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let mut enc = self.gcm.encrypt(&nonce, bs).map_err(|e| std::io::Error::other(e.to_string()))?;
         result.append(&mut enc);
         result.extend_from_slice(nonce.as_slice());
         Ok(result)
@@ -128,10 +124,7 @@ impl Cipher {
                 break;
             }
             let nonce = countered_nonce.next();
-            let plaintext = self
-                .gcm
-                .decrypt(&nonce, &buf[..pos])
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            let plaintext = self.gcm.decrypt(&nonce, &buf[..pos]).map_err(|e| std::io::Error::other(e.to_string()))?;
             if !tmp_old.is_empty() {
                 w.write_all(&tmp_old)?;
             }
@@ -147,7 +140,7 @@ impl Cipher {
         if header.integrity != actual_integrity {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid integrity"));
         }
-        w.write_all(&tmp)?;
+        w.write_all(tmp)?;
         Ok(())
     }
 
@@ -155,17 +148,14 @@ impl Cipher {
         let mut bs = bs.to_vec();
         let nonce = bs.split_off(bs.len() - NONCE_SIZE);
         let nonce = Nonce::from_slice(&nonce);
-        let plaintext = self
-            .gcm
-            .decrypt(&nonce, bs.as_slice())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let plaintext = self.gcm.decrypt(nonce, bs.as_slice()).map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(plaintext)
     }
 
     pub fn decrypt_file_name(&mut self, s: &OsStr) -> Result<OsString, std::io::Error> {
         let ciphertext = base64::prelude::BASE64_URL_SAFE_NO_PAD
             .decode(s.as_bytes())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         let plaintext = self.decrypt_bytes(&ciphertext)?;
         Ok(OsString::from_vec(plaintext))
     }
@@ -214,7 +204,7 @@ impl Header {
         if bs.len() != HEADER_SIZE {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header (len)"));
         }
-        let mut header = &bs[..];
+        let mut header = bs;
         let magic = header.get_u16();
         if magic != 0xae71 {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header (magic)"));
@@ -241,7 +231,7 @@ impl CounteredNonce {
     }
 
     pub fn peek(&self) -> Nonce<U12> {
-        let mut nonce = self.original.clone();
+        let mut nonce = self.original;
         let xs = nonce.as_mut_slice();
         let ys = self.counter.to_be_bytes();
         for i in 0..ys.len() {

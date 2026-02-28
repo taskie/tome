@@ -16,7 +16,7 @@
 ```bash
 # Rust — フォーマット & lint
 cargo fmt --all
-cargo clippy -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli
+cargo clippy -p tome-core -p tome-db -p tome-store -p tome-server -p tome-cli -p treblo -p treblo-cli -p aether -p aether-cli
 
 # tome-web — フォーマット & lint
 cd tome-web && npm run format && npm run lint
@@ -313,6 +313,130 @@ addr = "127.0.0.1:8080"          # リッスンアドレス (現: --addr)
 - **tome.toml に機密情報を書かない** — DB パスワード・暗号化鍵はファイルパス参照のみ
 - **設定ファイルは任意** — なくても全機能が動く（既存動作を壊さない）
 - **`--config <PATH>` オプション** は将来追加可（初期実装では不要）
+
+---
+
+## リファクタリング方針
+
+現状のコードベースは機能的に動作しているが、ファイルの肥大化と定型パターンの重複が
+今後の機能追加（tome.toml 導入、BLAKE3、ChaCha20-Poly1305 等）のボトルネックになる。
+以下を段階的に実施する。
+
+### 現状の規模
+
+| ファイル | 行数 | 課題 |
+|----------|------|------|
+| `tome-db/src/ops.rs` | 949 | 53 関数が 1 ファイルに集中。ドメイン境界が不明瞭 |
+| `tome-server/src/routes.rs` | 527 | 全ハンドラが 1 ファイル。レスポンス型定義と混在 |
+| `tome-cli/src/commands/store.rs` | 380 | push/copy/verify に進捗カウンタ・ストア取得の重複 |
+| `tome-cli/src/commands/scan.rs` | 309 | `process_file()` が 64 行で 2 ステージ混在 |
+
+### Phase 1: tome-db/src/ops.rs 分割 【優先度: 高】
+
+949 行・53 関数を機能ドメインごとにモジュール分割する。
+
+```
+tome-db/src/ops/
+  mod.rs          — pub use で再エクスポート（既存の use パスを維持）
+  repository.rs   — get_or_create_repository, *_digest_algorithm (4 関数)
+  blob.rs         — get_or_create_blob, find_blob_by_*, blobs_by_ids (5 関数)
+  snapshot.rs     — create_snapshot, latest_snapshot, update_snapshot_metadata, list/all (5 関数)
+  entry.rs        — insert_entry_*, entries_*, entries_by_prefix (6 関数)
+  entry_cache.rs  — load_entry_cache, upsert_cache_*, list/present_cache_entries (6 関数)
+  store.rs        — get_or_create_store, find_store_by_name, list_stores (3 関数)
+  replica.rs      — replica_exists, insert_replica, replicas_* (7 関数)
+  sync_peer.rs    — insert_sync_peer, find/list/update_sync_peer (4 関数)
+  tag.rs          — upsert_tag, delete_tags, list_tags, search_blobs_by_tag (4 関数)
+  diff.rs         — path_history, entries_for_blob, diff 系 (3 関数)
+  gc.rs           — blob_ids_in_snapshots, unreferenced_blobs, delete_* (6 関数)
+```
+
+**手順:**
+1. `ops.rs` → `ops/mod.rs` にリネーム
+2. ドメインごとにファイルを切り出し、`mod.rs` で `pub use` 再エクスポート
+3. 外部クレート（tome-cli, tome-server）の `use tome_db::ops::*` は変更不要
+
+### Phase 2: tome-server/src/routes.rs 分割 【優先度: 中】
+
+527 行を構造化する。
+
+```
+tome-server/src/
+  routes/
+    mod.rs           — ルーター定義 (pub fn router())
+    responses.rs     — レスポンス型 + From impl（BlobResponse, EntryResponse 等）
+    repositories.rs  — list_repositories, get_repository, list_snapshots, get_latest
+    snapshots.rs     — list_entries
+    blobs.rs         — get_blob, list_blob_entries
+    files.rs         — list_files
+    diff.rs          — diff_snapshots, diff_repos
+    history.rs       — path_history
+```
+
+**重複解消:**
+- リポジトリ取得 + 404 処理を共通ヘルパー `find_repo_or_404()` に抽出（6 箇所で重複）
+- `hex_encode` + レスポンス変換を `responses.rs` の `From` impl に集約
+
+### Phase 3: tome-cli コマンドの共通化 【優先度: 中】
+
+**3a. store.rs の重複解消**
+
+push/copy/verify で繰り返される以下のパターンを抽出:
+
+```rust
+// 共通: ストア名→Model 解決
+async fn resolve_store(db: &DatabaseConnection, name: &str) -> Result<store::Model>
+
+// 共通: 進捗付きバッチ処理
+struct BatchProgress { ok: u64, failed: u64, skipped: u64 }
+impl BatchProgress {
+    fn summary(&self, verb: &str) -> String  // "done: 42 copied, 0 failed, 3 skipped"
+}
+```
+
+**3b. scan.rs の process_file 分解**
+
+64 行の `process_file()` を 2 つのヘルパーに分割:
+
+```rust
+/// mtime + size で変更なしを高速判定
+fn is_unchanged(meta: &FileMeta, cached: &CacheEntry) -> bool
+
+/// ハッシュ計算 + DB 登録
+async fn record_change(ctx: &mut ScanContext, path: &str, hash: FileHash) -> Result<()>
+```
+
+### Phase 4: aether の AEAD 抽象化 【優先度: 低 — ChaCha20-Poly1305 導入時に実施】
+
+ChaCha20-Poly1305 導入方針（上記セクション参照）と同時に実施。
+`Cipher` 内部を enum ディスパッチに変更する際に、テストも各アルゴリズムでパラメタライズ。
+
+### Phase 5: レガシークレート整理 【優先度: 低】
+
+以下は tome-* 系への移行完了後に削除またはアーカイブ:
+
+```
+ichno/          — 旧 SQLite 実装
+ichno_cli/      — 旧 CLI
+ichnome/        — 旧 PostgreSQL 実装
+ichnome_cli/    — 旧 CLI
+ichnome_web/    — 旧 Web (Rust)
+ichnome_web_front/ — 旧フロントエンド
+treblo/         — 旧ライブラリ
+treblo_cli/     — 旧 CLI
+optional_derive/ — proc macro（tome-* で未使用なら削除）
+aether_cli/     — aether の CLI ラッパー（tome-cli に統合済みか確認）
+```
+
+**手順:** `Cargo.toml` の `[workspace] members` から除外 → 別ブランチにアーカイブ
+
+### 実施順序とガイドライン
+
+1. **Phase 1 → Phase 2** を先に実施（ops.rs, routes.rs の分割は他タスクの前提）
+2. **Phase 3** は tome.toml 導入時にあわせて実施（config 受け渡しの変更と同時）
+3. 各 Phase は **動作を変えない純粋なリファクタリング** — `cargo test` がパスし続けること
+4. 1 Phase = 1 PR。Phase 内でもファイル単位でコミットを分ける
+5. `pub use` 再エクスポートで **外部 API を維持** — 他クレートの `use` 文を壊さない
 
 ---
 

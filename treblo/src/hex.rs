@@ -18,15 +18,15 @@ pub fn from_hex_string(s: &str) -> Option<Vec<u8>> {
         match (c1, c2) {
             (Some(c1), Some(c2)) => {
                 let b1 = match c1 {
-                    '0'..='9' => c1 as u8 - '0' as u8,
-                    'a'..='f' => c1 as u8 - 'a' as u8 + 10,
-                    'A'..='F' => c1 as u8 - 'A' as u8 + 10,
+                    '0'..='9' => c1 as u8 - b'0',
+                    'a'..='f' => c1 as u8 - b'a' + 10,
+                    'A'..='F' => c1 as u8 - b'A' + 10,
                     _ => return None,
                 };
                 let b2 = match c2 {
-                    '0'..='9' => c2 as u8 - '0' as u8,
-                    'a'..='f' => c2 as u8 - 'a' as u8 + 10,
-                    'A'..='F' => c2 as u8 - 'A' as u8 + 10,
+                    '0'..='9' => c2 as u8 - b'0',
+                    'a'..='f' => c2 as u8 - b'a' + 10,
+                    'A'..='F' => c2 as u8 - b'A' + 10,
                     _ => return None,
                 };
                 bs.push((b1 << 4) | b2);
