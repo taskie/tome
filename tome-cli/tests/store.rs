@@ -148,3 +148,94 @@ async fn store_verify_detects_corrupted_blob() {
     let result = env.store_verify("local").await;
     assert!(result.is_err(), "store verify should fail when a blob is corrupted");
 }
+
+// ── Store set ─────────────────────────────────────────────────────────────────
+
+/// `tome store set` updates the URL of an existing store.
+#[tokio::test]
+async fn store_set_updates_url() {
+    let env = Env::new().await;
+    env.store_add_and_push("local").await.unwrap();
+
+    let new_url = "s3://new-bucket/prefix";
+    env.store_set("local", Some(new_url)).await.unwrap();
+
+    let store = ops::find_store_by_name(&env.db, "local").await.unwrap().unwrap();
+    assert_eq!(store.url, new_url);
+}
+
+/// `tome store set` with no flags returns an error.
+#[tokio::test]
+async fn store_set_without_flags_errors() {
+    let env = Env::new().await;
+    env.store_add_and_push("local").await.unwrap();
+
+    let result = env.store_set("local", None).await;
+    assert!(result.is_err(), "store set with no flags should error");
+}
+
+/// `tome store set` on a non-existent store returns an error.
+#[tokio::test]
+async fn store_set_nonexistent_errors() {
+    let env = Env::new().await;
+    let result = env.store_set("ghost", Some("file:///tmp")).await;
+    assert!(result.is_err(), "store set on non-existent store should error");
+}
+
+// ── Store rm ──────────────────────────────────────────────────────────────────
+
+/// `tome store rm` removes an empty store.
+#[tokio::test]
+async fn store_rm_removes_empty_store() {
+    let env = Env::new().await;
+    let store_url = format!("file://{}", env.store_dir().display());
+
+    // Register but don't push (no replicas).
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "empty".to_string(),
+                url: store_url,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    env.store_rm("empty", false).await.unwrap();
+
+    let stores = ops::list_stores(&env.db).await.unwrap();
+    assert!(stores.is_empty());
+}
+
+/// `tome store rm` refuses removal when replicas exist (without --force).
+#[tokio::test]
+async fn store_rm_rejects_when_replicas_exist() {
+    let env = Env::new().await;
+    env.write("a.txt", b"data");
+    env.scan().await.unwrap();
+    env.store_add_and_push("local").await.unwrap();
+
+    let result = env.store_rm("local", false).await;
+    assert!(result.is_err(), "rm should refuse when replicas exist");
+
+    // Store should still be there.
+    let stores = ops::list_stores(&env.db).await.unwrap();
+    assert_eq!(stores.len(), 1);
+}
+
+/// `tome store rm --force` removes a store even when replicas exist.
+#[tokio::test]
+async fn store_rm_force_removes_with_replicas() {
+    let env = Env::new().await;
+    env.write("a.txt", b"data");
+    env.scan().await.unwrap();
+    env.store_add_and_push("local").await.unwrap();
+
+    env.store_rm("local", true).await.unwrap();
+
+    let stores = ops::list_stores(&env.db).await.unwrap();
+    assert!(stores.is_empty());
+}

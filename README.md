@@ -187,6 +187,8 @@ Manage storage backends for file blobs.
 
 ```bash
 tome store add <name> <url>                                    # register a store
+tome store set <name> --url <new-url>                          # update store URL
+tome store rm <name> [--force]                                 # remove a store
 tome store list                                                 # list stores
 tome store push [--repo <name>] [<store>] [<path>]             # upload blobs
 tome store copy [--encrypt] [--key-file <path>] [--cipher <alg>] <src> <dst>
@@ -228,6 +230,8 @@ or an **HTTP URL** (`http://...` / `https://...`) to sync via the `tome serve` A
 ```bash
 tome sync add [--repo <name>] <name> <peer-url>   # register a sync peer
 tome sync add --peer-repo docs central postgres://central/tome  # remote repo name differs
+tome sync set <name> [--peer-url <url>] [--peer-repo <name>]   # update peer settings
+tome sync rm <name> [--repo <name>]                             # remove a sync peer
 tome sync list                                      # list peers
 tome sync pull <name>                               # pull incremental snapshots from peer
 tome sync push <name> [--machine-id <N>]            # push local snapshots to peer

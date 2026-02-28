@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use tome_cli::{
-    commands::{diff, gc, restore, scan, store, tag, verify},
+    commands::{diff, gc, restore, scan, store, sync, tag, verify},
     config::StoreConfig,
 };
 use tome_core::hash::DigestAlgorithm;
@@ -265,6 +265,106 @@ impl Env {
         let blob_id = entries[0].blob_id.unwrap();
         let blobs = ops::blobs_by_ids(&self.db, &[blob_id]).await.unwrap();
         tome_core::hash::hex_encode(&blobs[0].digest)
+    }
+
+    // ── store set / rm helpers ──────────────────────────────────────────────
+
+    /// Run `tome store set`.
+    pub async fn store_set(&self, name: &str, url: Option<&str>) -> anyhow::Result<()> {
+        store::run(
+            &self.db,
+            store::StoreArgs {
+                command: store::StoreCommands::Set(store::StoreSetArgs {
+                    name: name.to_string(),
+                    url: url.map(|u| u.to_string()),
+                }),
+            },
+            &StoreConfig::default(),
+        )
+        .await
+    }
+
+    /// Run `tome store rm`.
+    pub async fn store_rm(&self, name: &str, force: bool) -> anyhow::Result<()> {
+        store::run(
+            &self.db,
+            store::StoreArgs {
+                command: store::StoreCommands::Rm(store::StoreRmArgs { name: name.to_string(), force }),
+            },
+            &StoreConfig::default(),
+        )
+        .await
+    }
+
+    /// Run `tome store list` (returns Ok if no error).
+    pub async fn store_list(&self) -> anyhow::Result<()> {
+        store::run(&self.db, store::StoreArgs { command: store::StoreCommands::List }, &StoreConfig::default()).await
+    }
+
+    // ── sync helpers ────────────────────────────────────────────────────────
+
+    /// Run `tome sync add`.
+    pub async fn sync_add(
+        &self,
+        name: &str,
+        peer_url: &str,
+        repo: &str,
+        peer_repo: Option<&str>,
+    ) -> anyhow::Result<()> {
+        sync::run(
+            &self.db,
+            sync::SyncArgs {
+                command: sync::SyncCommands::Add(sync::SyncAddArgs {
+                    name: name.to_string(),
+                    peer_url: peer_url.to_string(),
+                    repo: repo.to_string(),
+                    peer_repo: peer_repo.map(|s| s.to_string()),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome sync set`.
+    pub async fn sync_set(
+        &self,
+        name: &str,
+        peer_url: Option<&str>,
+        peer_repo: Option<&str>,
+        repo: &str,
+    ) -> anyhow::Result<()> {
+        sync::run(
+            &self.db,
+            sync::SyncArgs {
+                command: sync::SyncCommands::Set(sync::SyncSetArgs {
+                    name: name.to_string(),
+                    peer_url: peer_url.map(|s| s.to_string()),
+                    peer_repo: peer_repo.map(|s| s.to_string()),
+                    repo: repo.to_string(),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome sync rm`.
+    pub async fn sync_rm(&self, name: &str, repo: &str) -> anyhow::Result<()> {
+        sync::run(
+            &self.db,
+            sync::SyncArgs {
+                command: sync::SyncCommands::Rm(sync::SyncRmArgs { name: name.to_string(), repo: repo.to_string() }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome sync list`.
+    pub async fn sync_list(&self, repo: &str) -> anyhow::Result<()> {
+        sync::run(
+            &self.db,
+            sync::SyncArgs { command: sync::SyncCommands::List(sync::SyncListArgs { repo: repo.to_string() }) },
+        )
+        .await
     }
 }
 

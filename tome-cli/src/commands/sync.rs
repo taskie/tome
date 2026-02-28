@@ -20,6 +20,10 @@ pub struct SyncArgs {
 pub enum SyncCommands {
     /// Register a sync peer
     Add(SyncAddArgs),
+    /// Update a sync peer
+    Set(SyncSetArgs),
+    /// Remove a sync peer
+    Rm(SyncRmArgs),
     /// List sync peers
     List(SyncListArgs),
     /// Pull changes from a sync peer
@@ -40,6 +44,30 @@ pub struct SyncAddArgs {
     /// Remote repository name on the peer [default: same as --repo]
     #[arg(long)]
     pub peer_repo: Option<String>,
+}
+
+#[derive(Args)]
+pub struct SyncSetArgs {
+    /// Peer name
+    pub name: String,
+    /// New peer URL
+    #[arg(long)]
+    pub peer_url: Option<String>,
+    /// New remote repository name on the peer
+    #[arg(long)]
+    pub peer_repo: Option<String>,
+    /// Repository name [default: "default"]
+    #[arg(long, default_value = "default")]
+    pub repo: String,
+}
+
+#[derive(Args)]
+pub struct SyncRmArgs {
+    /// Peer name
+    pub name: String,
+    /// Repository name [default: "default"]
+    #[arg(long, default_value = "default")]
+    pub repo: String,
 }
 
 #[derive(Args)]
@@ -77,6 +105,8 @@ pub struct SyncPushArgs {
 pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
     match args.command {
         SyncCommands::Add(a) => sync_add(db, a).await,
+        SyncCommands::Set(a) => sync_set(db, a).await,
+        SyncCommands::Rm(a) => sync_rm(db, a).await,
         SyncCommands::List(a) => sync_list(db, a).await,
         SyncCommands::Pull(a) => sync_pull(db, a).await,
         SyncCommands::Push(a) => sync_push(db, a).await,
@@ -95,6 +125,50 @@ async fn sync_add(db: &DatabaseConnection, args: SyncAddArgs) -> Result<()> {
     let peer = ops::insert_sync_peer(db, &args.name, &args.peer_url, repo.id, config).await?;
 
     println!("sync peer registered: {} (id={}, url={}, peer_repo={})", peer.name, peer.id, peer.url, peer_repo);
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// sync set
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn sync_set(db: &DatabaseConnection, args: SyncSetArgs) -> Result<()> {
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let peer = ops::find_sync_peer(db, &args.name, repo.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found in repo {:?}", args.name, args.repo))?;
+
+    if args.peer_url.is_none() && args.peer_repo.is_none() {
+        bail!("nothing to update (specify --peer-url and/or --peer-repo)");
+    }
+
+    // Merge peer_repo into existing config if provided.
+    let new_config = if let Some(ref pr) = args.peer_repo {
+        let mut cfg = peer.config.clone();
+        cfg["peer_repo"] = serde_json::json!(pr);
+        Some(cfg)
+    } else {
+        None
+    };
+
+    let updated = ops::update_sync_peer(db, peer.id, args.peer_url.as_deref(), new_config).await?;
+    let peer_repo = updated.config.get("peer_repo").and_then(|v| v.as_str()).unwrap_or("-");
+    println!("sync peer updated: {} (id={}, url={}, peer_repo={})", updated.name, updated.id, updated.url, peer_repo);
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// sync rm
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn sync_rm(db: &DatabaseConnection, args: SyncRmArgs) -> Result<()> {
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let peer = ops::find_sync_peer(db, &args.name, repo.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found in repo {:?}", args.name, args.repo))?;
+
+    ops::delete_sync_peer(db, peer.id).await?;
+    println!("sync peer removed: {} (id={})", peer.name, peer.id);
     Ok(())
 }
 

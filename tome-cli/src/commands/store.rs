@@ -25,6 +25,10 @@ pub struct StoreArgs {
 pub enum StoreCommands {
     /// Register a new store
     Add(StoreAddArgs),
+    /// Update an existing store
+    Set(StoreSetArgs),
+    /// Remove a store registration
+    Rm(StoreRmArgs),
     /// List registered stores
     List,
     /// Upload scanned files from a repository to a store
@@ -41,6 +45,24 @@ pub struct StoreAddArgs {
     pub name: String,
     /// Store URL (file:///path, ssh://user@host/path, s3://bucket/prefix)
     pub url: String,
+}
+
+#[derive(Args)]
+pub struct StoreSetArgs {
+    /// Store name
+    pub name: String,
+    /// New URL for the store
+    #[arg(long)]
+    pub url: Option<String>,
+}
+
+#[derive(Args)]
+pub struct StoreRmArgs {
+    /// Store name
+    pub name: String,
+    /// Force removal even if replicas exist
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Args)]
@@ -87,6 +109,8 @@ pub struct StoreVerifyArgs {
 pub async fn run(db: &DatabaseConnection, args: StoreArgs, cfg: &StoreConfig) -> Result<()> {
     match args.command {
         StoreCommands::Add(a) => store_add(db, a).await,
+        StoreCommands::Set(a) => store_set(db, a).await,
+        StoreCommands::Rm(a) => store_rm(db, a).await,
         StoreCommands::List => store_list(db).await,
         StoreCommands::Push(a) => store_push(db, a, cfg).await,
         StoreCommands::Copy(a) => store_copy(db, a, cfg).await,
@@ -101,6 +125,50 @@ pub async fn run(db: &DatabaseConnection, args: StoreArgs, cfg: &StoreConfig) ->
 async fn store_add(db: &DatabaseConnection, args: StoreAddArgs) -> Result<()> {
     let store = ops::get_or_create_store(db, &args.name, &args.url, serde_json::json!({})).await?;
     println!("store registered: {} (id={}, url={})", store.name, store.id, store.url);
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// store set
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn store_set(db: &DatabaseConnection, args: StoreSetArgs) -> Result<()> {
+    let store = ops::find_store_by_name(db, &args.name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.name))?;
+
+    if args.url.is_none() {
+        bail!("nothing to update (specify --url)");
+    }
+
+    let updated = ops::update_store(db, store.id, args.url.as_deref(), None).await?;
+    println!("store updated: {} (id={}, url={})", updated.name, updated.id, updated.url);
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// store rm
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn store_rm(db: &DatabaseConnection, args: StoreRmArgs) -> Result<()> {
+    let store = ops::find_store_by_name(db, &args.name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.name))?;
+
+    let replica_count = ops::count_replicas_in_store(db, store.id).await?;
+    if replica_count > 0 && !args.force {
+        bail!("store {:?} has {} replica(s); use --force to remove anyway", args.name, replica_count);
+    }
+
+    if replica_count > 0 {
+        let replicas = ops::replicas_in_store(db, store.id).await?;
+        let ids: Vec<i64> = replicas.iter().map(|r| r.id).collect();
+        let deleted = ops::delete_replica_records(db, &ids).await?;
+        println!("deleted {} replica record(s)", deleted);
+    }
+
+    ops::delete_store(db, store.id).await?;
+    println!("store removed: {} (id={})", store.name, store.id);
     Ok(())
 }
 

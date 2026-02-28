@@ -56,6 +56,34 @@ pub async fn list_all_sync_peers(db: &DatabaseConnection) -> anyhow::Result<Vec<
         .await?)
 }
 
+/// Update a sync peer's URL and/or config.
+pub async fn update_sync_peer(
+    db: &DatabaseConnection,
+    id: i64,
+    url: Option<&str>,
+    config: Option<serde_json::Value>,
+) -> anyhow::Result<sync_peer::Model> {
+    let model = sync_peer::Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync_peer {} not found", id))?;
+    let mut am: sync_peer::ActiveModel = model.into();
+    if let Some(u) = url {
+        am.url = Set(u.to_owned());
+    }
+    if let Some(c) = config {
+        am.config = Set(c);
+    }
+    am.updated_at = Set(Utc::now().fixed_offset());
+    Ok(am.update(db).await?)
+}
+
+/// Delete a sync peer by ID.
+pub async fn delete_sync_peer(db: &DatabaseConnection, id: i64) -> anyhow::Result<u64> {
+    let res = sync_peer::Entity::delete_by_id(id).exec(db).await?;
+    Ok(res.rows_affected)
+}
+
 /// Update the last_snapshot_id and last_synced_at of a sync peer.
 pub async fn update_sync_peer_progress(
     db: &DatabaseConnection,
