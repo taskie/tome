@@ -1,4 +1,5 @@
 //! Shared test helpers for tome-cli integration tests.
+#![allow(dead_code)]
 
 use std::path::PathBuf;
 

@@ -437,8 +437,6 @@ tome は**ローカルファーストの個人ツール**であり、tome-server
 |--------|------|
 | 高 | `tome push` / `tome pull` 統合コマンド — scan + store push + sync push を一括実行 |
 | 高 | `tome restore` — snapshot + replica 情報から store 経由でファイルを復元 |
-| 高 | `GET /diff` 削除ファイル除外バグ修正 — `blob_id = NULL` のエントリを diff 結果に含める |
-| 高 | `path_history` API の digest 欠落修正 — `From<entry::Model>` が blob を JOIN せず `digest: null` を返す |
 | 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
 | 中 | HTTP sync API — `tome serve` に `/sync/push`, `/sync/pull` を追加し DB 直接接続を不要にする |
 | 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |

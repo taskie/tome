@@ -83,8 +83,8 @@ pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
     println!("---");
     println!("{} ok, {} modified, {} missing, {} errors", ok, modified, missing, errors);
 
-    if modified > 0 || errors > 0 {
-        anyhow::bail!("{} modified, {} errors", modified, errors);
+    if modified > 0 || missing > 0 || errors > 0 {
+        anyhow::bail!("{} modified, {} missing, {} errors", modified, missing, errors);
     }
 
     Ok(())
