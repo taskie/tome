@@ -8,7 +8,6 @@ publish = false
 
 [dependencies]
 blake3 = { workspace = true }
-clap = { workspace = true }
 digest = "0.10"
 ignore = { workspace = true }
 sha-1 = "0.10"

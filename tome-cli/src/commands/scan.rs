@@ -31,7 +31,7 @@ pub struct ScanArgs {
 
     /// Digest algorithm for new repositories: sha256 (default) or blake3
     /// Existing repositories use their stored algorithm; this arg is ignored.
-    #[arg(long, value_enum, default_value = "sha256")]
+    #[arg(long, default_value = "sha256")]
     pub digest_algorithm: DigestAlgorithm,
 
     /// Directory to scan (default: current directory)

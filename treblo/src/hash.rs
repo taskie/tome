@@ -52,17 +52,6 @@ impl FromStr for DigestAlgorithm {
     }
 }
 
-// Implement clap::ValueEnum so DigestAlgorithm can be used as a CLI arg directly.
-impl clap::ValueEnum for DigestAlgorithm {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Sha256, Self::Blake3]
-    }
-
-    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
-        Some(clap::builder::PossibleValue::new(self.as_str()))
-    }
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Low-level hash helpers
 // ──────────────────────────────────────────────────────────────────────────────

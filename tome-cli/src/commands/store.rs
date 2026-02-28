@@ -74,7 +74,7 @@ pub struct StoreVerifyArgs {
     /// Store name to verify
     pub store: String,
     /// Digest algorithm used when the blobs were scanned [default: sha256]
-    #[arg(long, value_enum, default_value = "sha256")]
+    #[arg(long, default_value = "sha256")]
     pub digest_algorithm: DigestAlgorithm,
 }
 

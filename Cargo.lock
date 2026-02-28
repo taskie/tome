@@ -4433,7 +4433,6 @@ name = "treblo"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "clap",
  "digest",
  "ignore",
  "sha-1",
