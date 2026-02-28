@@ -4,7 +4,7 @@
 > スナップショット履歴を SQLite/PostgreSQL に記録する。
 
 **著者:** taskie <t@skie.jp>
-**ブランチ:** feature/tome（再設計実装中）
+**ブランチ:** main
 **コミットメッセージは英語で書くこと**
 
 設計・スキーマ・API の詳細は **[ARCHITECTURE.md](ARCHITECTURE.md)** を参照。
@@ -482,6 +482,25 @@ CLI コマンドの主要な DB/IO 操作に `.context("...")` を追加し、
 
 ---
 
+## テスト方針
+
+### 結合テスト（tome-cli/tests/）
+
+`tome-cli/tests/` 下の結合テストは **README.md に記載されたユースケース・CLI リファレンスと対応** させる。
+
+- **README.md のユースケースやコマンド例を追加・変更した場合、対応する結合テストを `tome-cli/tests/` に追加・更新すること**
+- テストファイルはコマンド単位で分割: `scan.rs`, `diff.rs`, `verify.rs`, `store.rs`, `restore.rs`, `tag.rs`, `sync.rs`, `gc.rs`
+- 共通ヘルパーは `common/mod.rs` の `Env` 構造体に集約。新コマンドを追加したら対応するヘルパーメソッドも追加する
+- サブコマンド追加時（例: `store set`, `sync rm`）は正常系・異常系（存在しないリソース、引数不足）の両方をテストする
+- テスト内で `.git/` を `mkdir` する必要がある場合がある（`ignore` クレートが `.gitignore` 認識に `.git/` を要求するため）
+
+### 単体テスト
+
+- `tome-core/src/lib.rs`: ハッシュ計算・ID 生成のユニットテスト
+- `tome-store/src/lib.rs`: ストレージ操作のユニットテスト
+
+---
+
 ## 残タスク
 
 > **方針: 個人ツールとしての完成度向上。認証・RBAC はスコープ外（外部インフラで代替）。**
@@ -506,3 +525,5 @@ CLI コマンドの主要な DB/IO 操作に `.context("...")` を追加し、
 - `GET /diff` 削除ファイル対応
 - `path_history` API の digest 欠落修正（blob JOIN）
 - エラーハンドリング改善（AppError 構造化、Mutex パニック除去、Context 付与）
+- `store set` / `store rm` — ストア登録の更新・削除（`--force` で replica 付きも削除可）
+- `sync set` / `sync rm` — sync peer の更新・削除
