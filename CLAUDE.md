@@ -275,144 +275,32 @@ export TOME_ENCRYPTION_KEY=$(base64 -d < /path/to/key)
 
 ---
 
-## Web UI 認可方針
+## セキュリティ方針
 
-### 現状
+tome は**ローカルファーストの個人ツール**であり、tome-server / tome-web にアプリ層の認証は実装しない。
+アクセス制御は外部インフラに委ねる。
 
-- tome-server は **認証・認可なし** — 全エンドポイントが無制限にアクセス可能
-- ローカル開発（`127.0.0.1:8080`）前提のため問題なかったが、
-  中央 Aurora 構成では tome-server がインターネットに露出する可能性がある
+| 運用形態 | 推奨手段 |
+|----------|---------|
+| 個人ローカル | `127.0.0.1` バインド（デフォルト）— 外部からアクセス不可 |
+| LAN 共有 | ファイアウォールで LAN 内 IP のみ許可 |
+| リモートアクセス | WireGuard / Tailscale 等の VPN 経由 |
+| クラウド公開 | Cloudflare Access / AWS ALB + OIDC でインフラ層保護 |
 
-### 脅威モデル
-
-| 脅威 | 影響 | 現状の対策 |
-|------|------|------------|
-| メタデータの不正閲覧 | ファイルパス・ハッシュ・スナップショット履歴が漏洩 | なし |
-| machine_id の不正登録 | 他マシンの ID 空間を奪取し、ID 衝突を引き起こす | なし |
-| メタデータの改ざん | 偽の snapshot/entry を push し、他マシンの pull を汚染 | なし |
-| blob 実体へのアクセス | S3 は暗号化済みだが、メタデータ経由でパスが判明 | aether 暗号化 |
-
-### 方針: 多層防御
-
-#### 層 1: ネットワーク制限（最優先）
-
-- Aurora: セキュリティグループで接続元 IP を制限
-- tome-server: VPN / VPC 内でのみ公開（パブリック Internet に直接公開しない）
-- S3: バケットポリシーで VPC エンドポイント経由のみ許可
-
-#### 層 2: API 認証（トークンベース）
-
-tome-server に Bearer Token 認証を導入する:
-
-```
-Authorization: Bearer <token>
-```
-
-**設計:**
-- `machines` テーブルに `api_token_hash` カラムを追加
-  （bcrypt or SHA-256 ハッシュ。平文トークンは DB に保存しない）
-- `tome init --server <url>` 時にトークンを発行し、
-  `~/.config/tome/tome.toml` に `server.token` として保存
-- Axum の middleware (extractor) で全 `/api/*` エンドポイントを保護
-
-```toml
-# tome.toml
-[server]
-url = "https://central.example.com"
-token = "tm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
-
-**実装案:**
-
-```rust
-// tome-server/src/auth.rs (新規)
-pub struct AuthenticatedMachine {
-    pub machine_id: i16,
-    pub name: String,
-}
-
-#[async_trait]
-impl<S> FromRequestParts<S> for AuthenticatedMachine
-where
-    S: Send + Sync,
-    DatabaseConnection: FromRef<S>,
-{
-    type Rejection = AppError;
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // 1. Authorization ヘッダから Bearer token を抽出
-        // 2. DB で token_hash を照合
-        // 3. machine レコードを返す（last_seen_at を更新）
-    }
-}
-```
-
-**エンドポイント保護レベル:**
-
-| エンドポイント | 認証 | 理由 |
-|---------------|------|------|
-| `GET /health` | 不要 | ヘルスチェック |
-| `GET /repositories/*` | 必要 | メタデータ閲覧 |
-| `GET /blobs/*` | 必要 | メタデータ閲覧 |
-| `POST /machines` | 特別 | 下記参照 |
-| `PUT /machines/*` | 必要 | マシン更新 |
-
-**machine 登録の認証:**
-- 初回登録（`POST /machines`）は「登録用シークレット」で保護
-- `tome-server` 起動時に `--registration-secret` or 環境変数 `TOME_REGISTRATION_SECRET` で指定
-- `tome init --server <url> --secret <registration-secret>` で初回登録
-
-#### 層 3: Web UI 認証（OAuth2 / OIDC）
-
-tome-web (Next.js) に認証を追加する。中央公開時に必要:
-
-**案 A: NextAuth.js + GitHub OAuth**
-- tome-web のサーバーサイドで GitHub OAuth2 を処理
-- 許可するユーザ/org を `tome-web/env.local` で設定
-- tome-server API 呼び出しは tome-web のサーバーサイドから行い、
-  クライアントブラウザは直接 tome-server にアクセスしない（現行設計を維持）
-
-**案 B: Cloudflare Access / AWS ALB 認証**
-- インフラ層で認証を処理（アプリ改修不要）
-- Cloudflare Zero Trust or ALB + Cognito で OIDC 認証
-- 認証済みユーザのみ tome-web / tome-server にアクセス可能
-
-**推奨: 案 A + 案 B の併用**
-- 案 B でネットワーク層の保護（全体）
-- 案 A で細粒度のアクセス制御（将来: リポジトリ単位の閲覧権限等）
-
-#### 層 4: RBAC（将来）
-
-リポジトリ単位の権限管理:
-
-```
-machines_roles テーブル:
-  machine_id, repository_id, role (reader / writer / admin)
-```
-
-- `reader`: sync pull / store copy のみ
-- `writer`: scan + sync push + store push
-- `admin`: 全操作 + gc + リポジトリ削除
-
-### 実装ステップ
-
-1. **層 1: ネットワーク制限** — ドキュメントとデプロイガイドで対応（コード変更なし）
-2. **層 2: API トークン認証** — `machines.api_token_hash` + Axum middleware
-3. **層 2: 登録用シークレット** — `POST /machines` の保護
-4. **層 3: Web UI 認証** — NextAuth.js + GitHub OAuth（tome-web 側のみ）
-5. **層 4: RBAC** — `machines_roles` テーブル + 権限チェック middleware
+アプリ層に認証・RBAC を実装することは現時点でスコープ外とする。
 
 ---
 
 ## 残タスク
 
+> **方針: 個人ツールとしての完成度向上。認証・RBAC はスコープ外（外部インフラで代替）。**
+
 | 優先度 | 内容 |
 |--------|------|
-| 高 | API トークン認証（層 2）— machines.api_token_hash + Axum middleware |
-| 中 | 暗号鍵管理 — key_source による外部シークレットマネージャ統合 |
-| 中 | Web UI 認証（層 3）— NextAuth.js + GitHub OAuth |
-| 中 | Watch モード（`tome watch`） — inotify/fsevents で監視し自動スナップショット |
-| 低 | 重複レポート — blob の content-addressing を活かしリポジトリ横断でファイル重複を報告 |
-| 低 | RBAC（層 4）— リポジトリ単位の権限管理 |
+| 高 | `GET /diff` 削除ファイル除外バグ修正 — `blob_id = NULL` のエントリを diff 結果に含める |
+| 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
+| 中 | 重複レポート（`tome dedup`）— blob の content-addressing を活かしリポジトリ横断で重複ファイルを報告 |
+| 中 | Webhook / 通知 — スキャン完了・変更検知時に変更サマリを POST（Slack, Discord, 汎用 HTTP） |
+| 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
 | 低 | 鍵ローテーション — Header 拡張 + `store reencrypt` コマンド |
-| 低 | Webhook / 通知 — スキャン完了時に変更サマリを POST（Slack, Discord 等） |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |
