@@ -123,3 +123,5 @@ tome-server/   HTTP API server (axum)
 tome-cli/      Unified CLI (scan / store / sync / serve)
 tome-web/      Next.js 16 web frontend
 ```
+
+For detailed design documentation — DB schema, hash strategy, HTTP API reference, and known design issues — see [ARCHITECTURE.md](ARCHITECTURE.md).
