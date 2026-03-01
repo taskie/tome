@@ -17,9 +17,9 @@ pub struct VerifyArgs {
     pub repo: String,
     /// Root directory of scanned files (overrides scan_root from snapshot metadata)
     pub path: Option<std::path::PathBuf>,
-    /// Only report files with mismatches (suppress OK lines)
-    #[arg(long)]
-    pub quiet: bool,
+    /// Also print a line for each OK file (default: only print problems)
+    #[arg(long, short = 'v')]
+    pub verbose: bool,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
         let cached_digest = entry.digest.as_deref().unwrap_or(&[]);
         if file_hash.digest.as_slice() == cached_digest {
             ok += 1;
-            if !args.quiet {
+            if args.verbose {
                 println!("OK         {}", entry.path);
             }
         } else {

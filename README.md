@@ -195,7 +195,7 @@ Re-hash every file and compare against stored digests (bit-rot detection).
 ```bash
 tome verify                            # default repo, path from last snapshot metadata
 tome verify --repo myproject           # specific repo
-tome verify --quiet /srv/data          # suppress OK lines, only show problems
+tome verify --verbose /srv/data        # also print OK lines (default: problems only)
 ```
 
 ### `tome restore [OPTIONS] <DEST>`

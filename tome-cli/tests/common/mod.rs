@@ -115,11 +115,7 @@ impl Env {
     pub async fn verify(&self) -> anyhow::Result<()> {
         verify::run(
             &self.db,
-            verify::VerifyArgs {
-                repo: "default".to_string(),
-                path: Some(self.files_dir()),
-                quiet: true, // suppress OK lines in test output
-            },
+            verify::VerifyArgs { repo: "default".to_string(), path: Some(self.files_dir()), verbose: false },
         )
         .await
     }
