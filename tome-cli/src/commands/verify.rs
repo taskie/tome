@@ -56,7 +56,7 @@ pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
             continue;
         }
 
-        let file_hash = match hash::hash_file(&abs_path, algo) {
+        let file_hash = match hash::hash_file(&abs_path, algo, hash::FastHashAlgorithm::default()) {
             Ok(h) => h,
             Err(e) => {
                 println!("ERROR      {}  ({})", entry.path, e);

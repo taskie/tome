@@ -82,6 +82,7 @@ pub async fn push(db: &DatabaseConnection, args: PushArgs, cfg: &StoreConfig) ->
                 no_ignore: false,
                 message: String::new(),
                 digest_algorithm: tome_core::hash::DigestAlgorithm::Sha256,
+                fast_hash_algorithm: tome_core::hash::FastHashAlgorithm::default(),
                 path: args.path.clone(),
             },
         )

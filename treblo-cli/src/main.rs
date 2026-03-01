@@ -7,7 +7,7 @@ use sha1::Sha1;
 use sha2::Sha256;
 use std::io::{Error, Write};
 use treblo::{hex::to_hex_string, walk, walk::Hasher};
-use twox_hash::XxHash64;
+use twox_hash::{XxHash3_64, XxHash64};
 
 #[derive(Debug, Parser)]
 #[command(name = "treblo")]
@@ -129,6 +129,37 @@ impl Hasher for XxHash64Holder {
     }
 }
 
+struct XxHash3_64Holder {
+    hash: XxHash3_64,
+    little_endian: bool,
+}
+
+impl Write for XxHash3_64Holder {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        use std::hash::Hasher;
+        Hasher::write(&mut self.hash, buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl Hasher for XxHash3_64Holder {
+    fn result_vec(&mut self) -> Vec<u8> {
+        use std::hash::Hasher;
+        let mut w = vec![];
+        let x = Hasher::finish(&self.hash);
+        if self.little_endian {
+            w.write_u64::<LittleEndian>(x).unwrap();
+        } else {
+            w.write_u64::<BigEndian>(x).unwrap();
+        }
+        w
+    }
+}
+
 fn main() {
     let opt = Opt::parse();
     let path_is_default: bool = opt.paths.is_empty();
@@ -161,6 +192,7 @@ fn main() {
                 }
                 "blake3" => || Box::new(Blake3Holder(blake3::Hasher::new())),
                 "xxhash64" => || Box::new(XxHash64Holder { hash: XxHash64::default(), little_endian: false }),
+                "xxh3-64" => || Box::new(XxHash3_64Holder { hash: XxHash3_64::default(), little_endian: false }),
                 _ => panic!("unknown hasher: {}", opt.hasher),
             },
             blob_only: opt.blob_only,

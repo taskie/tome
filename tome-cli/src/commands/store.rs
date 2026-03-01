@@ -403,7 +403,7 @@ async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<
             }
         }
 
-        let file_hash = match hash::hash_file(&tmp_file, args.digest_algorithm) {
+        let file_hash = match hash::hash_file(&tmp_file, args.digest_algorithm, hash::FastHashAlgorithm::default()) {
             Ok(h) => h,
             Err(e) => {
                 warn!("hash failed for {}: {}", digest_hex, e);

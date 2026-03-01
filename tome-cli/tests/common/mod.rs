@@ -8,7 +8,7 @@ use tome_cli::{
     commands::{diff, gc, push, restore, scan, store, sync, tag, verify},
     config::StoreConfig,
 };
-use tome_core::hash::DigestAlgorithm;
+use tome_core::hash::{DigestAlgorithm, FastHashAlgorithm};
 use tome_db::{connection, entities::snapshot, ops};
 
 /// A self-contained test environment: temp directory for files + a fresh SQLite DB.
@@ -80,6 +80,7 @@ impl Env {
                 no_ignore: true, // always ignore .gitignore in tests
                 message: message.to_string(),
                 digest_algorithm: DigestAlgorithm::Sha256,
+                fast_hash_algorithm: FastHashAlgorithm::default(),
                 path: Some(self.files_dir()),
             },
         )

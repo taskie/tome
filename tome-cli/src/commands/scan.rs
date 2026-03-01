@@ -10,7 +10,7 @@ use sea_orm::DatabaseConnection;
 use tracing::{debug, info, warn};
 
 use tome_core::{
-    hash::{self, DigestAlgorithm},
+    hash::{self, DigestAlgorithm, FastHashAlgorithm},
     models::EntryStatus,
 };
 use tome_db::ops;
@@ -33,6 +33,11 @@ pub struct ScanArgs {
     /// Existing repositories use their stored algorithm; this arg is ignored.
     #[arg(long, default_value = "sha256")]
     pub digest_algorithm: DigestAlgorithm,
+
+    /// Fast-digest algorithm for new repositories: xxhash64 (default) or xxh3-64
+    /// Existing repositories use their stored algorithm; this arg is ignored.
+    #[arg(long, default_value = "xxhash64")]
+    pub fast_hash_algorithm: FastHashAlgorithm,
 
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
@@ -63,6 +68,9 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
 
     // 3. Resolve digest algorithm (set in repo.config on first use).
     let algo = ops::get_or_init_repository_digest_algorithm(db, &repo, args.digest_algorithm).await?;
+
+    // 3b. Resolve fast-hash algorithm (set in repo.config on first use).
+    let fast_algo = ops::get_or_init_repository_fast_hash_algorithm(db, &repo, args.fast_hash_algorithm).await?;
 
     // 4. Create a new snapshot.
     let snapshot = ops::create_snapshot(db, repo.id, parent_id, &args.message).await?;
@@ -111,6 +119,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         snapshot_id: snapshot.id,
         repository_id: repo.id,
         algo,
+        fast_algo,
         cache: &mut cache,
         stats: &mut stats,
     };
@@ -186,6 +195,7 @@ struct ScanContext<'a> {
     snapshot_id: i64,
     repository_id: i64,
     algo: DigestAlgorithm,
+    fast_algo: FastHashAlgorithm,
     cache: &'a mut std::collections::HashMap<String, tome_db::entities::entry_cache::Model>,
     stats: &'a mut ScanStats,
 }
@@ -211,7 +221,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
             }
 
             // Stage 2: compute xxHash64 and compare.
-            let file_hash = hash::hash_file(abs_path, ctx.algo)?;
+            let file_hash = hash::hash_file(abs_path, ctx.algo, ctx.fast_algo)?;
 
             if let Some(cached_fast) = cached.fast_digest {
                 if cached_fast == file_hash.fast_digest {
@@ -250,7 +260,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
     }
 
     // No cache entry or previously deleted — full hash.
-    let file_hash = hash::hash_file(abs_path, ctx.algo)?;
+    let file_hash = hash::hash_file(abs_path, ctx.algo, ctx.fast_algo)?;
     record_present_file(ctx, rel_path, &meta, &file_hash, false).await?;
     Ok(())
 }

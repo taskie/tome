@@ -63,7 +63,7 @@ mod tests {
         let content = b"hash_file test content";
         std::fs::write(&path, content).unwrap();
 
-        let fh = hash::hash_file(&path, hash::DigestAlgorithm::Sha256).unwrap();
+        let fh = hash::hash_file(&path, hash::DigestAlgorithm::Sha256, hash::FastHashAlgorithm::XxHash64).unwrap();
         assert_eq!(fh.size, content.len() as u64);
         assert_eq!(fh.digest, hash::sha256_bytes(content));
         assert_eq!(fh.fast_digest_u64(), hash::xxhash64_bytes(content));
@@ -75,7 +75,7 @@ mod tests {
         let path = dir.path().join("empty.bin");
         std::fs::write(&path, b"").unwrap();
 
-        let fh = hash::hash_file(&path, hash::DigestAlgorithm::Sha256).unwrap();
+        let fh = hash::hash_file(&path, hash::DigestAlgorithm::Sha256, hash::FastHashAlgorithm::XxHash64).unwrap();
         assert_eq!(fh.size, 0);
         assert_eq!(fh.digest, hash::sha256_bytes(b""));
     }
