@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 
 use crate::entities::entry_cache;
@@ -29,7 +29,7 @@ pub struct UpsertCachePresentParams {
 }
 
 /// Upsert (insert or replace) a cache row for a present file.
-pub async fn upsert_cache_present(db: &DatabaseConnection, p: UpsertCachePresentParams) -> anyhow::Result<()> {
+pub async fn upsert_cache_present<C: ConnectionTrait>(conn: &C, p: UpsertCachePresentParams) -> anyhow::Result<()> {
     let now = Utc::now().fixed_offset();
     let am = entry_cache::ActiveModel {
         repository_id: Set(p.repository_id),
@@ -60,14 +60,14 @@ pub async fn upsert_cache_present(db: &DatabaseConnection, p: UpsertCachePresent
                 ])
                 .to_owned(),
         )
-        .exec(db)
+        .exec(conn)
         .await?;
     Ok(())
 }
 
 /// Upsert a cache row for a deleted file.
-pub async fn upsert_cache_deleted(
-    db: &DatabaseConnection,
+pub async fn upsert_cache_deleted<C: ConnectionTrait>(
+    conn: &C,
     repository_id: i64,
     path: &str,
     snapshot_id: i64,
@@ -103,7 +103,7 @@ pub async fn upsert_cache_deleted(
                 ])
                 .to_owned(),
         )
-        .exec(db)
+        .exec(conn)
         .await?;
     Ok(())
 }

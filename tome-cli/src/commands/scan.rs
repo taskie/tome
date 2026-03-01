@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::Args;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use tracing::{debug, info, warn};
 
 use tome_core::{
@@ -38,6 +38,10 @@ pub struct ScanArgs {
     /// Existing repositories use their stored algorithm; this arg is ignored.
     #[arg(long, default_value = "xxhash64")]
     pub fast_hash_algorithm: FastHashAlgorithm,
+
+    /// Number of files per DB transaction (default: 1000; -1 = one big commit at the end)
+    #[arg(long, default_value = "1000")]
+    pub batch_size: i64,
 
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
@@ -114,8 +118,10 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     };
 
     // 7. Process each file entry.
+    // batch_size <= 0 means "one big commit at the end" (usize::MAX never triggers mid-loop commit).
+    let effective_batch: usize = if args.batch_size <= 0 { usize::MAX } else { args.batch_size as usize };
+
     let mut ctx = ScanContext {
-        db,
         snapshot_id: snapshot.id,
         repository_id: repo.id,
         algo,
@@ -123,6 +129,9 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         cache: &mut cache,
         stats: &mut stats,
     };
+    let mut batch_count = 0usize;
+    let mut txn = db.begin().await?;
+
     for dir_entry in dir_entries {
         let abs_path = dir_entry.path();
         let rel_path = match abs_path.strip_prefix(&scan_root) {
@@ -137,12 +146,19 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         ctx.stats.scanned += 1;
         seen_paths.insert(rel_path.clone());
 
-        match process_file(&mut ctx, abs_path, &rel_path).await {
+        match process_file(&txn, &mut ctx, abs_path, &rel_path).await {
             Ok(()) => {}
             Err(e) => {
                 warn!("error processing {:?}: {}", rel_path, e);
                 ctx.stats.errors += 1;
             }
+        }
+
+        batch_count += 1;
+        if batch_count >= effective_batch {
+            txn.commit().await?;
+            txn = db.begin().await?;
+            batch_count = 0;
         }
     }
 
@@ -157,9 +173,9 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         .collect();
 
     for path in deleted_paths {
-        match ops::insert_entry_deleted(db, snapshot.id, &path).await {
+        match ops::insert_entry_deleted(&txn, snapshot.id, &path).await {
             Ok(e) => {
-                ops::upsert_cache_deleted(db, repo.id, &path, snapshot.id, e.id).await?;
+                ops::upsert_cache_deleted(&txn, repo.id, &path, snapshot.id, e.id).await?;
                 stats.deleted += 1;
                 info!("deleted    {}", path);
             }
@@ -168,7 +184,16 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
                 stats.errors += 1;
             }
         }
+
+        batch_count += 1;
+        if batch_count >= effective_batch {
+            txn.commit().await?;
+            txn = db.begin().await?;
+            batch_count = 0;
+        }
     }
+
+    txn.commit().await?;
 
     // 9. Update snapshot metadata with scan statistics.
     let metadata = serde_json::json!({
@@ -191,7 +216,6 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
 }
 
 struct ScanContext<'a> {
-    db: &'a DatabaseConnection,
     snapshot_id: i64,
     repository_id: i64,
     algo: DigestAlgorithm,
@@ -200,7 +224,12 @@ struct ScanContext<'a> {
     stats: &'a mut ScanStats,
 }
 
-async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str) -> Result<()> {
+async fn process_file<C: ConnectionTrait>(
+    conn: &C,
+    ctx: &mut ScanContext<'_>,
+    abs_path: &Path,
+    rel_path: &str,
+) -> Result<()> {
     let meta = std::fs::metadata(abs_path)?;
     let mtime_secs = meta.mtime();
     let mtime_nanos = meta.mtime_nsec() as u32;
@@ -234,7 +263,7 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
                     );
                     let mtime_dt = make_mtime(mtime_secs, mtime_nanos);
                     ops::upsert_cache_present(
-                        ctx.db,
+                        conn,
                         ops::UpsertCachePresentParams {
                             repository_id: ctx.repository_id,
                             path: rel_path.to_owned(),
@@ -254,18 +283,19 @@ async fn process_file(ctx: &mut ScanContext<'_>, abs_path: &Path, rel_path: &str
             }
 
             // Content changed — create blob + entry.
-            record_present_file(ctx, rel_path, &meta, &file_hash, true).await?;
+            record_present_file(conn, ctx, rel_path, &meta, &file_hash, true).await?;
             return Ok(());
         }
     }
 
     // No cache entry or previously deleted — full hash.
     let file_hash = hash::hash_file(abs_path, ctx.algo, ctx.fast_algo)?;
-    record_present_file(ctx, rel_path, &meta, &file_hash, false).await?;
+    record_present_file(conn, ctx, rel_path, &meta, &file_hash, false).await?;
     Ok(())
 }
 
-async fn record_present_file(
+async fn record_present_file<C: ConnectionTrait>(
+    conn: &C,
     ctx: &mut ScanContext<'_>,
     rel_path: &str,
     meta: &std::fs::Metadata,
@@ -276,14 +306,13 @@ async fn record_present_file(
     let mtime_nanos = meta.mtime_nsec() as u32;
     let mode = meta.mode() as i32;
 
-    let blob = ops::get_or_create_blob(ctx.db, file_hash).await?;
+    let blob = ops::get_or_create_blob(conn, file_hash).await?;
     let mtime_dt = make_mtime(mtime_secs, mtime_nanos);
 
-    let entry =
-        ops::insert_entry_present(ctx.db, ctx.snapshot_id, rel_path, blob.id, Some(mode), Some(mtime_dt)).await?;
+    let entry = ops::insert_entry_present(conn, ctx.snapshot_id, rel_path, blob.id, Some(mode), Some(mtime_dt)).await?;
 
     ops::upsert_cache_present(
-        ctx.db,
+        conn,
         ops::UpsertCachePresentParams {
             repository_id: ctx.repository_id,
             path: rel_path.to_owned(),

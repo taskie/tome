@@ -16,6 +16,8 @@ async fn scan(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
         no_ignore: false,
         message: String::new(),
         digest_algorithm: Default::default(),
+        fast_hash_algorithm: Default::default(),
+        batch_size: 1000,
     };
     scan_run(db, args).await.expect("scan failed");
 }
@@ -28,6 +30,8 @@ async fn scan_repo(db: &sea_orm::DatabaseConnection, repo: &str, dir: &std::path
         no_ignore: false,
         message: String::new(),
         digest_algorithm: Default::default(),
+        fast_hash_algorithm: Default::default(),
+        batch_size: 1000,
     };
     scan_run(db, args).await.expect("scan failed");
 }
@@ -40,6 +44,8 @@ async fn scan_no_ignore(db: &sea_orm::DatabaseConnection, dir: &std::path::Path)
         no_ignore: true,
         message: String::new(),
         digest_algorithm: Default::default(),
+        fast_hash_algorithm: Default::default(),
+        batch_size: 1000,
     };
     scan_run(db, args).await.expect("scan failed");
 }

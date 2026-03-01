@@ -1,13 +1,15 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
 
 use tome_core::{hash::FileHash, id::next_id};
 
 use crate::entities::blob;
 
 /// Find blob by digest, or insert and return it.
-pub async fn get_or_create_blob(db: &DatabaseConnection, file_hash: &FileHash) -> anyhow::Result<blob::Model> {
-    if let Some(b) = blob::Entity::find().filter(blob::Column::Digest.eq(file_hash.digest.as_ref())).one(db).await? {
+pub async fn get_or_create_blob<C: ConnectionTrait>(conn: &C, file_hash: &FileHash) -> anyhow::Result<blob::Model> {
+    if let Some(b) = blob::Entity::find().filter(blob::Column::Digest.eq(file_hash.digest.as_ref())).one(conn).await? {
         return Ok(b);
     }
 
@@ -19,12 +21,12 @@ pub async fn get_or_create_blob(db: &DatabaseConnection, file_hash: &FileHash) -
         fast_digest: Set(file_hash.fast_digest),
         created_at: Set(now),
     };
-    Ok(am.insert(db).await?)
+    Ok(am.insert(conn).await?)
 }
 
 /// Find a blob by digest.
-pub async fn find_blob_by_digest(db: &DatabaseConnection, digest: &[u8]) -> anyhow::Result<Option<blob::Model>> {
-    Ok(blob::Entity::find().filter(blob::Column::Digest.eq(digest)).one(db).await?)
+pub async fn find_blob_by_digest<C: ConnectionTrait>(conn: &C, digest: &[u8]) -> anyhow::Result<Option<blob::Model>> {
+    Ok(blob::Entity::find().filter(blob::Column::Digest.eq(digest)).one(conn).await?)
 }
 
 /// Find a blob by primary key ID.

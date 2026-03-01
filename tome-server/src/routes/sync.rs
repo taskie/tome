@@ -197,14 +197,14 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                     .try_into()
                     .map_err(|_| AppError::bad_request(format!("invalid digest length for {hex}")))?;
                 let fh = FileHash { size: size as u64, fast_digest: fast, digest: digest_arr };
-                let blob = ops::get_or_create_blob(&db, &fh).await?;
+                let blob = ops::get_or_create_blob(&*db, &fh).await?;
 
                 let mtime =
                     e.mtime.as_deref().map(|s| s.parse::<chrono::DateTime<chrono::FixedOffset>>()).transpose()?;
-                let entry = ops::insert_entry_present(&db, snap.id, &e.path, blob.id, e.mode, mtime).await?;
+                let entry = ops::insert_entry_present(&*db, snap.id, &e.path, blob.id, e.mode, mtime).await?;
 
                 ops::upsert_cache_present(
-                    &db,
+                    &*db,
                     ops::UpsertCachePresentParams {
                         repository_id: repo.id,
                         path: e.path.clone(),
@@ -220,8 +220,8 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                 .await?;
             }
         } else {
-            let entry = ops::insert_entry_deleted(&db, snap.id, &e.path).await?;
-            ops::upsert_cache_deleted(&db, repo.id, &e.path, snap.id, entry.id).await?;
+            let entry = ops::insert_entry_deleted(&*db, snap.id, &e.path).await?;
+            ops::upsert_cache_deleted(&*db, repo.id, &e.path, snap.id, entry.id).await?;
         }
     }
 
@@ -229,7 +229,7 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
     for r in &body.replicas {
         let store = ops::get_or_create_store(&db, &r.store_name, &r.store_url, serde_json::json!({})).await?;
         let digest_bytes = hex::decode(&r.blob_digest)?;
-        if let Some(blob) = ops::find_blob_by_digest(&db, &digest_bytes).await? {
+        if let Some(blob) = ops::find_blob_by_digest(&*db, &digest_bytes).await? {
             if !ops::replica_exists(&db, blob.id, store.id).await? {
                 ops::insert_replica(&db, blob.id, store.id, &r.path, r.encrypted).await?;
             }

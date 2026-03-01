@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 
 use tome_core::id::next_id;
@@ -10,8 +11,8 @@ use tome_core::id::next_id;
 use crate::entities::{blob, entry, snapshot};
 
 /// Insert a new entry (present file).
-pub async fn insert_entry_present(
-    db: &DatabaseConnection,
+pub async fn insert_entry_present<C: ConnectionTrait>(
+    conn: &C,
     snapshot_id: i64,
     path: &str,
     blob_id: i64,
@@ -29,12 +30,12 @@ pub async fn insert_entry_present(
         mtime: Set(mtime),
         created_at: Set(now),
     };
-    Ok(am.insert(db).await?)
+    Ok(am.insert(conn).await?)
 }
 
 /// Insert a new entry (deleted file).
-pub async fn insert_entry_deleted(
-    db: &DatabaseConnection,
+pub async fn insert_entry_deleted<C: ConnectionTrait>(
+    conn: &C,
     snapshot_id: i64,
     path: &str,
 ) -> anyhow::Result<entry::Model> {
@@ -49,7 +50,7 @@ pub async fn insert_entry_deleted(
         mtime: Set(None),
         created_at: Set(now),
     };
-    Ok(am.insert(db).await?)
+    Ok(am.insert(conn).await?)
 }
 
 /// Get all entries in a snapshot.

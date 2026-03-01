@@ -8,7 +8,7 @@ use crate::error::{AppError, AppResult};
 
 pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<BlobResponse>> {
     let digest = hex::decode(&digest_hex).map_err(|_| AppError::bad_request("invalid digest hex"))?;
-    let blob = ops::find_blob_by_digest(&db, &digest)
+    let blob = ops::find_blob_by_digest(&*db, &digest)
         .await?
         .ok_or_else(|| AppError::not_found(format!("blob {:?} not found", digest_hex)))?;
     Ok(Json(blob.into()))
@@ -16,7 +16,7 @@ pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<
 
 pub async fn list_blob_entries(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<Vec<SnapshotEntry>>> {
     let digest = hex::decode(&digest_hex).map_err(|_| AppError::bad_request("invalid digest hex"))?;
-    let blob = ops::find_blob_by_digest(&db, &digest)
+    let blob = ops::find_blob_by_digest(&*db, &digest)
         .await?
         .ok_or_else(|| AppError::not_found(format!("blob {:?} not found", digest_hex)))?;
     let entries = ops::entries_for_blob(&db, blob.id).await?;

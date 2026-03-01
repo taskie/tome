@@ -81,6 +81,7 @@ impl Env {
                 message: message.to_string(),
                 digest_algorithm: DigestAlgorithm::Sha256,
                 fast_hash_algorithm: FastHashAlgorithm::default(),
+                batch_size: 1000,
                 path: Some(self.files_dir()),
             },
         )

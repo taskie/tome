@@ -5,6 +5,8 @@
 
 mod common;
 use common::{Env, meta_count};
+use tome_cli::commands::scan;
+use tome_core::hash::{DigestAlgorithm, FastHashAlgorithm};
 
 // ── First scan ──────────────────────────────────────────────────────────────
 
@@ -180,9 +182,6 @@ async fn scan_message_appears_in_snapshot_metadata() {
 /// `--digest-algorithm blake3` scans successfully and records files.
 #[tokio::test]
 async fn scan_with_blake3_digest_algorithm() {
-    use tome_cli::commands::scan;
-    use tome_core::hash::DigestAlgorithm;
-
     let env = Env::new().await;
     env.write("data.bin", b"binary content");
 
@@ -193,6 +192,8 @@ async fn scan_with_blake3_digest_algorithm() {
             no_ignore: true,
             message: String::new(),
             digest_algorithm: DigestAlgorithm::Blake3,
+            fast_hash_algorithm: FastHashAlgorithm::default(),
+            batch_size: 1000,
             path: Some(env.files_dir()),
         },
     )
