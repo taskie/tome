@@ -82,6 +82,29 @@ tome store push local
 tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
 ```
 
+### Sync history to a central server
+
+```bash
+# Register this machine with a central tome server
+tome init --server https://sync.example.com
+
+# Register a sync peer (HTTP mode — no direct DB access required)
+tome sync add central "https://sync.example.com" --repo default
+
+# Push snapshot metadata to the central server
+tome sync push central
+
+# On another machine: pull snapshot history
+tome sync pull central
+```
+
+Direct PostgreSQL access is also supported (for LAN / VPN environments):
+
+```bash
+tome sync add lan "postgres://user:pass@db.lan/tome" --repo default
+tome sync push lan
+```
+
 ### Detect bit-rot
 
 ```bash
