@@ -2,6 +2,7 @@ pub mod diff;
 pub mod gc;
 mod helpers;
 pub mod init;
+pub mod push;
 pub mod restore;
 pub mod scan;
 pub mod store;

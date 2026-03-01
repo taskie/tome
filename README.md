@@ -91,18 +91,21 @@ tome init --server https://sync.example.com
 # Register a sync peer (HTTP mode — no direct DB access required)
 tome sync add central "https://sync.example.com" --repo default
 
-# Push snapshot metadata to the central server
-tome sync push central
+# Scan, upload blobs, and push metadata to the central server in one step
+tome push central
 
-# On another machine: pull snapshot history
-tome sync pull central
+# On another machine: pull snapshot history from the central server
+tome pull central
+
+# Pull and also copy blobs to a local store
+tome pull central --with-blobs --store remote --local-store local
 ```
 
 Direct PostgreSQL access is also supported (for LAN / VPN environments):
 
 ```bash
 tome sync add lan "postgres://user:pass@db.lan/tome" --repo default
-tome sync push lan
+tome push lan
 ```
 
 ### Detect bit-rot
@@ -243,9 +246,31 @@ tome tag list <digest>                 # list tags for a blob
 tome tag search <key> [value]          # find blobs by tag
 ```
 
+### `tome push <peer> [OPTIONS]`
+
+Composite command: **scan → store push → sync push** in one step.
+
+```bash
+tome push central                              # full pipeline: scan + upload blobs + sync
+tome push central --no-scan                   # skip scan, use existing snapshot
+tome push central --no-store                  # skip blob upload, sync metadata only
+tome push central --store s3 --repo docs      # custom store and repository
+tome push central --machine-id 42             # set source machine ID
+```
+
+### `tome pull <peer> [OPTIONS]`
+
+Composite command: **sync pull** (and optionally **store copy**).
+
+```bash
+tome pull central                             # pull snapshot metadata from peer
+tome pull central --with-blobs --store remote --local-store local
+                                              # also copy blobs to a local store
+```
+
 ### `tome sync <COMMAND>`
 
-Synchronize snapshot history with a peer database or HTTP server.
+Low-level sync operations. Prefer `tome push` / `tome pull` for everyday use.
 
 Peers can be specified as a **PostgreSQL URL** (`postgres://...`) for direct DB access,
 or an **HTTP URL** (`http://...` / `https://...`) to sync via the `tome serve` API.
@@ -307,7 +332,7 @@ tome-core/     Hash computation (SHA-256 / BLAKE3 / xxHash64), ID generation, sh
 tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
-tome-cli/      Unified CLI (scan / store / sync / diff / restore / tag / verify / gc / serve)
+tome-cli/      Unified CLI (scan / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
 tome-web/      Next.js 16 web frontend
 aether/        AEAD authenticated encryption (AES-256-GCM / ChaCha20-Poly1305 + Argon2id)
 treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk utilities

@@ -33,7 +33,7 @@ tome-core/    — ハッシュ計算（SHA-256 / BLAKE3 + xxHash64）・ID生成
 tome-db/      — SeaORM エンティティ + マイグレーション + ops
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
-tome-cli/     — 統一 CLI（scan / store / sync / diff / restore / tag / verify / gc / init / serve）
+tome-cli/     — 統一 CLI（scan / store / sync / push / pull / diff / restore / tag / verify / gc / init / serve）
 tome-web/     — Next.js 16 Web フロントエンド
 aether/       — AEAD 暗号化ライブラリ（AES-256-GCM / ChaCha20-Poly1305 + Argon2id）
 treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・ファイルツリー走査・hex ユーティリティ
@@ -96,7 +96,7 @@ treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・
 `tome-cli/tests/` 下の結合テストは **README.md に記載されたユースケース・CLI リファレンスと対応** させる。
 
 - **README.md のユースケースやコマンド例を追加・変更した場合、対応する結合テストを `tome-cli/tests/` に追加・更新すること**
-- テストファイルはコマンド単位で分割: `scan.rs`, `diff.rs`, `verify.rs`, `store.rs`, `restore.rs`, `tag.rs`, `sync.rs`, `gc.rs`
+- テストファイルはコマンド単位で分割: `scan.rs`, `diff.rs`, `verify.rs`, `store.rs`, `restore.rs`, `tag.rs`, `sync.rs`, `gc.rs`, `push.rs`
 - 共通ヘルパーは `common/mod.rs` の `Env` 構造体に集約。新コマンドを追加したら対応するヘルパーメソッドも追加する
 - サブコマンド追加時（例: `store set`, `sync rm`）は正常系・異常系（存在しないリソース、引数不足）の両方をテストする
 - テスト内で `.git/` を `mkdir` する必要がある場合がある（`ignore` クレートが `.gitignore` 認識に `.git/` を要求するため）
@@ -114,7 +114,6 @@ treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・
 
 | 優先度 | 内容 |
 |--------|------|
-| 高 | `tome push` / `tome pull` 統合コマンド — scan + store push + sync push を一括実行 |
 | 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
 | 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |
 | 中 | sync push 時のコンフリクト検知 — 中央 DB の分岐を検出し警告 |
@@ -128,6 +127,7 @@ treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・
 
 ### 実装済み
 
+- `tome push` / `tome pull` — scan + store push + sync push / sync pull + store copy の統合コマンド
 - HTTP sync API（`/sync/push`, `/sync/pull`）— DB 直接接続と HTTP の二重モード対応
 - `tome restore` — snapshot ID + store 指定からファイルを宛先ディレクトリに復元
 - aether モジュール分割 — `AetherError`（thiserror）、`zeroize` による鍵ゼロクリア、fallible API

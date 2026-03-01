@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use tome_cli::{
-    commands::{diff, gc, restore, scan, store, sync, tag, verify},
+    commands::{diff, gc, push, restore, scan, store, sync, tag, verify},
     config::StoreConfig,
 };
 use tome_core::hash::DigestAlgorithm;
@@ -363,6 +363,57 @@ impl Env {
         sync::run(
             &self.db,
             sync::SyncArgs { command: sync::SyncCommands::List(sync::SyncListArgs { repo: repo.to_string() }) },
+        )
+        .await
+    }
+
+    // ── push / pull helpers ─────────────────────────────────────────────────
+
+    /// Run `tome push <peer>` (scan + store push + sync push).
+    pub async fn push(
+        &self,
+        peer: &str,
+        repo: &str,
+        store_name: Option<&str>,
+        no_scan: bool,
+        no_store: bool,
+        machine_id: Option<i16>,
+    ) -> anyhow::Result<()> {
+        push::run_push(
+            &self.db,
+            push::PushArgs {
+                peer: peer.to_string(),
+                repo: repo.to_string(),
+                store: store_name.map(|s| s.to_string()),
+                path: Some(self.files_dir()),
+                no_scan,
+                no_store,
+                machine_id,
+            },
+            &StoreConfig::default(),
+        )
+        .await
+    }
+
+    /// Run `tome pull <peer>` (sync pull + optional store copy).
+    pub async fn pull(
+        &self,
+        peer: &str,
+        repo: &str,
+        with_blobs: bool,
+        store_name: Option<&str>,
+        local_store: Option<&str>,
+    ) -> anyhow::Result<()> {
+        push::run_pull(
+            &self.db,
+            push::PullArgs {
+                peer: peer.to_string(),
+                repo: repo.to_string(),
+                with_blobs,
+                store: store_name.map(|s| s.to_string()),
+                local_store: local_store.map(|s| s.to_string()),
+            },
+            &StoreConfig::default(),
         )
         .await
     }

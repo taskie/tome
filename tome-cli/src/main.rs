@@ -38,6 +38,10 @@ enum Commands {
     Gc(commands::gc::GcArgs),
     /// Register this machine with a central tome-server
     Init(commands::init::InitArgs),
+    /// Scan, push blobs to a store, and sync to a peer (scan + store push + sync push)
+    Push(commands::push::PushArgs),
+    /// Pull changes from a sync peer (sync pull + optional blob copy)
+    Pull(commands::push::PullArgs),
     /// Start the HTTP API server
     Serve(ServeArgs),
 }
@@ -91,6 +95,8 @@ async fn main() -> Result<()> {
         Commands::Tag(args) => commands::tag::run(&db_conn, args).await?,
         Commands::Verify(args) => commands::verify::run(&db_conn, args).await?,
         Commands::Gc(args) => commands::gc::run(&db_conn, args).await?,
+        Commands::Push(args) => commands::push::run_push(&db_conn, args, &cfg.store).await?,
+        Commands::Pull(args) => commands::push::run_pull(&db_conn, args, &cfg.store).await?,
         Commands::Serve(args) => {
             let addr = args.addr.or(cfg.serve.addr).unwrap_or_else(|| "127.0.0.1:8080".to_owned());
             tome_server::serve(db_conn, &addr).await?
