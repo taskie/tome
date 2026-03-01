@@ -296,6 +296,19 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
     }
     println!("copying {} blob(s) from {:?} to {:?} ...", blobs.len(), args.src, args.dst);
 
+    // Fetch all source replicas once and index by blob_id (avoids N+1 queries).
+    let src_replica_map: std::collections::HashMap<i64, _> =
+        ops::replicas_in_store(db, src_store.id).await?.into_iter().map(|r| (r.blob_id, r)).collect();
+
+    // Open destination storage once (upload takes &self, so it can be reused).
+    let dst_storage: Box<dyn Storage> = if let Some(key) = key {
+        let cipher_algo: CipherAlgorithm = args.cipher.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+        let dst_inner = factory::open_storage(&dst_store.url).await?;
+        Box::new(EncryptedStorage::with_algorithm(dst_inner, key, cipher_algo))
+    } else {
+        factory::open_storage(&dst_store.url).await?
+    };
+
     let mut copied = 0u64;
     let mut errors = 0u64;
 
@@ -306,9 +319,8 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
         let digest_hex = hash::hex_encode(&blob.digest);
 
         // Find source replica path.
-        let src_replicas = ops::replicas_in_store(db, src_store.id).await?;
-        let src_replica = match src_replicas.iter().find(|r| r.blob_id == blob.id) {
-            Some(r) => r.clone(),
+        let src_replica = match src_replica_map.get(&blob.id) {
+            Some(r) => r,
             None => {
                 warn!("no replica found in src for blob {}", digest_hex);
                 errors += 1;
@@ -328,20 +340,9 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
             }
         }
 
-        // Determine destination path and upload.
+        // Upload to dst.
         let dst_path = blob_path(&digest_hex);
-        let upload_result = if let Some(key) = key {
-            // Open dst storage wrapped with encryption.
-            let dst_inner = factory::open_storage(&dst_store.url).await?;
-            let cipher_algo: CipherAlgorithm = args.cipher.parse().map_err(|e: String| anyhow::anyhow!(e))?;
-            let enc = EncryptedStorage::with_algorithm(dst_inner, key, cipher_algo);
-            enc.upload(&dst_path, &tmp_file).await
-        } else {
-            let dst_storage = factory::open_storage(&dst_store.url).await?;
-            dst_storage.upload(&dst_path, &tmp_file).await
-        };
-
-        match upload_result {
+        match dst_storage.upload(&dst_path, &tmp_file).await {
             Ok(()) => {}
             Err(e) => {
                 warn!("failed to upload blob {}: {}", digest_hex, e);
