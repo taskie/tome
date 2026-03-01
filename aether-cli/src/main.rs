@@ -89,20 +89,20 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             let key_file = File::open(key_file)?;
             load_key(key_file)?
         };
-        Cipher::with_key_slice_algorithm(&key, algo)
+        Cipher::with_key_slice_algorithm(&key, algo)?
     } else if let Some(key) = opt.key_env.as_ref().and_then(|name| env::var(name).ok()) {
-        Cipher::with_key_b64_algorithm(&key, algo)
+        Cipher::with_key_b64_algorithm(&key, algo)?
     } else if let Some(password) = opt.password_env.as_ref().and_then(|name| env::var(name).ok()) {
         if opt.decrypt {
             let mut header_bytes = [0u8; aether::HEADER_SIZE];
             r.read_exact(&mut header_bytes)?;
             let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo);
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo)?;
             let mut r = header_bytes[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());
         } else {
-            Cipher::with_password_algorithm(password.as_bytes(), None, algo)
+            Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
         }
     } else if opt.password_prompt {
         let password = rpassword::prompt_password("Password: ")?;
@@ -116,12 +116,12 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             let mut header_bytes = [0u8; aether::HEADER_SIZE];
             r.read_exact(&mut header_bytes)?;
             let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo);
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo)?;
             let mut r = header_bytes[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());
         } else {
-            Cipher::with_password_algorithm(password.as_bytes(), None, algo)
+            Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
         }
     } else {
         return Err("key is not specified".into());

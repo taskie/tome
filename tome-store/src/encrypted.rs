@@ -48,7 +48,8 @@ impl<S: Storage> Storage for EncryptedStorage<S> {
         tokio::task::spawn_blocking(move || -> Result<()> {
             let src = std::fs::File::open(&local_file)?;
             let dst = std::fs::File::create(&tmp_path)?;
-            let mut cipher = aether::Cipher::with_key_slice_algorithm(&key, algorithm);
+            let mut cipher = aether::Cipher::with_key_slice_algorithm(&key, algorithm)
+                .map_err(|e| StoreError::Encryption(e.to_string()))?;
             cipher
                 .encrypt(BufReader::new(src), BufWriter::new(dst))
                 .map_err(|e| StoreError::Encryption(e.to_string()))?;
@@ -73,7 +74,7 @@ impl<S: Storage> Storage for EncryptedStorage<S> {
         tokio::task::spawn_blocking(move || -> Result<()> {
             let src = std::fs::File::open(&tmp_path)?;
             let dst = std::fs::File::create(&local_file)?;
-            let mut cipher = aether::Cipher::with_key_slice(&key);
+            let mut cipher = aether::Cipher::with_key_slice(&key).map_err(|e| StoreError::Encryption(e.to_string()))?;
             cipher
                 .decrypt(BufReader::new(src), BufWriter::new(dst))
                 .map_err(|e| StoreError::Encryption(e.to_string()))?;
