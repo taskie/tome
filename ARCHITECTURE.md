@@ -6,18 +6,54 @@
 
 ## Crate structure
 
-```
-tome-core/    Hash computation (delegates to treblo), ID generation (Sonyflake), shared models
-tome-db/      SeaORM entities, migrations, query operations (ops/ modules)
-tome-store/   Async Storage trait + implementations: Local, SSH, S3, Encrypted
-tome-server/  HTTP API server (axum 0.8, routes/ modules)
-tome-cli/     Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve
-tome-web/     Next.js 16 web frontend (Server Components, Tailwind CSS v4)
-aether/       AEAD encryption library: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF
-treblo/       Hash algorithms (xxHash64/SHA-256/BLAKE3), file-tree walk, and hex utilities
-```
+| Crate | Description |
+|-------|-------------|
+| `tome-core` | Hash computation (delegates to treblo), ID generation (Sonyflake), shared models |
+| `tome-db` | SeaORM entities, migrations, query operations (`ops/` modules) |
+| `tome-store` | Async `Storage` trait + implementations: Local, SSH, S3, Encrypted |
+| `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
+| `tome-cli` | Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve |
+| `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
+| `aether` | AEAD encryption library: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF |
+| `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
+
+### Dependency graph
+
+```mermaid
+graph TD
+    treblo["treblo<br/><small>hashing, file walk</small>"]
+    aether["aether<br/><small>AEAD encryption</small>"]
+    core["tome-core<br/><small>models, ID gen</small>"]
+    db["tome-db<br/><small>SeaORM, migrations</small>"]
+    store["tome-store<br/><small>Storage trait</small>"]
+    server["tome-server<br/><small>HTTP API</small>"]
+    cli["tome-cli<br/><small>CLI entry point</small>"]
+    web["tome-web<br/><small>Next.js frontend</small>"]
+
+    core --> treblo
+    db --> core
+    store --> core
+    store --> aether
+    server --> core
+    server --> db
+    cli --> core
+    cli --> db
+    cli --> server
+    cli --> store
+
+    web -. "HTTP" .-> server
+
+    style treblo fill:#e8f5e9
+    style aether fill:#e8f5e9
+    style core fill:#e3f2fd
+    style db fill:#e3f2fd
+    style store fill:#e3f2fd
+    style server fill:#fff3e0
+    style cli fill:#fce4ec
+    style web fill:#f3e5f5
+```
 
 Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `ichnome_web_front`, `optional_derive`) are archived under `obsolete/` and excluded from the workspace.
 
@@ -36,6 +72,79 @@ Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `i
 ## Database schema
 
 10 tables. All IDs are Sonyflake `i64` (except `machines.machine_id` which is `i16`). All timestamps are `DateTimeWithTimeZone`.
+
+```mermaid
+erDiagram
+    repositories ||--o{ snapshots : contains
+    repositories ||--o{ entry_cache : caches
+    snapshots ||--o{ entries : contains
+    snapshots }o--o| snapshots : "parent_id"
+    entries }o--|| blobs : references
+    entry_cache }o--|| blobs : references
+    blobs ||--o{ replicas : "stored in"
+    blobs ||--o{ tags : "tagged with"
+    stores ||--o{ replicas : provides
+    machines ||--o{ snapshots : "source_machine_id"
+
+    repositories {
+        i64 id PK
+        string name UK
+    }
+    blobs {
+        i64 id PK
+        bytes digest UK
+        i64 fast_digest
+        i64 size
+    }
+    snapshots {
+        i64 id PK
+        i64 repository_id FK
+        i64 parent_id FK
+        i16 source_machine_id
+        i64 source_snapshot_id
+    }
+    entries {
+        i64 id PK
+        i64 snapshot_id FK
+        i64 blob_id FK
+        string path
+        i16 status
+    }
+    entry_cache {
+        i64 repository_id PK
+        string path PK
+        i64 blob_id FK
+        i16 status
+    }
+    stores {
+        i64 id PK
+        string name UK
+        string url
+    }
+    replicas {
+        i64 id PK
+        i64 store_id FK
+        i64 blob_id FK
+        string state
+    }
+    tags {
+        i64 id PK
+        i64 blob_id FK
+        string key
+        string value
+    }
+    sync_peers {
+        i64 id PK
+        string name UK
+        string url
+        i64 last_snapshot_id
+    }
+    machines {
+        i16 machine_id PK
+        string name
+        datetime last_seen_at
+    }
+```
 
 | Table | Description |
 |-------|-------------|
@@ -60,11 +169,19 @@ Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `i
 
 Change detection uses a three-stage filter to minimize I/O:
 
-```
-mtime / size  →  xxHash64  →  SHA-256 (or BLAKE3)
+```mermaid
+flowchart LR
+    A["mtime / size<br/>changed?"] -- Yes --> B["xxHash64<br/>changed?"]
+    A -- No --> SKIP["Skip ⏭"]
+    B -- Yes --> C["SHA-256<br/><small>(or BLAKE3)</small>"]
+    B -- No --> SKIP
+    C --> RECORD["Record new<br/>snapshot entry"]
+
+    style SKIP fill:#e8f5e9,stroke:#4caf50
+    style RECORD fill:#e3f2fd,stroke:#2196f3
 ```
 
-If a stage shows no change, subsequent hashes are skipped. Both hashes are computed in a single pass through the file in `treblo/src/hash.rs::hash_file()` (re-exported via `tome-core::hash`).
+Both hashes are computed in a single pass through the file in `treblo/src/hash.rs::hash_file()` (re-exported via `tome-core::hash`).
 
 The digest algorithm is configured per repository via `repositories.config["digest_algorithm"]` (default: `"sha256"`). Use `tome scan --digest-algorithm blake3` when creating a new repository. The algorithm cannot be changed after the first scan (digest consistency).
 
@@ -72,14 +189,59 @@ The digest algorithm is configured per repository via `repositories.config["dige
 
 ## Encryption
 
-`aether` crate (internal): AES-256-GCM or ChaCha20-Poly1305 authenticated encryption with Argon2id key derivation.
+`aether` crate: AES-256-GCM or ChaCha20-Poly1305 authenticated encryption with Argon2id key derivation.
 
-Key storage:
+`EncryptedStorage<S>` is implemented in `tome-store/src/encrypted.rs`. It is activated via `tome store copy --encrypt --key-file <path>`.
+
+### aether binary format
+
+```mermaid
+block-beta
+    columns 5
+    block:header:5
+        magic["magic<br/>0xae71<br/><small>2 bytes</small>"]
+        flags["flags<br/><small>2 bytes</small>"]
+        iv["IV (nonce)<br/><small>12 bytes</small>"]
+        integrity["integrity<br/>(salt/random)<br/><small>16 bytes</small>"]
+    end
+    block:body:5
+        chunk1["Chunk 1<br/><small>≤8 KB + 16 tag</small>"]
+        chunk2["Chunk 2<br/><small>≤8 KB + 16 tag</small>"]
+        dots["..."]
+        chunkN["Chunk N<br/><small>≤8 KB + 16 tag</small>"]
+    end
+
+    style magic fill:#fff3e0
+    style flags fill:#fff3e0
+    style iv fill:#e3f2fd
+    style integrity fill:#fce4ec
+    style chunk1 fill:#e8f5e9
+    style chunk2 fill:#e8f5e9
+    style chunkN fill:#e8f5e9
+```
+
+Each chunk is encrypted with a countered nonce (`IV ⊕ counter`). The integrity value is appended to the plaintext before encryption and verified on decryption.
+
+### aether module structure
+
+| Module | Contents |
+|--------|---------|
+| `error.rs` | `AetherError` enum (thiserror) — all fallible paths |
+| `algorithm.rs` | `CipherAlgorithm` enum (`Aes256Gcm` \| `ChaCha20Poly1305`) |
+| `header.rs` | `Header`, `CounteredNonce`, file-format constants |
+| `cipher.rs` | `Cipher`, `AeadInner` enum dispatch, encrypt/decrypt methods |
+
+The cipher algorithm is stored in the low bit of the file header's `flags` field (0 = AES-256-GCM, 1 = ChaCha20-Poly1305). Decryption auto-detects the algorithm from the stored header — no explicit configuration needed at read time.
+
+`Cipher` implements `Drop` via `zeroize` to zero key material on drop. All constructors return `Result<Cipher, AetherError>` (no panics).
+
+### Key management
+
+Keys are 32-byte raw binary files. The `tome.toml` setting `store.key_file` specifies the path. Keys are never stored on remote servers (out-of-band distribution).
+
 ```
 ~/.config/tome/keys/<key_id>.key    — 32-byte raw binary key
 ```
-
-`EncryptedStorage<S>` is implemented in `tome-store/src/encrypted.rs`. It is activated via `tome store copy --encrypt --key-file <path>`.
 
 ---
 
@@ -194,19 +356,40 @@ tome-web/
 
 ### Navigation structure
 
-```
-/                           → repository list
-  /repositories/[name]      → snapshot list  [Snapshots | Files | Diff] sub-nav
-    /repositories/.../files → current files → /repositories/.../history
-    /repositories/.../diff  → snapshot diff  → paths link to history
-    /repositories/.../history?path=  → file history → /blobs/[digest]
-  /snapshots/[id]           → snapshot entries (reached from history or repo page)
-  /blobs/[digest]           → blob detail + files using this content
-  /diff                     → cross-repo diff → paths link to per-repo history
-  /stores                   → registered stores
-  /machines                 → registered machines
-  /tags                     → blob tags → links to blob detail
-  /sync-peers               → sync peer list
+```mermaid
+graph TD
+    HOME["/ <br/><small>Repository list</small>"]
+    REPO["/repositories/[name]<br/><small>Snapshot list</small>"]
+    FILES["/repositories/.../files<br/><small>Current files</small>"]
+    DIFF_REPO["/repositories/.../diff<br/><small>Snapshot diff</small>"]
+    HISTORY["/repositories/.../history<br/><small>File history</small>"]
+    SNAP["/snapshots/[id]<br/><small>Snapshot entries</small>"]
+    BLOB["/blobs/[digest]<br/><small>Blob detail</small>"]
+    DIFF_X["/diff<br/><small>Cross-repo diff</small>"]
+    STORES["/stores"]
+    MACHINES["/machines"]
+    TAGS["/tags"]
+    SYNC["/sync-peers"]
+
+    HOME --> REPO
+    HOME --> DIFF_X
+    HOME --> STORES
+    HOME --> MACHINES
+    HOME --> TAGS
+    HOME --> SYNC
+    REPO --> FILES
+    REPO --> DIFF_REPO
+    REPO --> SNAP
+    FILES --> HISTORY
+    DIFF_REPO --> HISTORY
+    DIFF_X --> HISTORY
+    HISTORY --> BLOB
+    HISTORY --> SNAP
+    TAGS --> BLOB
+
+    style HOME fill:#fce4ec
+    style REPO fill:#e3f2fd
+    style BLOB fill:#e8f5e9
 ```
 
 ### Key implementation notes
@@ -214,6 +397,69 @@ tome-web/
 - All API calls are server-side; no CORS required. `TOME_API_URL` is a server-only env var.
 - Every page uses `export const dynamic = "force-dynamic"` to prevent build-time SSG (which would fail if `tome serve` is not running).
 - Tailwind v4: `@import "tailwindcss"` in `globals.css` only; no `tailwind.config.ts` needed. PostCSS plugin: `@tailwindcss/postcss`.
+
+---
+
+## Central sync (PostgreSQL)
+
+Multiple machines maintain individual SQLite databases and synchronize to a shared PostgreSQL backend (metadata) and S3-compatible store (blob content).
+
+### Architecture
+
+```mermaid
+graph TB
+    subgraph AWS["AWS Central"]
+        PG["Aurora PostgreSQL<br/><small>metadata</small>"]
+        S3["S3 Bucket<br/><small>encrypted blobs</small>"]
+    end
+
+    subgraph A["Machine A"]
+        A_DB["SQLite"]
+        A_ST["local store"]
+    end
+
+    subgraph B["Machine B"]
+        B_DB["SQLite"]
+        B_ST["local store"]
+    end
+
+    A_DB -- "sync push/pull<br/>(metadata)" --> PG
+    B_DB -- "sync push/pull<br/>(metadata)" --> PG
+
+    A_ST -- "store push<br/>(blobs)" --> S3
+    B_ST -- "store push<br/>(blobs)" --> S3
+    S3 -- "store copy<br/>(blobs)" --> A_ST
+    S3 -- "store copy<br/>(blobs)" --> B_ST
+
+    style PG fill:#e3f2fd,stroke:#1565c0
+    style S3 fill:#fff3e0,stroke:#ef6c00
+    style A_DB fill:#f5f5f5
+    style B_DB fill:#f5f5f5
+    style A_ST fill:#f5f5f5
+    style B_ST fill:#f5f5f5
+```
+
+### Two-layer sync
+
+| Layer | Commands | Content | Destination |
+|-------|----------|---------|-------------|
+| Metadata | `sync push` / `sync pull` | snapshots, entries, blobs (rows), replicas | PostgreSQL |
+| Blob content | `store push` / `store copy` | encrypted file blobs | S3 |
+
+### Sync modes
+
+`sync push/pull` detects the URL scheme of the peer:
+
+| URL scheme | Mode |
+|------------|------|
+| `postgres://...` or `sqlite://...` | Direct DB connection (SeaORM) |
+| `http://...` or `https://...` | HTTP API (`POST /sync/push`, `GET /sync/pull`) |
+
+`POST /sync/push` is idempotent: duplicate pushes identified by `(source_machine_id, source_snapshot_id)` return the existing server-side snapshot without re-inserting.
+
+### machine_id allocation
+
+`POST /machines` allocates an unused `machine_id` (valid range: 0–32767; `machine_id = 0` is reserved for local-only use). `tome init --server <url>` calls this endpoint and persists the result to `~/.config/tome/tome.toml`.
 
 ---
 
@@ -225,7 +471,7 @@ tome-web/
 
 ### 2. `tome restore` requires store availability
 
-To restore a file from a historical snapshot, the corresponding blob must exist in at least one reachable store. There is currently no API to check replica availability before attempting a restore.
+To restore a file from a historical snapshot, the corresponding blob must exist in at least one reachable store. Use `--store <name>` to specify which store to use. There is currently no `--check` flag to verify replica availability before attempting a restore.
 
 ### 3. ID generation depends on machine-id and start-time
 
