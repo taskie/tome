@@ -33,7 +33,7 @@ tome-core/    — ハッシュ計算（SHA-256 / BLAKE3 + xxHash64）・ID生成
 tome-db/      — SeaORM エンティティ + マイグレーション + ops
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
-tome-cli/     — 統一 CLI（scan / store / sync / push / pull / diff / restore / tag / verify / gc / init / serve）
+tome-cli/     — 統一 CLI（scan / store / sync / remote / push / pull / diff / restore / tag / verify / gc / init / serve / log / show / status / files / history / repo）
 tome-web/     — Next.js 16 Web フロントエンド
 aether/       — AEAD 暗号化ライブラリ（AES-256-GCM / ChaCha20-Poly1305 + Argon2id）
 treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・ファイルツリー走査・hex ユーティリティ
@@ -111,6 +111,35 @@ treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・
 ## 残タスク
 
 > **方針: 個人ツールとしての完成度向上。認証・RBAC はスコープ外（外部インフラで代替）。**
+
+### 改善計画フェーズ（`tmp/tome-improvement-plan.md` より）
+
+各フェーズは「機能実装 → テスト追加 → ドキュメント更新」の粒度でコミットする。
+完了後に `cargo fmt --all -- --check && cargo clippy --all --no-deps -- -D warnings && cargo test --all` を確認。
+
+| Phase | 優先度 | 内容 |
+|-------|--------|------|
+| **1** | 高 | `ScanMetadata` 型安全化 — `tome-core` に構造体定義、`serde_json::json!` を置き換え |
+| **1** | 高 | 空スナップショット抑制 — added+modified+deleted=0 なら自動削除（`--allow-empty` で従来動作維持） |
+| **1** | 高 | scan_root 永続化 — `repositories.config["scan_root"]` に保存、`--path` 省略時に自動参照 |
+| **2** | 高 | スナップショット参照記法 — `@latest` / `@latest~N` / `@YYYY-MM-DD[Thh:mm]` / i64 直指定。`diff`, `show`, `restore` に適用 |
+| **3** | 高 | `tome log` — スナップショット一覧（`--limit`, `--oneline`, `--after`, `--before`） |
+| **3** | 高 | `tome show <ref>` — スナップショット詳細（diff + metadata）。Phase 2 の参照記法を使用 |
+| **3** | 高 | `tome files` — 追跡中ファイル一覧（entry_cache）（`--prefix`, `--format`, `--include-deleted`） |
+| **3** | 高 | `tome history <path>` — ファイル変更履歴（`ops::path_history_with_blobs`） |
+| **4** | 高 | `tome status` — 前回スキャンからの変更を read-only 検出。`scan.rs` の判定フェーズを分離（`--hash` で full digest） |
+| **5** | 中 | `tome repo list/rm/rename` — リポジトリ管理サブコマンド（`rm` は `--force` 必須、cascade 削除） |
+| **5** | 中 | `sync` → `remote` リネーム — `tome remote add/rm/list/set` を新設、`sync add/rm/list/set` は非推奨警告つきで残す |
+| **5** | 中 | `tome tag rm` 追加 — `tag delete` をエイリアスとして残す（`store rm`, `remote rm` と統一） |
+| **6** | 中 | `.tomeignore` サポート — `ignore::WalkBuilder::add_custom_ignore_filename(".tomeignore")` を追加 |
+| **6** | 中 | プログレス表示 — `indicatif` クレートで stderr にバー表示（`--quiet` / `--verbose` で制御） |
+| **7** | 中 | 並列ハッシュ計算 — `tokio::task::spawn_blocking` + `--jobs N`（デフォルト: num_cpus）。DB 書き込みは逐次 |
+| **7** | 中 | `store push` / `store copy` 並列化 — `tokio::sync::Semaphore` で同時接続数を制限（`--jobs N`） |
+| **8** | 中 | `--format json` — `log`, `show`, `files`, `history`, `diff`, `status`, `repo list`, `store list`, `remote list` に追加 |
+| **8** | 中 | `verify` 統合 — `tome verify --store <name>` / `--all` を追加（`tome store verify` はエイリアスとして残す） |
+| **8** | 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
+
+### その他の残タスク
 
 | 優先度 | 内容 |
 |--------|------|
