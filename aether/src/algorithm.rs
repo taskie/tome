@@ -14,18 +14,20 @@ impl CipherAlgorithm {
         }
     }
 
-    pub(crate) fn flags_bit(self) -> u16 {
+    /// Encode to the 4-bit algorithm field (bits [3:0] of flags).
+    pub(crate) fn to_bits(self) -> u16 {
         match self {
             Self::Aes256Gcm => 0,
             Self::ChaCha20Poly1305 => 1,
         }
     }
 
-    pub(crate) fn from_flags(flags: u16) -> Result<Self, crate::error::AetherError> {
-        match flags & 0x0001 {
+    /// Decode from the 4-bit algorithm field.
+    pub(crate) fn from_bits(bits: u16) -> Result<Self, crate::error::AetherError> {
+        match bits & 0x000F {
             0 => Ok(Self::Aes256Gcm),
             1 => Ok(Self::ChaCha20Poly1305),
-            _ => unreachable!(),
+            other => Err(crate::error::AetherError::InvalidHeader(format!("unknown algorithm: {other}"))),
         }
     }
 }

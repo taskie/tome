@@ -41,6 +41,14 @@ pub struct Opt {
     #[arg(long, default_value = "aes256gcm")]
     pub cipher: String,
 
+    /// Format version: 0 (legacy) or 1 (streaming AEAD, default)
+    #[arg(long, default_value = "1")]
+    pub format_version: u8,
+
+    /// Chunk size selector for v1 (0=8KiB .. 7=1MiB .. 15=256MiB, default: 7)
+    #[arg(long, default_value = "7")]
+    pub chunk_kind: u8,
+
     #[arg(value_name = "INPUT")]
     pub input: Option<PathBuf>,
 }
@@ -82,6 +90,7 @@ fn execute<R: BufRead, W: Write>(
 fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn std::error::Error>> {
     let algo: aether::CipherAlgorithm =
         opt.cipher.parse().map_err(|e: String| -> Box<dyn std::error::Error> { e.into() })?;
+    let chunk_kind = aether::ChunkKind::new(opt.chunk_kind)?;
     let mut cipher = if let Some(key_file) = opt.key_file.as_ref() {
         let key = if Opt::path_is_stdin(key_file) {
             load_key(std::io::stdin().lock())?
@@ -126,6 +135,8 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
     } else {
         return Err("key is not specified".into());
     };
+    cipher.set_format_version(opt.format_version);
+    cipher.set_chunk_kind(chunk_kind);
     execute(&mut cipher, r, w, opt)?;
     Ok(())
 }

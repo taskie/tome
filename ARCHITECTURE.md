@@ -14,7 +14,7 @@
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
 | `tome-cli` | Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve |
 | `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
-| `aether` | AEAD encryption library: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF |
+| `aether` | Streaming AEAD encryption: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF |
 | `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
@@ -24,7 +24,7 @@
 ```mermaid
 graph TD
     treblo["treblo<br/><small>hashing, file walk</small>"]
-    aether["aether<br/><small>AEAD encryption</small>"]
+    aether["aether<br/><small>streaming AEAD</small>"]
     core["tome-core<br/><small>models, ID gen</small>"]
     db["tome-db<br/><small>SeaORM, migrations</small>"]
     store["tome-store<br/><small>Storage trait</small>"]
@@ -205,10 +205,10 @@ block-beta
         integrity["integrity<br/>(salt/random)<br/><small>16 bytes</small>"]
     end
     block:body:5
-        chunk1["Chunk 1<br/><small>≤8 KB + 16 tag</small>"]
-        chunk2["Chunk 2<br/><small>≤8 KB + 16 tag</small>"]
+        chunk1["Chunk 1<br/><small>≤ chunk_size + 16 tag</small>"]
+        chunk2["Chunk 2<br/><small>≤ chunk_size + 16 tag</small>"]
         dots["..."]
-        chunkN["Chunk N<br/><small>≤8 KB + 16 tag</small>"]
+        chunkN["Chunk N (last)<br/><small>≤ chunk_size + 16 tag</small>"]
     end
 
     style magic fill:#fff3e0
@@ -220,7 +220,29 @@ block-beta
     style chunkN fill:#e8f5e9
 ```
 
-Each chunk is encrypted with a countered nonce (`IV ⊕ counter`). The integrity value is appended to the plaintext before encryption and verified on decryption.
+#### Header flags (16-bit)
+
+```
+bits [15:12]  version       — 0 = legacy, 1 = streaming AEAD
+bits [11:8]   reserved      — must be 0
+bits [7:4]    chunk_kind    — ciphertext chunk size = 8192 << chunk_kind
+bits [3:0]    algorithm     — 0 = AES-256-GCM, 1 = ChaCha20-Poly1305
+```
+
+#### v0 (legacy)
+
+Fixed 8 KiB chunks. Nonce = `IV ⊕ counter`. Integrity value appended to plaintext before encryption and verified after full decryption.
+
+#### v1 (streaming AEAD, default)
+
+Variable chunk size (default chunk_kind=7 → 1 MiB). STREAM construction:
+
+- **Nonce**: `IV ⊕ (0x00{4} || counter_u64_BE)`. Last chunk: `nonce[0] ^= 0x80`.
+- **Header AD**: first chunk uses header bytes as associated data; subsequent chunks use empty AD.
+- **Last-chunk detection**: encrypt uses read-ahead; decrypt tries normal nonce first, then last-chunk nonce.
+- No integrity suffix in plaintext (STREAM provides authentication).
+
+Backward compatible: v0 files (flags=0x0000 or 0x0001) are auto-detected and decrypted correctly.
 
 ### aether module structure
 
@@ -228,10 +250,10 @@ Each chunk is encrypted with a countered nonce (`IV ⊕ counter`). The integrity
 |--------|---------|
 | `error.rs` | `AetherError` enum (thiserror) — all fallible paths |
 | `algorithm.rs` | `CipherAlgorithm` enum (`Aes256Gcm` \| `ChaCha20Poly1305`) |
-| `header.rs` | `Header`, `CounteredNonce`, file-format constants |
-| `cipher.rs` | `Cipher`, `AeadInner` enum dispatch, encrypt/decrypt methods |
+| `header.rs` | `Header`, `HeaderFlags`, `ChunkKind`, `CounteredNonce`, constants |
+| `cipher.rs` | `Cipher` (v0/v1 dispatch), `AeadInner` enum, encrypt/decrypt methods |
 
-The cipher algorithm is stored in the low bit of the file header's `flags` field (0 = AES-256-GCM, 1 = ChaCha20-Poly1305). Decryption auto-detects the algorithm from the stored header — no explicit configuration needed at read time.
+Decryption auto-detects the format version and algorithm from the stored header — no explicit configuration needed at read time.
 
 `Cipher` implements `Drop` via `zeroize` to zero key material on drop. All constructors return `Result<Cipher, AetherError>` (no panics).
 
