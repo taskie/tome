@@ -8,8 +8,8 @@ use tracing::info;
 
 use crate::routes;
 
-pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
-    let app = Router::new()
+pub fn build_router(db: DatabaseConnection) -> Router {
+    Router::new()
         .route("/", get(routes::index))
         .route("/health", get(routes::health))
         .route("/repositories", get(routes::list_repositories))
@@ -31,8 +31,11 @@ pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
         .route("/sync/pull", get(routes::sync::pull))
         .route("/sync/push", post(routes::sync::push))
         .layer(TraceLayer::new_for_http())
-        .with_state(db);
+        .with_state(db)
+}
 
+pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {
+    let app = build_router(db);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!("tome-server listening on http://{}", addr);
     axum::serve(listener, app).await?;

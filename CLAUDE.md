@@ -240,6 +240,41 @@ chunk_i  = AEAD_encrypt(key, nonce_i, plaintext_i, ad = "")    (i > 0)
 | **8** | 中 | `verify` 統合 — `tome verify --store <name>` / `--all` を追加（`tome store verify` はエイリアスとして残す） |
 | **8** | 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
 
+### AWS デプロイ（Lambda + DSQL + S3）
+
+**アーキテクチャ**: tome-server を AWS Lambda で動かし、DB に Aurora DSQL、ストレージに S3 を使用。
+クライアント（tome-cli）は既存の `https://` HTTP sync モードをそのまま利用。Lambda は IAM ロールで DSQL に接続。
+
+**コスト試算**: Lambda 無料枠 + DSQL + S3 で ~$2–3/月。
+
+**DSQL 制限**:
+
+| 制限 | tome への影響 |
+|------|--------------|
+| FK 非強制 | GC/sync の削除順序はアプリ側で既に正しい → 変更不要 |
+| JSONB 非対応 | `repositories.config` が JSONB。`json` 型への変更が必要（DSQL 使用時） |
+| トリガー・シーケンス非対応 | tome-db は使用していない → 変更不要 |
+
+**ビルド & デプロイ**:
+
+```bash
+# ビルド（要: cargo install cargo-lambda）
+cargo lambda build --release --features lambda --bin tome-lambda
+
+# Lambda 関数として作成（初回）
+cargo lambda deploy tome-lambda \
+  --runtime provided.al2023 \
+  --memory-size 256 \
+  --timeout 30
+
+# 環境変数を設定
+aws lambda update-function-configuration \
+  --function-name tome-lambda \
+  --environment "Variables={TOME_DB=postgres://admin:<iam-token>@<cluster-endpoint>:5432/postgres?sslmode=require}"
+```
+
+IAM トークンは `aws dsql generate-db-connect-admin-auth-token` で生成（有効期限最大 1 週間）。
+
 ### その他の残タスク
 
 | 優先度 | 内容 |

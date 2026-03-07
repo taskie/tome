@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 
+[features]
+lambda = ["dep:lambda_http"]
+
 [dependencies]
 tome-core = { path = "../tome-core" }
 tome-db = { path = "../tome-db" }
@@ -19,4 +22,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json"] }
+lambda_http = { version = "0.13", default-features = false, features = ["apigw_http"], optional = true }
+
+[[bin]]
+name = "tome-lambda"
+path = "src/bin/tome-lambda.rs"
+required-features = ["lambda"]
