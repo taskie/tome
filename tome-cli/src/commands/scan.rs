@@ -196,16 +196,16 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
     txn.commit().await?;
 
     // 9. Update snapshot metadata with scan statistics.
-    let metadata = serde_json::json!({
-        "scan_root": scan_root.to_string_lossy(),
-        "scanned": stats.scanned,
-        "added": stats.added,
-        "modified": stats.modified,
-        "unchanged": stats.unchanged,
-        "deleted": stats.deleted,
-        "errors": stats.errors,
-    });
-    ops::update_snapshot_metadata(db, snapshot.id, metadata).await?;
+    let metadata = tome_core::metadata::ScanMetadata {
+        scan_root: scan_root.to_string_lossy().into_owned(),
+        scanned: stats.scanned,
+        added: stats.added,
+        modified: stats.modified,
+        unchanged: stats.unchanged,
+        deleted: stats.deleted,
+        errors: stats.errors,
+    };
+    ops::update_snapshot_metadata(db, snapshot.id, serde_json::to_value(metadata)?).await?;
 
     println!(
         "scan complete: {} scanned, {} added, {} modified, {} unchanged, {} deleted, {} errors",

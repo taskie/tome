@@ -6,7 +6,6 @@
 
 | 優先度 | 内容 |
 |--------|------|
-| 高 | `ScanMetadata` 型安全化 — `tome-core` に構造体定義、`serde_json::json!` を置き換え |
 | 高 | 空スナップショット抑制 — added+modified+deleted=0 なら自動削除（`--allow-empty` で従来動作維持） |
 | 高 | scan_root 永続化 — `repositories.config["scan_root"]` に保存、`--path` 省略時に自動参照 |
 | 高 | スナップショット参照記法 — `@latest` / `@latest~N` / `@YYYY-MM-DD[Thh:mm]` / i64 直指定。`diff`, `show`, `restore` に適用 |

@@ -279,12 +279,12 @@ async fn apply_pulled_snapshot(
         entries_synced += 1;
     }
 
-    let meta = serde_json::json!({
-        "synced_from": peer_name,
-        "remote_snapshot_id": remote_snap_id_str,
-        "entries": entries.len(),
-    });
-    ops::update_snapshot_metadata(local_db, local_snap.id, meta).await?;
+    let meta = tome_core::metadata::SyncPullMetadata {
+        synced_from: peer_name.to_owned(),
+        remote_snapshot_id: remote_snap_id_str.to_owned(),
+        entries: entries.len(),
+    };
+    ops::update_snapshot_metadata(local_db, local_snap.id, serde_json::to_value(meta)?).await?;
 
     Ok((blobs_created, entries_synced))
 }
@@ -475,12 +475,12 @@ async fn sync_pull_db(
             entries_synced += 1;
         }
 
-        let meta = serde_json::json!({
-            "synced_from": peer_display_name,
-            "remote_snapshot_id": remote_snap.id,
-            "entries": remote_entries.len(),
-        });
-        ops::update_snapshot_metadata(local_db, local_snap.id, meta).await?;
+        let meta = tome_core::metadata::SyncPullMetadata {
+            synced_from: peer_display_name.to_owned(),
+            remote_snapshot_id: remote_snap.id.to_string(),
+            entries: remote_entries.len(),
+        };
+        ops::update_snapshot_metadata(local_db, local_snap.id, serde_json::to_value(meta)?).await?;
 
         last_remote_snapshot_id = Some(remote_snap.id);
         info!("synced snapshot {} ({} entries)", remote_snap.id, remote_entries.len());
@@ -724,12 +724,12 @@ async fn sync_push_db(
             entries_synced += 1;
         }
 
-        let meta = serde_json::json!({
-            "pushed_from_machine_id": source_machine_id,
-            "source_snapshot_id": local_snap.id,
-            "entries": local_entries.len(),
-        });
-        ops::update_snapshot_metadata(&peer_db, remote_snap.id, meta).await?;
+        let meta = tome_core::metadata::SyncPushMetadata {
+            pushed_from_machine_id: source_machine_id,
+            source_snapshot_id: local_snap.id,
+            entries: local_entries.len(),
+        };
+        ops::update_snapshot_metadata(&peer_db, remote_snap.id, serde_json::to_value(meta)?).await?;
 
         last_local_snapshot_id = Some(local_snap.id);
         info!("pushed snapshot {} -> {} ({} entries)", local_snap.id, remote_snap.id, local_entries.len());
