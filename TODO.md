@@ -6,7 +6,6 @@
 
 | 優先度 | 内容 |
 |--------|------|
-| 高 | scan_root 永続化 — `repositories.config["scan_root"]` に保存、`--path` 省略時に自動参照 |
 | 高 | スナップショット参照記法 — `@latest` / `@latest~N` / `@YYYY-MM-DD[Thh:mm]` / i64 直指定。`diff`, `show`, `restore` に適用 |
 | 高 | `tome log` — スナップショット一覧（`--limit`, `--oneline`, `--after`, `--before`） |
 | 高 | `tome show <ref>` — スナップショット詳細（diff + metadata）。参照記法を使用 |

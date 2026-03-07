@@ -104,3 +104,23 @@ pub async fn get_or_init_repository_fast_hash_algorithm(
 pub async fn list_repositories(db: &DatabaseConnection) -> anyhow::Result<Vec<repository::Model>> {
     Ok(repository::Entity::find().all(db).await?)
 }
+
+/// Read the scan root stored in `repo.config["scan_root"]`.
+pub fn get_repository_scan_root(repo: &repository::Model) -> Option<String> {
+    repo.config.get("scan_root").and_then(|v| v.as_str()).map(|s| s.to_owned())
+}
+
+/// Persist `path` into `repositories.config["scan_root"]`.
+pub async fn set_repository_scan_root(
+    db: &DatabaseConnection,
+    repo: &repository::Model,
+    path: &str,
+) -> anyhow::Result<()> {
+    let mut config = repo.config.clone();
+    config["scan_root"] = serde_json::Value::String(path.to_owned());
+    let mut am: repository::ActiveModel = repo.clone().into();
+    am.config = Set(config);
+    am.updated_at = Set(Utc::now().fixed_offset());
+    am.update(db).await?;
+    Ok(())
+}

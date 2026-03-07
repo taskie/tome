@@ -62,13 +62,17 @@ struct ScanStats {
 }
 
 pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
-    let scan_root = args.path.unwrap_or_else(|| PathBuf::from("."));
-    let scan_root = scan_root.canonicalize()?;
+    // 1. Get or create repository (needed to resolve scan_root from config).
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+
+    // 2. Resolve scan root: explicit arg > saved config > current directory.
+    let scan_root = match args.path {
+        Some(ref p) => p.clone(),
+        None => ops::get_repository_scan_root(&repo).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")),
+    };
+    let scan_root = scan_root.canonicalize().with_context(|| format!("cannot access scan root {:?}", scan_root))?;
 
     info!("scanning {:?} for repo {:?}", scan_root, args.repo);
-
-    // 1. Get or create repository.
-    let repo = ops::get_or_create_repository(db, &args.repo).await?;
 
     // 2. Find the previous snapshot (for parent chain).
     let parent = ops::latest_snapshot(db, repo.id).await?;
@@ -199,7 +203,10 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
 
     txn.commit().await?;
 
-    // 9. Discard the snapshot if nothing changed and --allow-empty is not set.
+    // 9. Persist the scan root in the repository config.
+    ops::set_repository_scan_root(db, &repo, &scan_root.to_string_lossy()).await?;
+
+    // 10. Discard the snapshot if nothing changed and --allow-empty is not set.
     if stats.added == 0 && stats.modified == 0 && stats.deleted == 0 && !args.allow_empty {
         ops::delete_snapshot_records(db, &[snapshot.id]).await?;
         println!(
@@ -209,7 +216,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 10. Update snapshot metadata with scan statistics.
+    // 11. Update snapshot metadata with scan statistics.
     let metadata = tome_core::metadata::ScanMetadata {
         scan_root: scan_root.to_string_lossy().into_owned(),
         scanned: stats.scanned,
