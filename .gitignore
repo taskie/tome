@@ -8,3 +8,4 @@
 tmp
 *.db
 .env*
+.claude/settings.local.json
