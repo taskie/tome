@@ -43,6 +43,10 @@ pub struct ScanArgs {
     #[arg(long, default_value = "1000")]
     pub batch_size: i64,
 
+    /// Keep the snapshot even if no files were added, modified, or deleted
+    #[arg(long)]
+    pub allow_empty: bool,
+
     /// Directory to scan (default: current directory)
     pub path: Option<PathBuf>,
 }
@@ -195,7 +199,17 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
 
     txn.commit().await?;
 
-    // 9. Update snapshot metadata with scan statistics.
+    // 9. Discard the snapshot if nothing changed and --allow-empty is not set.
+    if stats.added == 0 && stats.modified == 0 && stats.deleted == 0 && !args.allow_empty {
+        ops::delete_snapshot_records(db, &[snapshot.id]).await?;
+        println!(
+            "scan complete: {} scanned, no changes detected (snapshot discarded; use --allow-empty to keep)",
+            stats.scanned
+        );
+        return Ok(());
+    }
+
+    // 10. Update snapshot metadata with scan statistics.
     let metadata = tome_core::metadata::ScanMetadata {
         scan_root: scan_root.to_string_lossy().into_owned(),
         scanned: stats.scanned,
