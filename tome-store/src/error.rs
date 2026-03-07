@@ -20,6 +20,9 @@ pub enum StoreError {
     #[error("invalid URL: {0}")]
     InvalidUrl(String),
 
+    #[error("key source error: {0}")]
+    KeySource(String),
+
     #[error("{0}")]
     Other(String),
 }

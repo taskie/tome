@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use tome_core::hash::{self, DigestAlgorithm};
 use tome_db::ops;
-use tome_store::{CipherAlgorithm, Storage, encrypted::EncryptedStorage, factory, storage::blob_path};
+use tome_store::{CipherAlgorithm, Storage, encrypted::EncryptedStorage, factory, key_source, storage::blob_path};
 
 use crate::config::{self, StoreConfig};
 
@@ -85,9 +85,12 @@ pub struct StoreCopyArgs {
     /// Encrypt blobs in the destination store
     #[arg(long)]
     pub encrypt: bool,
-    /// Path to 32-byte binary key file (required when --encrypt is set)
+    /// Path to 32-byte binary key file (required when --encrypt is set, unless --key-source is used)
     #[arg(long)]
     pub key_file: Option<std::path::PathBuf>,
+    /// External secret manager URI for the encryption key (e.g. env://VAR, aws-secrets-manager://id, vault://path)
+    #[arg(long)]
+    pub key_source: Option<String>,
     /// Cipher algorithm for encryption: aes256gcm (default) or chacha20-poly1305
     #[arg(long, default_value = "aes256gcm")]
     pub cipher: String,
@@ -269,18 +272,20 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
     let dst_store = resolve_store(db, &args.dst).await?;
 
     // Resolve encryption key if needed.
-    // Priority: --key-file CLI arg > store.key_file in tome.toml.
+    // Priority: --key-file > --key-source > store.key_file > store.key_source (all from CLI then config).
     let key: Option<[u8; 32]> = if args.encrypt {
-        let key_path =
-            args.key_file.or_else(|| cfg.key_file.as_ref().map(|p| config::expand_tilde(p))).ok_or_else(|| {
-                let default_dir = factory::key_dir();
-                anyhow::anyhow!(
-                    "--key-file is required when --encrypt is set \
-                     (or set store.key_file in tome.toml; default key dir: {:?})",
-                    default_dir
-                )
-            })?;
-        Some(factory::read_key_file(&key_path)?)
+        if let Some(key_path) = args.key_file.or_else(|| cfg.key_file.as_ref().map(|p| config::expand_tilde(p))) {
+            Some(factory::read_key_file(&key_path)?)
+        } else if let Some(source) = args.key_source.or_else(|| cfg.key_source.clone()) {
+            Some(key_source::resolve(&source).await.map_err(|e| anyhow::anyhow!("{}", e))?)
+        } else {
+            let default_dir = factory::key_dir();
+            anyhow::bail!(
+                "--key-file or --key-source is required when --encrypt is set \
+                 (or set store.key_file / store.key_source in tome.toml; default key dir: {:?})",
+                default_dir
+            )
+        }
     } else {
         None
     };

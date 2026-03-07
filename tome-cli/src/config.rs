@@ -49,6 +49,15 @@ pub struct StoreConfig {
     /// Path to the 32-byte binary key file used for encryption
     pub key_file: Option<PathBuf>,
 
+    /// External secret manager URI for the encryption key.
+    /// Overridden by `key_file` when both are set.
+    /// Examples:
+    ///   `env://TOME_KEY`
+    ///   `file:///home/user/.config/tome/keys/mykey`
+    ///   `aws-secrets-manager://my-tome-key`
+    ///   `vault://secret/data/tome?field=key`
+    pub key_source: Option<String>,
+
     /// Default cipher algorithm ("aes256gcm" or "chacha20poly1305")
     pub cipher: Option<String>,
 }
@@ -136,6 +145,9 @@ fn merge_store(dst: &mut StoreConfig, src: StoreConfig) {
     }
     if src.key_file.is_some() {
         dst.key_file = src.key_file;
+    }
+    if src.key_source.is_some() {
+        dst.key_source = src.key_source;
     }
     if src.cipher.is_some() {
         dst.cipher = src.cipher;
