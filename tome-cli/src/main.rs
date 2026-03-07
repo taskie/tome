@@ -44,6 +44,8 @@ enum Commands {
     Pull(commands::push::PullArgs),
     /// Start the HTTP API server
     Serve(ServeArgs),
+    /// Watch a directory and automatically take snapshots on changes
+    Watch(commands::watch::WatchArgs),
 }
 
 #[derive(clap::Args)]
@@ -100,6 +102,15 @@ async fn main() -> Result<()> {
         Commands::Serve(args) => {
             let addr = args.addr.or(cfg.serve.addr).unwrap_or_else(|| "127.0.0.1:8080".to_owned());
             tome_server::serve(db_conn, &addr).await?
+        }
+        Commands::Watch(mut args) => {
+            if args.quiet_period.is_none() {
+                args.quiet_period = cfg.watch.quiet_period;
+            }
+            if args.max_delay.is_none() {
+                args.max_delay = cfg.watch.max_delay;
+            }
+            commands::watch::run(&db_conn, args).await?
         }
     }
 

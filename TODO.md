@@ -12,7 +12,6 @@
 | 高 | `tome files` — 追跡中ファイル一覧（entry_cache）（`--prefix`, `--format`, `--include-deleted`） |
 | 高 | `tome history <path>` — ファイル変更履歴（`ops::path_history_with_blobs`） |
 | 高 | `tome status` — 前回スキャンからの変更を read-only 検出。`scan.rs` の判定フェーズを分離（`--hash` で full digest） |
-| 高 | Watch モード（`tome watch`）— inotify/fanotify/kqueue でバックグラウンド監視し自動スナップショット |
 | 中 | `tome repo list/rm/rename` — リポジトリ管理サブコマンド（`rm` は `--force` 必須、cascade 削除） |
 | 中 | `sync` → `remote` リネーム — `tome remote add/rm/list/set` を新設、`sync add/rm/list/set` は非推奨警告つきで残す |
 | 中 | `tome tag rm` 追加 — `tag delete` をエイリアスとして残す（`store rm`, `remote rm` と統一） |

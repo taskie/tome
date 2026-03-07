@@ -30,3 +30,4 @@ ignore = { workspace = true }
 hex = "0.4"
 reqwest = { workspace = true }
 hostname = { workspace = true }
+notify = "6"

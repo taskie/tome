@@ -9,3 +9,4 @@ pub mod store;
 pub mod sync;
 pub mod tag;
 pub mod verify;
+pub mod watch;

@@ -27,6 +27,7 @@ pub struct TomeConfig {
     pub scan: ScanConfig,
     pub store: StoreConfig,
     pub serve: ServeConfig,
+    pub watch: WatchConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -57,6 +58,15 @@ pub struct StoreConfig {
 pub struct ServeConfig {
     /// Default listen address
     pub addr: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct WatchConfig {
+    /// Seconds of inactivity before taking a snapshot (default: 60)
+    pub quiet_period: Option<u64>,
+    /// Max seconds from first change to forced snapshot (default: 600)
+    pub max_delay: Option<u64>,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -108,6 +118,7 @@ fn merge(dst: &mut TomeConfig, src: TomeConfig) {
     merge_scan(&mut dst.scan, src.scan);
     merge_store(&mut dst.store, src.store);
     merge_serve(&mut dst.serve, src.serve);
+    merge_watch(&mut dst.watch, src.watch);
 }
 
 fn merge_scan(dst: &mut ScanConfig, src: ScanConfig) {
@@ -134,6 +145,15 @@ fn merge_store(dst: &mut StoreConfig, src: StoreConfig) {
 fn merge_serve(dst: &mut ServeConfig, src: ServeConfig) {
     if src.addr.is_some() {
         dst.addr = src.addr;
+    }
+}
+
+fn merge_watch(dst: &mut WatchConfig, src: WatchConfig) {
+    if src.quiet_period.is_some() {
+        dst.quiet_period = src.quiet_period;
+    }
+    if src.max_delay.is_some() {
+        dst.max_delay = src.max_delay;
     }
 }
 
