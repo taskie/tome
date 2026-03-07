@@ -27,7 +27,6 @@
 | 中 | 重複レポート（`tome dedup`）— blob の content-addressing を活かしリポジトリ横断で重複ファイルを報告 |
 | 中 | Webhook / 通知 — スキャン完了・変更検知時に変更サマリを POST（Slack, Discord, 汎用 HTTP） |
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
-| 中 | AWS DSQL 対応 — `repositories.config` の JSONB → `json` 型へのマイグレーション（DSQL 使用時） |
 | 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
 | 低 | 鍵ローテーション — aether Header 拡張 + `store reencrypt` コマンド |
 | 低 | 外部シークレットマネージャ統合 — `key_source = "aws-secrets-manager://..."` / `"vault://..."` / `"env://"` |

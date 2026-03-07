@@ -13,25 +13,26 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_table(
-                Table::create()
-                    .table(Tags::Table)
-                    .col(ColumnDef::new(Tags::Id).big_integer().not_null().primary_key())
-                    .col(ColumnDef::new(Tags::BlobId).big_integer().not_null())
-                    .col(ColumnDef::new(Tags::Key).string().not_null())
-                    .col(ColumnDef::new(Tags::Value).string().null())
-                    .col(
-                        ColumnDef::new(Tags::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .foreign_key(ForeignKey::create().from(Tags::Table, Tags::BlobId).to(Blobs::Table, Blobs::Id))
-                    .index(Index::create().name("uq_tags_blob_key").col(Tags::BlobId).col(Tags::Key).unique())
-                    .to_owned(),
+        let mut table = Table::create()
+            .table(Tags::Table)
+            .col(ColumnDef::new(Tags::Id).big_integer().not_null().primary_key())
+            .col(ColumnDef::new(Tags::BlobId).big_integer().not_null())
+            .col(ColumnDef::new(Tags::Key).string().not_null())
+            .col(ColumnDef::new(Tags::Value).string().null())
+            .col(
+                ColumnDef::new(Tags::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
             )
-            .await?;
+            .index(Index::create().name("uq_tags_blob_key").col(Tags::BlobId).col(Tags::Key).unique())
+            .to_owned();
+
+        if !crate::dsql::is_dsql() {
+            table.foreign_key(ForeignKey::create().from(Tags::Table, Tags::BlobId).to(Blobs::Table, Blobs::Id));
+        }
+
+        manager.create_table(table).await?;
 
         manager
             .create_index(
