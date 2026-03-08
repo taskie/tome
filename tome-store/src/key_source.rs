@@ -8,6 +8,7 @@
 //! | `env://VAR_NAME` | hex (64 chars) or base64 key stored in an env var |
 //! | `aws-secrets-manager://secret-id` | AWS Secrets Manager — string (hex/base64) or binary value |
 //! | `vault://mount/path?field=name` | HashiCorp Vault KV (requires `VAULT_ADDR` + `VAULT_TOKEN`); `field` defaults to `"key"`; supports KV v1 and v2 |
+//! | `pass://entry-name` | [pass](https://www.passwordstore.org/) — runs `pass show <entry>` and parses the first line |
 
 use base64::prelude::*;
 
@@ -23,6 +24,8 @@ pub async fn resolve(source: &str) -> Result<[u8; 32]> {
         resolve_aws_sm(secret_id).await
     } else if source.starts_with("vault://") {
         resolve_vault(source).await
+    } else if let Some(entry) = source.strip_prefix("pass://") {
+        resolve_pass(entry)
     } else {
         Err(StoreError::InvalidUrl(format!("unsupported key_source scheme: {:?}", source)))
     }
@@ -107,6 +110,29 @@ async fn resolve_vault(source: &str) -> Result<[u8; 32]> {
         .ok_or_else(|| StoreError::KeySource(format!("field {field:?} not found in Vault response")))?;
 
     parse_key_str(val.trim())
+}
+
+// ── pass:// ──────────────────────────────────────────────────────────────────
+
+fn resolve_pass(entry: &str) -> Result<[u8; 32]> {
+    let output = std::process::Command::new("pass")
+        .arg("show")
+        .arg(entry)
+        .output()
+        .map_err(|e| StoreError::KeySource(format!("failed to run `pass`: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(StoreError::KeySource(format!(
+            "`pass show {entry}` failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first_line = stdout.lines().next().unwrap_or("").trim();
+    parse_key_str(first_line)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
