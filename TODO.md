@@ -29,7 +29,6 @@
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
 | 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
 | 低 | 鍵ローテーション — aether Header 拡張 + `store reencrypt` コマンド |
-| 低 | 外部シークレットマネージャ統合 — `key_source = "aws-secrets-manager://..."` / `"vault://..."` / `"env://"` |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |
 
 各タスクは「機能実装 → テスト追加 → ドキュメント更新」の粒度でコミットする。
