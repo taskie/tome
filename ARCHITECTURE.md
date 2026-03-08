@@ -12,7 +12,7 @@
 | `tome-db` | SeaORM entities, migrations, query operations (`ops/` modules) |
 | `tome-store` | Async `Storage` trait + implementations: Local, SSH, S3, Encrypted |
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
-| `tome-cli` | Unified CLI: scan / store / sync / diff / restore / tag / verify / gc / serve |
+| `tome-cli` | Unified CLI: scan / watch / store / sync / diff / restore / tag / verify / gc / serve |
 | `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
 | `aether` | Streaming AEAD encryption: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF |
 | `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
@@ -259,11 +259,25 @@ Decryption auto-detects the format version and algorithm from the stored header 
 
 ### Key management
 
-Keys are 32-byte raw binary files. The `tome.toml` setting `store.key_file` specifies the path. Keys are never stored on remote servers (out-of-band distribution).
+Keys are 32-byte raw values. They are never stored in the database or on remote servers (out-of-band distribution).
 
+Two ways to provide a key:
+
+**`store.key_file`** (path to a 32-byte binary file):
 ```
 ~/.config/tome/keys/<key_id>.key    — 32-byte raw binary key
 ```
+
+**`store.key_source`** (URI, resolved at runtime by `tome-store/src/key_source.rs`):
+
+| URI | Source |
+|-----|--------|
+| `env://VAR_NAME` | hex or base64 value of an environment variable |
+| `file:///path/to/key` | 32-byte binary key file |
+| `aws-secrets-manager://secret-id` | AWS Secrets Manager — string (hex/base64) or binary secret |
+| `vault://mount/path?field=name` | HashiCorp Vault KV v1/v2 via HTTP (`VAULT_ADDR` + `VAULT_TOKEN`) |
+
+`key_file` takes priority over `key_source`. The CLI flags `--key-file` / `--key-source` override the config.
 
 ---
 
@@ -482,6 +496,61 @@ graph TB
 ### machine_id allocation
 
 `POST /machines` allocates an unused `machine_id` (valid range: 0–32767; `machine_id = 0` is reserved for local-only use). `tome init --server <url>` calls this endpoint and persists the result to `~/.config/tome/tome.toml`.
+
+---
+
+## AWS Lambda deployment
+
+`tome-server` can run as an AWS Lambda function using the `lambda` feature flag. The Lambda binary (`tome-lambda`) wraps the same axum router via `lambda_http`.
+
+### Build
+
+```bash
+# Requires: cargo install cargo-lambda
+cargo lambda build --release --features lambda --bin tome-lambda
+
+# Deploy (initial)
+cargo lambda deploy tome-lambda \
+  --runtime provided.al2023 \
+  --memory-size 256 \
+  --timeout 30
+
+# Set environment variables
+aws lambda update-function-configuration \
+  --function-name tome-lambda \
+  --environment "Variables={TOME_DB=postgres://admin:<token>@<cluster>.dsql.amazonaws.com:5432/postgres?sslmode=require,TOME_MACHINE_ID=0}"
+```
+
+### Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `TOME_DB` | PostgreSQL connection URL (Aurora DSQL or standard PostgreSQL) |
+| `TOME_MACHINE_ID` | Sonyflake machine ID (0–32767; default: 0) |
+| `TOME_DSQL` | Set to any non-empty value to enable DSQL mode (auto-detected from URL containing `dsql.amazonaws.com`) |
+
+### AWS DSQL compatibility
+
+Aurora DSQL does not support `FOREIGN KEY` declarations in `CREATE TABLE`. When a DSQL endpoint is detected (URL contains `dsql.amazonaws.com` or `TOME_DSQL` is set), all FK constraints are omitted from migrations. Referential integrity is maintained by the application (correct deletion order in GC, ordered inserts on sync).
+
+JSON columns use `json` type (not `jsonb`) in all migrations — compatible with DSQL.
+
+| DSQL limitation | Impact on tome | Resolution |
+|-----------------|----------------|-----------|
+| No `FOREIGN KEY` | Migrations fail without fix | Conditionally skipped via `dsql::is_dsql()` |
+| No `JSONB` | N/A | Migrations already use `json` |
+| No triggers/sequences | N/A | tome uses Sonyflake IDs (app-side) |
+| FK not enforced | No impact | App enforces correct ordering |
+
+### IAM token rotation
+
+Aurora DSQL uses IAM authentication tokens (max 1 week validity). For long-running Lambda warm instances, redeploy or schedule a rotation when the token expires:
+
+```bash
+aws dsql generate-db-connect-admin-auth-token \
+  --hostname <cluster>.dsql.amazonaws.com \
+  --region <region>
+```
 
 ---
 

@@ -17,6 +17,8 @@ A file change tracking system written in Rust. Scans directories, detects change
 
 tome is a **local-first personal tool**. It does not require a central server. SQLite is a first-class citizen; the `tome serve` HTTP API and web UI are optional.
 
+> **Continuous monitoring**: `tome watch` runs in the foreground and automatically takes a snapshot after file activity settles (configurable quiet period + max delay).
+
 ## Quick Start
 
 **Prerequisites:** Rust 1.85+
@@ -67,6 +69,26 @@ tome store push backup
 tome restore --snapshot <snap_id> --store backup ./restored/
 ```
 
+### Continuous monitoring
+
+```bash
+# Watch ~/documents — take a snapshot after 60s of inactivity (max 10 min delay)
+tome watch ~/documents
+
+# Custom quiet period and max delay
+tome watch ~/documents --quiet-period 30 --max-delay 300
+
+# Stop with Ctrl+C
+```
+
+Parameters can also be set in `tome.toml`:
+
+```toml
+[watch]
+quiet_period = 60   # seconds of inactivity before snapshot (default: 60)
+max_delay    = 600  # max seconds from first change to forced snapshot (default: 600)
+```
+
 ### Encrypted backup to S3
 
 ```bash
@@ -80,6 +102,11 @@ tome store add remote s3://my-bucket/tome
 # Push locally, then copy with encryption to S3
 tome store push local
 tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
+
+# Or load the key from an external secret manager
+tome store copy --encrypt --key-source env://TOME_KEY local remote
+tome store copy --encrypt --key-source aws-secrets-manager://my-tome-key local remote
+tome store copy --encrypt --key-source vault://secret/data/tome?field=key local remote
 ```
 
 ### Sync history to a central server
@@ -148,10 +175,17 @@ repo = "default"
 
 [store]
 default_store = "backup"
-key_file = "~/.config/tome/keys/main.key"
+key_file = "~/.config/tome/keys/main.key"   # 32-byte binary key file
+# key_source = "env://TOME_KEY"              # alternative: load key from external source
+# key_source = "aws-secrets-manager://my-tome-key"
+# key_source = "vault://secret/data/tome?field=key"
 
 [serve]
 addr = "127.0.0.1:8080"
+
+[watch]
+quiet_period = 60    # seconds of inactivity before snapshot
+max_delay    = 600   # max seconds from first change to forced snapshot
 ```
 
 ## CLI Reference
@@ -170,12 +204,17 @@ Scan a directory and record a snapshot of file changes.
 
 ```bash
 tome scan                                        # current directory, repo "default"
-tome scan --repo docs /srv/docs                  # named repository
+tome scan --repo docs /srv/docs                  # named repository (path saved for future scans)
 tome scan --no-ignore ~/data                     # ignore .gitignore rules
 tome scan --message "after deploy"               # annotate the snapshot
 tome scan --digest-algorithm blake3              # use BLAKE3 (set once at repo creation)
+tome scan --allow-empty                          # keep snapshot even when nothing changed
 tome --db /var/db/tome.db scan ~/data            # custom DB path
 ```
+
+After the first scan with an explicit `[PATH]`, the path is saved in the repository configuration. Subsequent `tome scan` (without a path) will reuse it automatically.
+
+Snapshots with no changes (added + modified + deleted = 0) are discarded by default. Use `--allow-empty` to keep them.
 
 ### `tome diff <snap1> <snap2> [OPTIONS]`
 
@@ -217,13 +256,38 @@ tome store set <name> --url <new-url>                          # update store UR
 tome store rm <name> [--force]                                 # remove a store
 tome store list                                                 # list stores
 tome store push [--repo <name>] [<store>] [<path>]             # upload blobs
-tome store copy [--encrypt] [--key-file <path>] [--cipher <alg>] <src> <dst>
+tome store copy [--encrypt] [--key-file <path>] [--key-source <uri>] [--cipher <alg>] <src> <dst>
 tome store verify <store>                                       # verify integrity
 ```
 
 Supported URL schemes: `file:///path`, `ssh://user@host/path`, `s3://bucket/prefix`
 
 Cipher options for `--cipher`: `aes256gcm` (default), `chacha20-poly1305`
+
+Key sources for `--key-source` (alternative to `--key-file`):
+
+| URI | Description |
+|-----|-------------|
+| `env://VAR_NAME` | hex or base64 key from an environment variable |
+| `file:///path/to/key` | 32-byte binary key file |
+| `aws-secrets-manager://secret-id` | AWS Secrets Manager (string or binary value) |
+| `vault://mount/path?field=name` | HashiCorp Vault KV v1/v2 (`VAULT_ADDR` + `VAULT_TOKEN` env vars; `field` defaults to `"key"`) |
+
+Keys must be 32 bytes: hex-encoded (64 chars), base64, or raw binary.
+
+### `tome watch [OPTIONS] [PATH]`
+
+Monitor a directory and automatically take snapshots when file activity settles.
+
+```bash
+tome watch                               # watch saved scan_root (or current directory)
+tome watch ~/documents                   # explicit path
+tome watch --quiet-period 30             # snapshot after 30s of inactivity (default: 60)
+tome watch --max-delay 300               # force snapshot after 5min regardless (default: 600)
+tome watch --repo myproject ~/code       # named repository
+```
+
+Runs in the foreground until stopped with **Ctrl+C**. Ignores `.git/` directory changes and `.db` file events. Configurable via `[watch]` in `tome.toml`.
 
 ### `tome gc [OPTIONS]`
 
@@ -332,7 +396,7 @@ tome-core/     Hash computation (SHA-256 / BLAKE3 / xxHash64), ID generation, sh
 tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
-tome-cli/      Unified CLI (scan / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
+tome-cli/      Unified CLI (scan / watch / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
 tome-web/      Next.js 16 web frontend
 aether/        AEAD authenticated encryption (AES-256-GCM / ChaCha20-Poly1305 + Argon2id)
 treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk utilities
