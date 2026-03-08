@@ -107,6 +107,7 @@ tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
 tome store copy --encrypt --key-source env://TOME_KEY local remote
 tome store copy --encrypt --key-source aws-secrets-manager://my-tome-key local remote
 tome store copy --encrypt --key-source vault://secret/data/tome?field=key local remote
+tome store copy --encrypt --key-source pass://tome/main-key local remote
 ```
 
 ### Sync history to a central server
@@ -179,6 +180,7 @@ key_file = "~/.config/tome/keys/main.key"   # 32-byte binary key file
 # key_source = "env://TOME_KEY"              # alternative: load key from external source
 # key_source = "aws-secrets-manager://my-tome-key"
 # key_source = "vault://secret/data/tome?field=key"
+# key_source = "pass://tome/main-key"
 
 [serve]
 addr = "127.0.0.1:8080"
@@ -272,6 +274,7 @@ Key sources for `--key-source` (alternative to `--key-file`):
 | `file:///path/to/key` | 32-byte binary key file |
 | `aws-secrets-manager://secret-id` | AWS Secrets Manager (string or binary value) |
 | `vault://mount/path?field=name` | HashiCorp Vault KV v1/v2 (`VAULT_ADDR` + `VAULT_TOKEN` env vars; `field` defaults to `"key"`) |
+| `pass://entry-name` | [pass](https://www.passwordstore.org/) — runs `pass show <entry>` and reads the first line |
 
 Keys must be 32 bytes: hex-encoded (64 chars), base64, or raw binary.
 

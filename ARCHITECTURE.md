@@ -276,6 +276,7 @@ Two ways to provide a key:
 | `file:///path/to/key` | 32-byte binary key file |
 | `aws-secrets-manager://secret-id` | AWS Secrets Manager — string (hex/base64) or binary secret |
 | `vault://mount/path?field=name` | HashiCorp Vault KV v1/v2 via HTTP (`VAULT_ADDR` + `VAULT_TOKEN`) |
+| `pass://entry-name` | [pass](https://www.passwordstore.org/) — runs `pass show <entry>`, parses first line |
 
 `key_file` takes priority over `key_source`. The CLI flags `--key-file` / `--key-source` override the config.
 
