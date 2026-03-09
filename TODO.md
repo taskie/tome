@@ -18,18 +18,23 @@
 | 中 | `.tomeignore` サポート — `ignore::WalkBuilder::add_custom_ignore_filename(".tomeignore")` を追加 |
 | 中 | プログレス表示 — `indicatif` クレートで stderr にバー表示（`--quiet` / `--verbose` で制御） |
 | 中 | 並列ハッシュ計算 — `tokio::task::spawn_blocking` + `--jobs N`（デフォルト: num_cpus）。DB 書き込みは逐次 |
-| 中 | `store push` / `store copy` 並列化 — `tokio::sync::Semaphore` で同時接続数を制限（`--jobs N`） |
-| 中 | `--format json` — `log`, `show`, `files`, `history`, `diff`, `status`, `repo list`, `store list`, `remote list` に追加 |
+| 中 | `store push` / `store copy` 並列化 — `tokio::sync::Semaphore` で同時接続数を制限（`--jobs N`）。スキーム別デフォルト: `file://`=4, `ssh://`=4, `s3://`=8 |
+| 中 | `store push` のバッチクエリ化 — N+1 クエリ（blob ごとに `replica_exists`）を `blobs_missing_in_store` 1クエリに削減 |
+| 中 | ストアへの暗号化設定紐付け — `tome store add s3 <url> --encrypt --key-source pass://tome/key --cipher aes256gcm` で `stores.config` に保存し、`store push` / `store copy` で自動適用。`store set --no-encrypt` で無効化。`store list` で暗号化状態を表示 |
+| 中 | `store push` の直接リモート対応 — ローカルストアを中間バッファとせずスキャン元から任意ストアに直接 push。暗号化ストアにも対応（ストア設定を自動参照） |
+| 中 | `--format json` — `log`, `show`, `files`, `history`, `diff`, `status`, `repo list`, `store list`, `remote list`, `store push` に追加。`store push --format json` は `{pushed, skipped, errors, bytes_transferred, duration_ms}` を出力 |
 | 中 | `verify` 統合 — `tome verify --store <name>` / `--all` を追加（`tome store verify` はエイリアスとして残す） |
 | 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |
 | 中 | sync push 時のコンフリクト検知 — 中央 DB の分岐を検出し警告 |
 | 中 | sync フィルタ — `--include` / `--exclude` でパスを絞った選択的同期 |
 | 中 | 重複レポート（`tome dedup`）— blob の content-addressing を活かしリポジトリ横断で重複ファイルを報告 |
-| 中 | Webhook / 通知 — スキャン完了・変更検知時に変更サマリを POST（Slack, Discord, 汎用 HTTP） |
+| 中 | Webhook / 通知 — `--exec "cmd {pushed} {errors}"` でコマンド実行（先行実装）、または `tome.toml` の `[hooks] after_scan` / `after_push` で Slack / Discord / 汎用 HTTP POST |
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
 | 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
+| 低 | 終了コード整理 — 部分失敗(exit 1) / 致命的エラー(exit 2) を区別。cron 自動化向け |
 | 低 | 鍵ローテーション — aether Header 拡張 + `store reencrypt` コマンド |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |
+| 低 | README: 鍵管理ガイダンス（暗号鍵は暗号化バックアップと別の物理場所に保管）と `store push` / `store copy` の冪等性を明記 |
 
 各タスクは「機能実装 → テスト追加 → ドキュメント更新」の粒度でコミットする。
 完了後に `cargo fmt --all -- --check && cargo clippy --all --no-deps -- -D warnings && cargo test --all` を確認。
