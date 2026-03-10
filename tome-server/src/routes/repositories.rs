@@ -5,6 +5,7 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use utoipa::{IntoParams, ToSchema};
 
 use tome_core::hash::hex_encode;
 use tome_db::{
@@ -24,16 +25,45 @@ async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppRe
         .ok_or_else(|| AppError::not_found(format!("repository {:?} not found", name)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories",
+    responses(
+        (status = 200, description = "List all repositories", body = Vec<RepositoryResponse>),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn list_repositories(db: Db) -> AppResult<Json<Vec<RepositoryResponse>>> {
     let repos = ops::list_repositories(&db).await?;
     Ok(Json(repos.into_iter().map(Into::into).collect()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}",
+    params(("name" = String, Path, description = "Repository name")),
+    responses(
+        (status = 200, description = "Repository details", body = RepositoryResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn get_repository(db: Db, Path(name): Path<String>) -> AppResult<Json<RepositoryResponse>> {
     let repo = find_repo_or_404(&db, &name).await?;
     Ok(Json(repo.into()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}/snapshots",
+    params(("name" = String, Path, description = "Repository name")),
+    responses(
+        (status = 200, description = "List snapshots for the repository", body = Vec<SnapshotResponse>),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<Vec<SnapshotResponse>>> {
     let repo = find_repo_or_404(&db, &name).await?;
 
@@ -46,12 +76,35 @@ pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<
     Ok(Json(snaps.into_iter().map(Into::into).collect()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}/latest",
+    params(("name" = String, Path, description = "Repository name")),
+    responses(
+        (status = 200, description = "Latest snapshot, or null if none", body = Option<SnapshotResponse>),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn get_latest_snapshot(db: Db, Path(name): Path<String>) -> AppResult<Json<Option<SnapshotResponse>>> {
     let repo = find_repo_or_404(&db, &name).await?;
     let snap = ops::latest_snapshot(&db, repo.id).await?;
     Ok(Json(snap.map(Into::into)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}/history",
+    params(
+        ("name" = String, Path, description = "Repository name"),
+        HistoryQuery,
+    ),
+    responses(
+        (status = 200, description = "Snapshot+entry pairs for the given path", body = Vec<SnapshotEntry>),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn path_history(
     db: Db,
     Path(name): Path<String>,
@@ -67,31 +120,50 @@ pub async fn path_history(
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct HistoryQuery {
+    /// File path to retrieve history for.
     pub path: String,
 }
 
 // ── Diff ────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct DiffQuery {
+    /// First snapshot ID (decimal).
     pub snapshot1: String,
+    /// Second snapshot ID (decimal).
     pub snapshot2: String,
+    /// Optional path prefix filter.
     #[serde(default)]
     pub prefix: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct DiffResponse {
     pub snapshot1: SnapshotResponse,
     pub snapshot2: SnapshotResponse,
     pub blobs: HashMap<String, BlobResponse>,
     pub entries: HashMap<String, EntryResponse>,
-    /// blob_id → (entry_ids_in_snapshot1, entry_ids_in_snapshot2)
+    /// blob_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2]
+    #[schema(value_type = HashMap<String, Vec<Vec<String>>>)]
     pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}/diff",
+    params(
+        ("name" = String, Path, description = "Repository name"),
+        DiffQuery,
+    ),
+    responses(
+        (status = 200, description = "Diff between two snapshots", body = DiffResponse),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn diff_snapshots(
     db: Db,
     Path(name): Path<String>,
@@ -148,14 +220,18 @@ pub async fn diff_snapshots(
 
 // ── Files ───────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct FilesQuery {
+    /// Optional path prefix filter.
     #[serde(default)]
     pub prefix: String,
+    /// Include deleted entries (status=0).
     #[serde(default)]
     pub include_deleted: bool,
+    /// Page number (1-based, default 1).
     #[serde(default = "default_page")]
     pub page: u64,
+    /// Items per page (1–500, default 100).
     #[serde(default = "default_per_page")]
     pub per_page: u64,
 }
@@ -167,7 +243,7 @@ fn default_per_page() -> u64 {
     100
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct FilesResponse {
     pub total: u64,
     pub page: u64,
@@ -175,6 +251,19 @@ pub struct FilesResponse {
     pub items: Vec<CacheEntryResponse>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/repositories/{name}/files",
+    params(
+        ("name" = String, Path, description = "Repository name"),
+        FilesQuery,
+    ),
+    responses(
+        (status = 200, description = "Paginated list of tracked files from entry_cache", body = FilesResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn list_files(
     db: Db,
     Path(name): Path<String>,
@@ -216,29 +305,45 @@ pub async fn list_files(
 
 // ── Cross-repo diff ─────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct RepoDiffQuery {
+    /// First repository name.
     pub repo1: String,
+    /// Optional path prefix for repo1.
     #[serde(default)]
     pub prefix1: String,
+    /// Second repository name.
     pub repo2: String,
+    /// Optional path prefix for repo2.
     #[serde(default)]
     pub prefix2: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct RepoDiffResponse {
     pub repo1: RepositoryResponse,
     pub repo2: RepositoryResponse,
     pub blobs: HashMap<String, BlobResponse>,
-    /// "1:{path}" or "2:{path}" → CacheEntryResponse
+    /// `"1:{path}"` or `"2:{path}"` → CacheEntryResponse
     pub entries: HashMap<String, CacheEntryResponse>,
-    /// blob_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
+    /// blob_id → [entry_keys_in_repo1, entry_keys_in_repo2]
+    #[schema(value_type = HashMap<String, Vec<Vec<String>>>)]
     pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
     /// Entry keys for deleted paths (status=0, blob_id=NULL)
     pub deleted: Vec<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/diff",
+    params(RepoDiffQuery),
+    responses(
+        (status = 200, description = "Cross-repository diff from entry_cache", body = RepoDiffResponse),
+        (status = 400, description = "Too many entries", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+    ),
+    tag = "repositories"
+)]
 pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Json<RepoDiffResponse>> {
     let repo1 = find_repo_or_404(&db, &q.repo1).await?;
     let repo2 = find_repo_or_404(&db, &q.repo2).await?;

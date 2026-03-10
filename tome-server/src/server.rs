@@ -1,11 +1,13 @@
 use axum::{
-    Router,
+    Json, Router,
     routing::{get, post, put},
 };
 use sea_orm::DatabaseConnection;
 use tower_http::trace::TraceLayer;
 use tracing::info;
+use utoipa::OpenApi as _;
 
+use crate::openapi::ApiDoc;
 use crate::routes;
 
 pub fn build_router(db: DatabaseConnection) -> Router {
@@ -30,8 +32,13 @@ pub fn build_router(db: DatabaseConnection) -> Router {
         .route("/sync-peers", get(routes::list_all_sync_peers))
         .route("/sync/pull", get(routes::sync::pull))
         .route("/sync/push", post(routes::sync::push))
+        .route("/openapi.json", get(openapi_json))
         .layer(TraceLayer::new_for_http())
         .with_state(db)
+}
+
+async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
 }
 
 pub async fn serve(db: DatabaseConnection, addr: &str) -> anyhow::Result<()> {

@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, Query},
 };
 use serde::Deserialize;
+use utoipa::IntoParams;
 
 use tome_db::ops;
 
@@ -10,12 +11,26 @@ use super::Db;
 use super::responses::*;
 use crate::error::{AppError, AppResult};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct EntriesQuery {
+    /// Optional path prefix filter.
     #[serde(default)]
     pub prefix: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/snapshots/{id}/entries",
+    params(
+        ("id" = String, Path, description = "Snapshot ID (decimal)"),
+        EntriesQuery,
+    ),
+    responses(
+        (status = 200, description = "Entries in the snapshot", body = Vec<EntryResponse>),
+        (status = 400, description = "Invalid snapshot id", body = ErrorResponse),
+    ),
+    tag = "snapshots"
+)]
 pub async fn list_entries(
     db: Db,
     Path(id): Path<String>,

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use axum::{Json, extract::Query};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 use tome_core::hash::{FileHash, hex_encode};
 use tome_db::{entities::repository, ops};
@@ -12,7 +13,7 @@ use crate::error::{AppError, AppResult};
 
 // ── Shared protocol types ────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct SyncEntry {
     pub path: String,
     /// 0 = deleted, 1 = present
@@ -25,7 +26,7 @@ pub struct SyncEntry {
     pub mtime: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct SyncReplica {
     pub blob_digest: String,
     pub store_name: String,
@@ -37,14 +38,15 @@ pub struct SyncReplica {
 
 // ── Pull ─────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct PullQuery {
+    /// Repository name.
     pub repo: String,
     /// Decimal snapshot ID; return only snapshots created after this one.
     pub after: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct SyncSnapshot {
     pub id: String,
     pub parent_id: Option<String>,
@@ -57,11 +59,21 @@ pub struct SyncSnapshot {
     pub replicas: Vec<SyncReplica>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct PullResponse {
     pub snapshots: Vec<SyncSnapshot>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/sync/pull",
+    params(PullQuery),
+    responses(
+        (status = 200, description = "Incremental snapshots since `after`", body = PullResponse),
+        (status = 404, description = "Repository not found", body = ErrorResponse),
+    ),
+    tag = "sync"
+)]
 pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResponse>> {
     let repo = find_repo_or_404(&db, &q.repo).await?;
 
@@ -143,12 +155,13 @@ pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResp
 
 // ── Push ─────────────────────────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct PushQuery {
+    /// Repository name.
     pub repo: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct PushRequest {
     pub source_machine_id: Option<i16>,
     /// Decimal snapshot ID from the source machine (used as idempotency key).
@@ -161,12 +174,23 @@ pub struct PushRequest {
     pub replicas: Vec<SyncReplica>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct PushResponse {
     /// Server-side snapshot ID assigned to this push.
     pub snapshot_id: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/sync/push",
+    params(PushQuery),
+    request_body = PushRequest,
+    responses(
+        (status = 200, description = "Snapshot created (or existing returned for idempotent re-push)", body = PushResponse),
+        (status = 400, description = "Bad request", body = ErrorResponse),
+    ),
+    tag = "sync"
+)]
 pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushRequest>) -> AppResult<Json<PushResponse>> {
     let repo = ops::get_or_create_repository(&db, &q.repo).await?;
 

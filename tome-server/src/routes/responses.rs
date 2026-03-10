@@ -1,9 +1,16 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use tome_core::hash::hex_encode;
 use tome_db::entities::{blob, entry, repository, snapshot};
 
-#[derive(Serialize)]
+/// Error response body returned for 4xx/5xx responses.
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponse {
+    pub error: String,
+}
+
+#[derive(Serialize, ToSchema)]
 pub struct RepositoryResponse {
     pub id: String,
     pub name: String,
@@ -24,7 +31,7 @@ impl From<repository::Model> for RepositoryResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SnapshotResponse {
     pub id: String,
     pub repository_id: String,
@@ -47,7 +54,7 @@ impl From<snapshot::Model> for SnapshotResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct EntryResponse {
     pub id: String,
     pub snapshot_id: String,
@@ -82,7 +89,7 @@ impl From<entry::Model> for EntryResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct BlobResponse {
     pub id: String,
     pub digest: String,
@@ -103,13 +110,13 @@ impl From<blob::Model> for BlobResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SnapshotEntry {
     pub snapshot: SnapshotResponse,
     pub entry: EntryResponse,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CacheEntryResponse {
     pub path: String,
     pub status: i16,
@@ -134,7 +141,7 @@ pub fn cache_entry_to_response(e: &tome_db::entities::entry_cache::Model) -> Cac
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct MachineResponse {
     pub machine_id: i16,
     pub name: String,
@@ -155,7 +162,7 @@ impl From<tome_db::entities::machine::Model> for MachineResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct StoreResponse {
     pub id: String,
     pub name: String,
@@ -176,7 +183,7 @@ impl From<tome_db::entities::store::Model> for StoreResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct TagResponse {
     pub id: String,
     pub blob_id: String,
@@ -197,7 +204,7 @@ impl From<tome_db::entities::tag::Model> for TagResponse {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SyncPeerResponse {
     pub id: String,
     pub name: String,

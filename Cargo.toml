@@ -44,3 +44,4 @@ dirs = "6"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 hostname = "0.4"
 blake3 = "1"
+utoipa = { version = "4", features = ["axum_extras"] }

@@ -1,9 +1,9 @@
-mod admin;
-mod blobs;
-mod machines;
-mod repositories;
+pub(crate) mod admin;
+pub(crate) mod blobs;
+pub(crate) mod machines;
+pub(crate) mod repositories;
 pub mod responses;
-mod snapshots;
+pub(crate) mod snapshots;
 pub mod sync;
 
 use axum::{Json, extract::State, http::StatusCode};
