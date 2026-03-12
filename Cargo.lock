@@ -4937,16 +4937,11 @@ dependencies = [
 name = "treblo-cli"
 version = "0.1.1"
 dependencies = [
- "blake3",
- "byteorder",
  "clap",
  "ignore",
  "serde",
  "serde_json",
- "sha-1",
- "sha2",
  "treblo",
- "twox-hash",
 ]
 
 [[package]]

@@ -1,113 +1,13 @@
 use std::{ffi::OsStr, io::stdout, path::PathBuf};
 
-use byteorder::{BigEndian, LittleEndian, WriteBytesExt};
 use clap::Parser;
 use serde::Serialize;
-use sha1::Sha1;
-use sha2::Sha256;
-use std::io::{Error, Write};
+use std::io::Write;
 use treblo::{
     hex::to_hex_string,
-    mode::{HashAlgorithm, HashMode},
-    native::{EntryKind, HashConfig, TreeResult, WalkOptions, compute_root_hash},
-    walk,
-    walk::Hasher,
+    mode::{HashAlgorithm, HashConfig, HashMode},
+    walk::TrebloWalk,
 };
-use twox_hash::{XxHash3_64, XxHash64};
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Git-mode hasher wrappers
-// ──────────────────────────────────────────────────────────────────────────────
-
-struct Sha256Holder(Sha256);
-
-impl Write for Sha256Holder {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        self.0.write(buf)
-    }
-    fn flush(&mut self) -> Result<(), Error> {
-        self.0.flush()
-    }
-}
-impl Hasher for Sha256Holder {
-    fn result_vec(&mut self) -> Vec<u8> {
-        use sha2::Digest;
-        self.0.clone().finalize().to_vec()
-    }
-}
-
-struct Blake3Holder(blake3::Hasher);
-
-impl Write for Blake3Holder {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        self.0.update(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-}
-impl Hasher for Blake3Holder {
-    fn result_vec(&mut self) -> Vec<u8> {
-        self.0.finalize().as_bytes().to_vec()
-    }
-}
-
-struct XxHash64Holder {
-    hash: XxHash64,
-    little_endian: bool,
-}
-impl Write for XxHash64Holder {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        use std::hash::Hasher;
-        Hasher::write(&mut self.hash, buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-}
-impl Hasher for XxHash64Holder {
-    fn result_vec(&mut self) -> Vec<u8> {
-        use std::hash::Hasher;
-        let mut w = vec![];
-        let x = Hasher::finish(&self.hash);
-        if self.little_endian {
-            w.write_u64::<LittleEndian>(x).unwrap();
-        } else {
-            w.write_u64::<BigEndian>(x).unwrap();
-        }
-        w
-    }
-}
-
-struct XxHash3_64Holder {
-    hash: XxHash3_64,
-    little_endian: bool,
-}
-impl Write for XxHash3_64Holder {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        use std::hash::Hasher;
-        Hasher::write(&mut self.hash, buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-}
-impl Hasher for XxHash3_64Holder {
-    fn result_vec(&mut self) -> Vec<u8> {
-        use std::hash::Hasher;
-        let mut w = vec![];
-        let x = Hasher::finish(&self.hash);
-        if self.little_endian {
-            w.write_u64::<LittleEndian>(x).unwrap();
-        } else {
-            w.write_u64::<BigEndian>(x).unwrap();
-        }
-        w
-    }
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI
@@ -127,37 +27,28 @@ pub struct Opt {
     #[arg(short = 'a', long = "algorithm")]
     algorithm: Option<String>,
 
-    /// Show subtree hashes (native: direct children; git: all entries)
-    #[arg(short, long)]
-    verbose: bool,
-
     /// JSON output
     #[arg(short, long)]
     json: bool,
 
-    // ── Native-mode options ──────────────────────────────────────────────────
-    /// Exclude empty directories from the tree hash
-    #[arg(long = "no-empty-dirs")]
-    no_empty_dirs: bool,
-
-    // ── Git-mode options ─────────────────────────────────────────────────────
-    /// Show only the root hash (git mode)
+    // ── Output options ────────────────────────────────────────────────────────
+    /// Show only the root hash
     #[arg(short, long)]
     summarize: bool,
 
-    /// Maximum path depth to display (git mode)
+    /// Maximum path depth to display
     #[arg(short, long)]
     depth: Option<usize>,
 
-    /// Include the root path itself in output (git mode)
+    /// Include the root path itself in output
     #[arg(short = 'S', long = "no-self", action = clap::ArgAction::SetFalse)]
     show_self: bool,
 
-    /// Hash file content only, skip tree hashing (git mode)
+    /// Hash file content only, skip tree hashing
     #[arg(short, long)]
     blob_only: bool,
 
-    /// Continue on errors instead of panicking (git mode)
+    /// Continue on errors instead of panicking
     #[arg(short = 'E', long)]
     no_error: bool,
 
@@ -184,45 +75,15 @@ pub struct Opt {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// JSON output types
+// JSON output type
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
-struct GitRecord<'a> {
+struct Record<'a> {
     file_mode: i32,
     object_type: &'a str,
     digest: &'a str,
     path: &'a str,
-}
-
-#[derive(Serialize)]
-struct NativeOutput {
-    root: String,
-    mode: String,
-    algorithm: String,
-    root_hash: String,
-    nodes: Vec<NodeJson>,
-    stats: StatsJson,
-}
-
-#[derive(Serialize)]
-struct NodeJson {
-    path: String,
-    hash: String,
-    children: Vec<EntryJson>,
-}
-
-#[derive(Serialize)]
-struct EntryJson {
-    kind: String,
-    name: String,
-    hash: String,
-}
-
-#[derive(Serialize)]
-struct StatsJson {
-    files: usize,
-    dirs: usize,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -245,111 +106,16 @@ fn base_paths(opt: &Opt) -> Vec<PathBuf> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Native mode
+// Unified run
 // ──────────────────────────────────────────────────────────────────────────────
 
-fn build_native_json(
-    base_path: &std::path::Path,
-    result: &TreeResult,
-    mode: HashMode,
-    alg: HashAlgorithm,
-) -> NativeOutput {
-    // Reverse nodes so root appears first in JSON output.
-    let nodes: Vec<NodeJson> = result
-        .nodes
-        .iter()
-        .rev()
-        .map(|node| NodeJson {
-            path: node.path.clone(),
-            hash: to_hex_string(&node.hash),
-            children: node
-                .children
-                .iter()
-                .map(|child| EntryJson {
-                    kind: match child.kind {
-                        EntryKind::File => "file".to_string(),
-                        EntryKind::Directory => "directory".to_string(),
-                    },
-                    name: child.name.clone(),
-                    hash: to_hex_string(&child.hash),
-                })
-                .collect(),
-        })
-        .collect();
-
-    NativeOutput {
-        root: base_path.display().to_string(),
-        mode: mode.to_string(),
-        algorithm: alg.to_string(),
-        root_hash: to_hex_string(&result.root_hash),
-        nodes,
-        stats: StatsJson { files: result.file_count, dirs: result.dir_count },
-    }
-}
-
-fn run_native(opt: &Opt) {
-    let mode = HashMode::Native;
+fn run(opt: &Opt, mode: HashMode) {
     let algorithm = resolve_algorithm(opt, mode);
-
     let config = HashConfig::new(mode).with_algorithm(algorithm).unwrap_or_else(|e| {
         eprintln!("treblo: {}", e);
         std::process::exit(1);
     });
 
-    let walk_options =
-        WalkOptions { no_ignore: !opt.ignore, follow_symlinks: false, include_empty_dirs: !opt.no_empty_dirs };
-
-    for base_path in base_paths(opt) {
-        let result = compute_root_hash(&base_path, &config, &walk_options).unwrap_or_else(|e| {
-            eprintln!("treblo: {}: {}", base_path.display(), e);
-            std::process::exit(1);
-        });
-
-        if opt.json {
-            let output = build_native_json(&base_path, &result, mode, algorithm);
-            println!("{}", serde_json::to_string_pretty(&output).unwrap());
-        } else {
-            // Git-compatible output format.
-            // nodes are in bottom-up order (deepest dir first, root last).
-            for node in &result.nodes {
-                let is_root = node.path.is_empty();
-                let node_dir = if is_root { base_path.clone() } else { base_path.join(&node.path) };
-
-                if !opt.summarize {
-                    // Emit file children.
-                    for child in &node.children {
-                        if matches!(child.kind, EntryKind::File) {
-                            println!(
-                                "100644 blob {}\t{}",
-                                to_hex_string(&child.hash),
-                                node_dir.join(&child.name).display()
-                            );
-                        }
-                    }
-                }
-
-                // Emit this directory.
-                let emit_tree = if opt.summarize {
-                    is_root
-                } else if is_root {
-                    opt.show_self
-                } else {
-                    true
-                };
-                if emit_tree {
-                    println!("040000 tree {}\t{}", to_hex_string(&node.hash), node_dir.display());
-                }
-            }
-        }
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Git mode
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn run_git(opt: &Opt) {
-    let algorithm = resolve_algorithm(opt, HashMode::Git);
     let paths = base_paths(opt);
     let path_is_default = opt.paths.is_empty();
 
@@ -370,27 +136,7 @@ fn run_git(opt: &Opt) {
             wb.build()
         };
 
-        let tw = walk::TrebloWalk {
-            hasher_supplier: match algorithm {
-                HashAlgorithm::Sha1 => {
-                    use sha1::Digest;
-                    || Box::new(Sha1::new())
-                }
-                HashAlgorithm::Sha256 => {
-                    use sha2::Digest;
-                    || Box::new(Sha256Holder(Sha256::new()))
-                }
-                HashAlgorithm::Blake3 => || Box::new(Blake3Holder(blake3::Hasher::new())),
-                HashAlgorithm::XxHash64 => {
-                    || Box::new(XxHash64Holder { hash: XxHash64::default(), little_endian: false })
-                }
-                HashAlgorithm::XxHash3_64 => {
-                    || Box::new(XxHash3_64Holder { hash: XxHash3_64::default(), little_endian: false })
-                }
-            },
-            blob_only: opt.blob_only,
-            no_error: opt.no_error,
-        };
+        let tw = TrebloWalk { config, blob_only: opt.blob_only, no_error: opt.no_error };
 
         tw.walk(base_path, w, &mut |p, e, is_tree| {
             if opt.blob_only && is_tree {
@@ -417,7 +163,7 @@ fn run_git(opt: &Opt) {
                     let mut record_json = {
                         let digest = to_hex_string(e.digest.as_slice());
                         let path_str = path.display().to_string();
-                        let record = GitRecord {
+                        let record = Record {
                             file_mode: e.file_mode.as_i32(),
                             object_type,
                             digest: digest.as_str(),
@@ -456,8 +202,5 @@ fn main() {
         std::process::exit(1);
     });
 
-    match mode {
-        HashMode::Native => run_native(&opt),
-        HashMode::Git => run_git(&opt),
-    }
+    run(&opt, mode);
 }

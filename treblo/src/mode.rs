@@ -125,6 +125,29 @@ impl FromStr for HashAlgorithm {
     }
 }
 
+/// Configuration for a tree hash computation.
+#[derive(Debug, Clone, Copy)]
+pub struct HashConfig {
+    pub mode: HashMode,
+    pub algorithm: HashAlgorithm,
+}
+
+impl HashConfig {
+    /// Create a config with the default algorithm for `mode`.
+    pub fn new(mode: HashMode) -> Self {
+        Self { mode, algorithm: HashAlgorithm::default_for(mode) }
+    }
+
+    /// Override the algorithm. Returns an error if `algorithm` is not valid for the mode.
+    pub fn with_algorithm(mut self, algorithm: HashAlgorithm) -> Result<Self, String> {
+        if !algorithm.is_valid_for(self.mode) {
+            return Err(format!("algorithm {} is not valid for {} mode", algorithm, self.mode));
+        }
+        self.algorithm = algorithm;
+        Ok(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

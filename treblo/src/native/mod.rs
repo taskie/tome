@@ -4,9 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ignore::WalkBuilder;
-
-use crate::mode::{HashAlgorithm, HashMode};
+use crate::{
+    mode::{HashAlgorithm, HashConfig},
+    walk::WalkOptions,
+};
 
 pub mod tree;
 pub use tree::{compute_tree_hash, empty_tree_hash, hash_bytes, hash_file_content};
@@ -32,48 +33,6 @@ impl EntryKind {
             Self::Directory => b'D',
         }
     }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// HashConfig
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// Configuration for a tree hash computation.
-#[derive(Debug, Clone, Copy)]
-pub struct HashConfig {
-    pub mode: HashMode,
-    pub algorithm: HashAlgorithm,
-}
-
-impl HashConfig {
-    /// Create a config with the default algorithm for `mode`.
-    pub fn new(mode: HashMode) -> Self {
-        Self { mode, algorithm: HashAlgorithm::default_for(mode) }
-    }
-
-    /// Override the algorithm.  Returns an error if `algorithm` is not valid for the mode.
-    pub fn with_algorithm(mut self, algorithm: HashAlgorithm) -> Result<Self, String> {
-        if !algorithm.is_valid_for(self.mode) {
-            return Err(format!("algorithm {} is not valid for {} mode", algorithm, self.mode));
-        }
-        self.algorithm = algorithm;
-        Ok(self)
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// WalkOptions
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// Options controlling directory traversal.
-#[derive(Debug, Default)]
-pub struct WalkOptions {
-    /// Disable `.gitignore` / `.trebloignore` pattern filtering.
-    pub no_ignore: bool,
-    /// Follow symbolic links.
-    pub follow_symlinks: bool,
-    /// Include directories that contain no files (hash = `H(b"")`).
-    pub include_empty_dirs: bool,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -138,15 +97,7 @@ pub fn compute_root_hash(root: &Path, config: &HashConfig, options: &WalkOptions
     let mut file_count = 0usize;
 
     // Walk phase: hash all files and register all directories.
-    let mut builder = WalkBuilder::new(&root);
-    builder.follow_links(options.follow_symlinks);
-    if options.no_ignore {
-        builder.ignore(false).git_ignore(false).git_global(false).git_exclude(false);
-    }
-    // Sort entries for deterministic output.
-    builder.sort_by_file_name(|a, b| a.cmp(b));
-
-    for result in builder.build() {
+    for result in options.build_walk(&root) {
         match result {
             Ok(entry) => {
                 let path = entry.path().to_owned();
@@ -282,7 +233,7 @@ mod tests {
     fn test_compute_root_hash_returns_32_bytes_blake3() {
         let tmp = TempDir::new().unwrap();
         let root = setup_tree(&tmp);
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let options = WalkOptions::default();
 
         let result = compute_root_hash(&root, &config, &options).unwrap();
@@ -297,7 +248,7 @@ mod tests {
     fn test_compute_root_hash_deterministic() {
         let tmp = TempDir::new().unwrap();
         let root = setup_tree(&tmp);
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let options = WalkOptions::default();
 
         let r1 = compute_root_hash(&root, &config, &options).unwrap();
@@ -310,7 +261,7 @@ mod tests {
     fn test_compute_root_hash_changes_on_file_change() {
         let tmp = TempDir::new().unwrap();
         let root = setup_tree(&tmp);
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let options = WalkOptions::default();
 
         let r1 = compute_root_hash(&root, &config, &options).unwrap();
@@ -324,7 +275,7 @@ mod tests {
     fn test_compute_root_hash_sha256() {
         let tmp = TempDir::new().unwrap();
         let root = setup_tree(&tmp);
-        let config = HashConfig::new(HashMode::Native).with_algorithm(HashAlgorithm::Sha256).unwrap();
+        let config = HashConfig::new(crate::mode::HashMode::Native).with_algorithm(HashAlgorithm::Sha256).unwrap();
         let options = WalkOptions::default();
 
         let result = compute_root_hash(&root, &config, &options).unwrap();
@@ -335,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_hash_config_all_algorithms_valid() {
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         // All algorithms are now valid for all modes.
         assert!(config.with_algorithm(HashAlgorithm::XxHash64).is_ok());
         assert!(config.with_algorithm(HashAlgorithm::Sha1).is_ok());
@@ -345,14 +296,14 @@ mod tests {
 
     #[test]
     fn test_compute_tree_from_entries_valid() {
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let entries = vec![TreeEntry { kind: EntryKind::File, name: "foo.txt".to_string(), hash: vec![0u8; 32] }];
         assert!(compute_tree_from_entries(&entries, &config).is_ok());
     }
 
     #[test]
     fn test_compute_tree_from_entries_wrong_hash_len() {
-        let config = HashConfig::new(HashMode::Native); // Blake3 → 32 bytes
+        let config = HashConfig::new(crate::mode::HashMode::Native); // Blake3 → 32 bytes
         let entries = vec![TreeEntry {
             kind: EntryKind::File,
             name: "foo.txt".to_string(),
@@ -367,7 +318,7 @@ mod tests {
         let file = tmp.path().join("file.txt");
         fs::write(&file, b"content").unwrap();
 
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let options = WalkOptions::default();
         let err = compute_root_hash(&file, &config, &options).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
@@ -377,7 +328,7 @@ mod tests {
     fn test_empty_root_directory() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_owned();
-        let config = HashConfig::new(HashMode::Native);
+        let config = HashConfig::new(crate::mode::HashMode::Native);
         let options = WalkOptions::default();
 
         let result = compute_root_hash(&root, &config, &options).unwrap();
