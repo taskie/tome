@@ -13,45 +13,44 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let mut table = Table::create()
-            .table(SyncPeers::Table)
-            .col(ColumnDef::new(SyncPeers::Id).big_integer().not_null().primary_key())
-            .col(ColumnDef::new(SyncPeers::Name).string().not_null())
-            .col(ColumnDef::new(SyncPeers::Url).string().not_null())
-            .col(ColumnDef::new(SyncPeers::RepositoryId).big_integer().not_null())
-            .col(ColumnDef::new(SyncPeers::LastSyncedAt).timestamp_with_time_zone().null())
-            .col(ColumnDef::new(SyncPeers::LastSnapshotId).big_integer().null())
-            .col(ColumnDef::new(SyncPeers::Config).json().not_null().default("{}"))
-            .col(
-                ColumnDef::new(SyncPeers::CreatedAt)
-                    .timestamp_with_time_zone()
-                    .not_null()
-                    .default(Expr::current_timestamp()),
+        manager
+            .create_table(
+                Table::create()
+                    .table(SyncPeers::Table)
+                    .col(ColumnDef::new(SyncPeers::Id).big_integer().not_null().primary_key())
+                    .col(ColumnDef::new(SyncPeers::Name).string().not_null())
+                    .col(ColumnDef::new(SyncPeers::Url).string().not_null())
+                    .col(ColumnDef::new(SyncPeers::RepositoryId).big_integer().not_null())
+                    .col(ColumnDef::new(SyncPeers::LastSyncedAt).timestamp_with_time_zone().null())
+                    .col(ColumnDef::new(SyncPeers::LastSnapshotId).big_integer().null())
+                    .col(ColumnDef::new(SyncPeers::Config).json().not_null().default("{}"))
+                    .col(
+                        ColumnDef::new(SyncPeers::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(SyncPeers::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .index(
+                        Index::create()
+                            .name("uq_sync_peers_name_repo")
+                            .col(SyncPeers::Name)
+                            .col(SyncPeers::RepositoryId)
+                            .unique(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(SyncPeers::Table, SyncPeers::RepositoryId)
+                            .to(Repositories::Table, Repositories::Id),
+                    )
+                    .to_owned(),
             )
-            .col(
-                ColumnDef::new(SyncPeers::UpdatedAt)
-                    .timestamp_with_time_zone()
-                    .not_null()
-                    .default(Expr::current_timestamp()),
-            )
-            .index(
-                Index::create()
-                    .name("uq_sync_peers_name_repo")
-                    .col(SyncPeers::Name)
-                    .col(SyncPeers::RepositoryId)
-                    .unique(),
-            )
-            .to_owned();
-
-        if !crate::dsql::is_dsql() {
-            table.foreign_key(
-                ForeignKey::create()
-                    .from(SyncPeers::Table, SyncPeers::RepositoryId)
-                    .to(Repositories::Table, Repositories::Id),
-            );
-        }
-
-        manager.create_table(table).await
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

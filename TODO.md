@@ -39,10 +39,10 @@
 各タスクは「機能実装 → テスト追加 → ドキュメント更新」の粒度でコミットする。
 完了後に `cargo fmt --all -- --check && cargo clippy --all --no-deps -- -D warnings && cargo test --all` を確認。
 
-## AWS デプロイ（Lambda + DSQL + S3）
+## AWS デプロイ（Lambda + S3）
 
 Lambda コードは実装済み（`tome-server --features lambda`）。
-ビルド & デプロイ手順は CLAUDE.md 参照。DSQL 接続時の JSONB 非対応は上表の残タスクを参照。
+スキーマ適用には `psqldef` を利用（`tome-db/schema.sql`）。
 
 ## 実装済み（未ドキュメント）
 

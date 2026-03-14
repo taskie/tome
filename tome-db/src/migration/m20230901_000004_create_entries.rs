@@ -13,35 +13,39 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let mut table = Table::create()
-            .table(Entries::Table)
-            .col(ColumnDef::new(Entries::Id).big_integer().not_null().primary_key())
-            .col(ColumnDef::new(Entries::SnapshotId).big_integer().not_null())
-            .col(ColumnDef::new(Entries::Path).string().not_null())
-            .col(ColumnDef::new(Entries::Status).small_integer().not_null())
-            .col(ColumnDef::new(Entries::BlobId).big_integer().null())
-            .col(ColumnDef::new(Entries::Mode).integer().null())
-            .col(ColumnDef::new(Entries::Mtime).timestamp_with_time_zone().null())
-            .col(
-                ColumnDef::new(Entries::CreatedAt)
-                    .timestamp_with_time_zone()
-                    .not_null()
-                    .default(Expr::current_timestamp()),
+        manager
+            .create_table(
+                Table::create()
+                    .table(Entries::Table)
+                    .col(ColumnDef::new(Entries::Id).big_integer().not_null().primary_key())
+                    .col(ColumnDef::new(Entries::SnapshotId).big_integer().not_null())
+                    .col(ColumnDef::new(Entries::Path).string().not_null())
+                    .col(ColumnDef::new(Entries::Status).small_integer().not_null())
+                    .col(ColumnDef::new(Entries::BlobId).big_integer().null())
+                    .col(ColumnDef::new(Entries::Mode).integer().null())
+                    .col(ColumnDef::new(Entries::Mtime).timestamp_with_time_zone().null())
+                    .col(
+                        ColumnDef::new(Entries::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .index(
+                        Index::create()
+                            .name("uq_entries_snapshot_path")
+                            .col(Entries::SnapshotId)
+                            .col(Entries::Path)
+                            .unique(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Entries::Table, Entries::SnapshotId)
+                            .to(Snapshots::Table, Snapshots::Id),
+                    )
+                    .foreign_key(ForeignKey::create().from(Entries::Table, Entries::BlobId).to(Blobs::Table, Blobs::Id))
+                    .to_owned(),
             )
-            .index(
-                Index::create().name("uq_entries_snapshot_path").col(Entries::SnapshotId).col(Entries::Path).unique(),
-            )
-            .to_owned();
-
-        if !crate::dsql::is_dsql() {
-            table
-                .foreign_key(
-                    ForeignKey::create().from(Entries::Table, Entries::SnapshotId).to(Snapshots::Table, Snapshots::Id),
-                )
-                .foreign_key(ForeignKey::create().from(Entries::Table, Entries::BlobId).to(Blobs::Table, Blobs::Id));
-        }
-
-        manager.create_table(table).await?;
+            .await?;
 
         manager
             .create_index(Index::create().name("ix_entries_blob").table(Entries::Table).col(Entries::BlobId).to_owned())

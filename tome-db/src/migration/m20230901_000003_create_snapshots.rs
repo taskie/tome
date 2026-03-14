@@ -13,30 +13,29 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let mut table = Table::create()
-            .table(Snapshots::Table)
-            .col(ColumnDef::new(Snapshots::Id).big_integer().not_null().primary_key())
-            .col(ColumnDef::new(Snapshots::RepositoryId).big_integer().not_null())
-            .col(ColumnDef::new(Snapshots::ParentId).big_integer().null())
-            .col(ColumnDef::new(Snapshots::Message).string().not_null().default(""))
-            .col(ColumnDef::new(Snapshots::Metadata).json().not_null().default("{}"))
-            .col(
-                ColumnDef::new(Snapshots::CreatedAt)
-                    .timestamp_with_time_zone()
-                    .not_null()
-                    .default(Expr::current_timestamp()),
+        manager
+            .create_table(
+                Table::create()
+                    .table(Snapshots::Table)
+                    .col(ColumnDef::new(Snapshots::Id).big_integer().not_null().primary_key())
+                    .col(ColumnDef::new(Snapshots::RepositoryId).big_integer().not_null())
+                    .col(ColumnDef::new(Snapshots::ParentId).big_integer().null())
+                    .col(ColumnDef::new(Snapshots::Message).string().not_null().default(""))
+                    .col(ColumnDef::new(Snapshots::Metadata).json().not_null().default("{}"))
+                    .col(
+                        ColumnDef::new(Snapshots::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(Snapshots::Table, Snapshots::RepositoryId)
+                            .to(Repositories::Table, Repositories::Id),
+                    )
+                    .to_owned(),
             )
-            .to_owned();
-
-        if !crate::dsql::is_dsql() {
-            table.foreign_key(
-                ForeignKey::create()
-                    .from(Snapshots::Table, Snapshots::RepositoryId)
-                    .to(Repositories::Table, Repositories::Id),
-            );
-        }
-
-        manager.create_table(table).await?;
+            .await?;
 
         manager
             .create_index(

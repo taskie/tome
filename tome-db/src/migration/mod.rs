@@ -3,7 +3,7 @@ use sea_orm_migration::MigratorTrait;
 
 mod m20230901_000001_create_repositories;
 mod m20230901_000002_create_blobs;
-mod m20230901_000003_create_snapshots;
+pub(crate) mod m20230901_000003_create_snapshots;
 mod m20230901_000004_create_entries;
 mod m20230901_000005_create_entry_cache;
 mod m20230901_000006_create_stores;

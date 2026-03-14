@@ -2,7 +2,7 @@
 //! cargo lambda build --release --features lambda --bin tome-lambda でビルド。
 //!
 //! 環境変数:
-//!   TOME_DB         — postgres://<user>:<dsql-token>@<endpoint>:5432/postgres
+//!   TOME_DB         — postgres://<user>:<password>@<endpoint>:5432/<database>
 //!   TOME_MACHINE_ID — 省略可（デフォルト 0）
 
 use anyhow::Context as _;

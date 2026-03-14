@@ -519,39 +519,29 @@ cargo lambda deploy tome-lambda \
 # Set environment variables
 aws lambda update-function-configuration \
   --function-name tome-lambda \
-  --environment "Variables={TOME_DB=postgres://admin:<token>@<cluster>.dsql.amazonaws.com:5432/postgres?sslmode=require,TOME_MACHINE_ID=0}"
+  --environment "Variables={TOME_DB=postgres://user:pass@host:5432/database,TOME_MACHINE_ID=0}"
 ```
 
 ### Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `TOME_DB` | PostgreSQL connection URL (Aurora DSQL or standard PostgreSQL) |
+| `TOME_DB` | PostgreSQL connection URL |
 | `TOME_MACHINE_ID` | Sonyflake machine ID (0–32767; default: 0) |
-| `TOME_DSQL` | Set to any non-empty value to enable DSQL mode (auto-detected from URL containing `dsql.amazonaws.com`) |
 
-### AWS DSQL compatibility
+### Declarative schema management
 
-Aurora DSQL does not support `FOREIGN KEY` declarations in `CREATE TABLE`. When a DSQL endpoint is detected (URL contains `dsql.amazonaws.com` or `TOME_DSQL` is set), all FK constraints are omitted from migrations. Referential integrity is maintained by the application (correct deletion order in GC, ordered inserts on sync).
-
-JSON columns use `json` type (not `jsonb`) in all migrations — compatible with DSQL.
-
-| DSQL limitation | Impact on tome | Resolution |
-|-----------------|----------------|-----------|
-| No `FOREIGN KEY` | Migrations fail without fix | Conditionally skipped via `dsql::is_dsql()` |
-| No `JSONB` | N/A | Migrations already use `json` |
-| No triggers/sequences | N/A | tome uses Sonyflake IDs (app-side) |
-| FK not enforced | No impact | App enforces correct ordering |
-
-### IAM token rotation
-
-Aurora DSQL uses IAM authentication tokens (max 1 week validity). For long-running Lambda warm instances, redeploy or schedule a rotation when the token expires:
+A canonical DDL file (`tome-db/schema.sql`) is maintained for use with declarative
+migration tools such as [psqldef](https://github.com/sqldef/sqldef). This DDL
+represents the full target schema and can be applied directly:
 
 ```bash
-aws dsql generate-db-connect-admin-auth-token \
-  --hostname <cluster>.dsql.amazonaws.com \
-  --region <region>
+psqldef -U <user> -h <host> <database> < tome-db/schema.sql
 ```
+
+SeaORM migrations (`tome-db/src/migration/`) are still used at runtime via
+`connection::open()`, but the DDL file serves as the authoritative human-readable
+reference.
 
 ---
 
