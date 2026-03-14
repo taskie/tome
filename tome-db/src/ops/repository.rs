@@ -105,6 +105,11 @@ pub async fn list_repositories(db: &DatabaseConnection) -> anyhow::Result<Vec<re
     Ok(repository::Entity::find().all(db).await?)
 }
 
+/// Find a repository by name.
+pub async fn find_repository_by_name(db: &DatabaseConnection, name: &str) -> anyhow::Result<Option<repository::Model>> {
+    Ok(repository::Entity::find().filter(repository::Column::Name.eq(name)).one(db).await?)
+}
+
 /// Read the scan root stored in `repo.config["scan_root"]`.
 pub fn get_repository_scan_root(repo: &repository::Model) -> Option<String> {
     repo.config.get("scan_root").and_then(|v| v.as_str()).map(|s| s.to_owned())

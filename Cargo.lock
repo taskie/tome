@@ -4680,7 +4680,6 @@ dependencies = [
  "chrono",
  "hex",
  "lambda_http",
- "sea-orm",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

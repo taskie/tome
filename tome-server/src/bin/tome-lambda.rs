@@ -8,6 +8,8 @@
 //! The schema must be applied beforehand (e.g. via psqldef).
 //! Migrations are NOT executed on Lambda startup.
 
+use std::sync::Arc;
+
 use anyhow::Context as _;
 
 #[tokio::main]
@@ -23,6 +25,7 @@ async fn main() -> Result<(), lambda_http::Error> {
     tome_core::id::init(machine_id, None::<i64>).expect("id init failed");
 
     let db = tome_db::connection::connect(&db_url).await.expect("DB connection failed");
+    let store = Arc::new(tome_db::sea_orm_store::SeaOrmStore::new(db));
 
-    tome_server::run_lambda(db).await
+    tome_server::run_lambda(store).await
 }

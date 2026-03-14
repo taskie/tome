@@ -63,6 +63,11 @@ pub async fn latest_snapshot(db: &DatabaseConnection, repository_id: i64) -> any
         .await?)
 }
 
+/// Find a snapshot by its primary key.
+pub async fn find_snapshot_by_id(db: &DatabaseConnection, id: i64) -> anyhow::Result<Option<snapshot::Model>> {
+    Ok(snapshot::Entity::find_by_id(id).one(db).await?)
+}
+
 /// Update snapshot metadata (e.g. scan statistics).
 pub async fn update_snapshot_metadata(
     db: &DatabaseConnection,

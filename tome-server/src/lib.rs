@@ -8,4 +8,4 @@ pub mod lambda;
 
 #[cfg(feature = "lambda")]
 pub use lambda::run_lambda;
-pub use server::serve;
+pub use server::{build_router, serve};

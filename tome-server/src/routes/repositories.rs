@@ -2,25 +2,22 @@ use axum::{
     Json,
     extract::{Path, Query},
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use utoipa::{IntoParams, ToSchema};
 
 use tome_core::hash::hex_encode;
-use tome_db::{
-    entities::{repository, snapshot},
-    ops,
-};
+use tome_db::ops;
 
 use super::Db;
 use super::responses::*;
 use crate::error::{AppError, AppResult};
 
-async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppResult<repository::Model> {
-    repository::Entity::find()
-        .filter(repository::Column::Name.eq(name))
-        .one(db)
+async fn find_repo_or_404(
+    db: &dyn tome_db::store_trait::MetadataStore,
+    name: &str,
+) -> AppResult<tome_db::entities::repository::Model> {
+    db.find_repository_by_name(name)
         .await?
         .ok_or_else(|| AppError::not_found(format!("repository {:?} not found", name)))
 }
@@ -35,7 +32,7 @@ async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppRe
     tag = "repositories"
 )]
 pub async fn list_repositories(db: Db) -> AppResult<Json<Vec<RepositoryResponse>>> {
-    let repos = ops::list_repositories(&db).await?;
+    let repos = db.list_repositories().await?;
     Ok(Json(repos.into_iter().map(Into::into).collect()))
 }
 
@@ -50,7 +47,7 @@ pub async fn list_repositories(db: Db) -> AppResult<Json<Vec<RepositoryResponse>
     tag = "repositories"
 )]
 pub async fn get_repository(db: Db, Path(name): Path<String>) -> AppResult<Json<RepositoryResponse>> {
-    let repo = find_repo_or_404(&db, &name).await?;
+    let repo = find_repo_or_404(&**db, &name).await?;
     Ok(Json(repo.into()))
 }
 
@@ -65,14 +62,8 @@ pub async fn get_repository(db: Db, Path(name): Path<String>) -> AppResult<Json<
     tag = "repositories"
 )]
 pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<Vec<SnapshotResponse>>> {
-    let repo = find_repo_or_404(&db, &name).await?;
-
-    let snaps = snapshot::Entity::find()
-        .filter(snapshot::Column::RepositoryId.eq(repo.id))
-        .order_by_asc(snapshot::Column::CreatedAt)
-        .all(&*db)
-        .await?;
-
+    let repo = find_repo_or_404(&**db, &name).await?;
+    let snaps = db.list_snapshots_for_repo(repo.id).await?;
     Ok(Json(snaps.into_iter().map(Into::into).collect()))
 }
 
@@ -87,8 +78,8 @@ pub async fn list_snapshots(db: Db, Path(name): Path<String>) -> AppResult<Json<
     tag = "repositories"
 )]
 pub async fn get_latest_snapshot(db: Db, Path(name): Path<String>) -> AppResult<Json<Option<SnapshotResponse>>> {
-    let repo = find_repo_or_404(&db, &name).await?;
-    let snap = ops::latest_snapshot(&db, repo.id).await?;
+    let repo = find_repo_or_404(&**db, &name).await?;
+    let snap = db.latest_snapshot(repo.id).await?;
     Ok(Json(snap.map(Into::into)))
 }
 
@@ -110,8 +101,8 @@ pub async fn path_history(
     Path(name): Path<String>,
     Query(q): Query<HistoryQuery>,
 ) -> AppResult<Json<Vec<SnapshotEntry>>> {
-    let repo = find_repo_or_404(&db, &name).await?;
-    let history = ops::path_history(&db, repo.id, &q.path).await?;
+    let repo = find_repo_or_404(&**db, &name).await?;
+    let history = db.path_history(repo.id, &q.path).await?;
     Ok(Json(
         history
             .into_iter()
@@ -169,35 +160,35 @@ pub async fn diff_snapshots(
     Path(name): Path<String>,
     Query(q): Query<DiffQuery>,
 ) -> AppResult<Json<DiffResponse>> {
-    let repo = find_repo_or_404(&db, &name).await?;
+    let repo = find_repo_or_404(&**db, &name).await?;
 
     let snap_id1: i64 = q.snapshot1.parse().map_err(|_| AppError::bad_request("invalid snapshot1 id"))?;
     let snap_id2: i64 = q.snapshot2.parse().map_err(|_| AppError::bad_request("invalid snapshot2 id"))?;
 
-    let snap1 = snapshot::Entity::find_by_id(snap_id1)
-        .one(&*db)
+    let snap1 = db
+        .find_snapshot_by_id(snap_id1)
         .await?
         .ok_or_else(|| AppError::not_found(format!("snapshot {} not found", snap_id1)))?;
     if snap1.repository_id != repo.id {
         return Err(AppError::bad_request("snapshot1 does not belong to this repository"));
     }
 
-    let snap2 = snapshot::Entity::find_by_id(snap_id2)
-        .one(&*db)
+    let snap2 = db
+        .find_snapshot_by_id(snap_id2)
         .await?
         .ok_or_else(|| AppError::not_found(format!("snapshot {} not found", snap_id2)))?;
     if snap2.repository_id != repo.id {
         return Err(AppError::bad_request("snapshot2 does not belong to this repository"));
     }
 
-    let entries1 = ops::entries_by_prefix(&db, snap_id1, &q.prefix).await?;
-    let entries2 = ops::entries_by_prefix(&db, snap_id2, &q.prefix).await?;
+    let entries1 = db.entries_by_prefix(snap_id1, &q.prefix).await?;
+    let entries2 = db.entries_by_prefix(snap_id2, &q.prefix).await?;
 
     let blob_ids: Vec<i64> =
         entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
 
     let blobs: HashMap<String, BlobResponse> =
-        ops::blobs_by_ids(&db, &blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
+        db.blobs_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, EntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
@@ -269,22 +260,20 @@ pub async fn list_files(
     Path(name): Path<String>,
     Query(q): Query<FilesQuery>,
 ) -> AppResult<Json<FilesResponse>> {
-    let repo = find_repo_or_404(&db, &name).await?;
+    let repo = find_repo_or_404(&**db, &name).await?;
 
     let per_page = q.per_page.clamp(1, 500);
     let page = q.page.max(1);
 
-    let (entries, total) = ops::list_cache_entries(
-        &db,
-        &ops::ListCacheEntriesParams {
+    let (entries, total) = db
+        .list_cache_entries(&ops::ListCacheEntriesParams {
             repository_id: repo.id,
             include_deleted: q.include_deleted,
             prefix: q.prefix,
             page,
             per_page,
-        },
-    )
-    .await?;
+        })
+        .await?;
 
     let items = entries
         .into_iter()
@@ -345,11 +334,11 @@ pub struct RepoDiffResponse {
     tag = "repositories"
 )]
 pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Json<RepoDiffResponse>> {
-    let repo1 = find_repo_or_404(&db, &q.repo1).await?;
-    let repo2 = find_repo_or_404(&db, &q.repo2).await?;
+    let repo1 = find_repo_or_404(&**db, &q.repo1).await?;
+    let repo2 = find_repo_or_404(&**db, &q.repo2).await?;
 
-    let entries1 = ops::cache_entries_by_prefix(&db, repo1.id, &q.prefix1, true).await?;
-    let entries2 = ops::cache_entries_by_prefix(&db, repo2.id, &q.prefix2, true).await?;
+    let entries1 = db.cache_entries_by_prefix(repo1.id, &q.prefix1, true).await?;
+    let entries2 = db.cache_entries_by_prefix(repo2.id, &q.prefix2, true).await?;
 
     const MAX_ENTRIES: usize = 10_000;
     if entries1.len() > MAX_ENTRIES || entries2.len() > MAX_ENTRIES {
@@ -360,7 +349,7 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
         entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
 
     let blobs: HashMap<String, BlobResponse> =
-        ops::blobs_by_ids(&db, &blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
+        db.blobs_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, CacheEntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();

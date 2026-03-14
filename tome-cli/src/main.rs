@@ -101,7 +101,8 @@ async fn main() -> Result<()> {
         Commands::Pull(args) => commands::push::run_pull(&db_conn, args, &cfg.store).await?,
         Commands::Serve(args) => {
             let addr = args.addr.or(cfg.serve.addr).unwrap_or_else(|| "127.0.0.1:8080".to_owned());
-            tome_server::serve(db_conn, &addr).await?
+            let store = std::sync::Arc::new(tome_db::sea_orm_store::SeaOrmStore::new(db_conn));
+            tome_server::serve(store, &addr).await?
         }
         Commands::Watch(mut args) => {
             if args.quiet_period.is_none() {

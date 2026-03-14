@@ -2,8 +2,6 @@ use axum::{Json, extract::Path};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use tome_db::ops;
-
 use super::Db;
 use super::responses::*;
 use crate::error::{AppError, AppResult};
@@ -24,7 +22,7 @@ pub struct RegisterMachineRequest {
     tag = "machines"
 )]
 pub async fn list_machines(db: Db) -> AppResult<Json<Vec<MachineResponse>>> {
-    let machines = ops::list_machines(&db).await?;
+    let machines = db.list_machines().await?;
     Ok(Json(machines.into_iter().map(MachineResponse::from).collect()))
 }
 
@@ -38,7 +36,7 @@ pub async fn list_machines(db: Db) -> AppResult<Json<Vec<MachineResponse>>> {
     tag = "machines"
 )]
 pub async fn register_machine(db: Db, Json(req): Json<RegisterMachineRequest>) -> AppResult<Json<MachineResponse>> {
-    let machine = ops::register_machine(&db, &req.name, &req.description).await?;
+    let machine = db.register_machine(&req.name, &req.description).await?;
     Ok(Json(MachineResponse::from(machine)))
 }
 
@@ -53,9 +51,8 @@ pub async fn register_machine(db: Db, Json(req): Json<RegisterMachineRequest>) -
     tag = "machines"
 )]
 pub async fn update_machine(db: Db, Path(id): Path<i16>) -> AppResult<Json<MachineResponse>> {
-    ops::update_machine_last_seen(&db, id).await?;
-    let machine = ops::find_machine_by_id(&db, id)
-        .await?
-        .ok_or_else(|| AppError::not_found(format!("machine {} not found", id)))?;
+    db.update_machine_last_seen(id).await?;
+    let machine =
+        db.find_machine_by_id(id).await?.ok_or_else(|| AppError::not_found(format!("machine {} not found", id)))?;
     Ok(Json(MachineResponse::from(machine)))
 }

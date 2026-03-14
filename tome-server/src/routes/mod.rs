@@ -6,10 +6,13 @@ pub mod responses;
 pub(crate) mod snapshots;
 pub mod sync;
 
-use axum::{Json, extract::State, http::StatusCode};
-use sea_orm::DatabaseConnection;
+use std::sync::Arc;
 
-pub type Db = State<DatabaseConnection>;
+use axum::{Json, extract::State, http::StatusCode};
+
+use tome_db::store_trait::MetadataStore;
+
+pub type Db = State<Arc<dyn MetadataStore>>;
 
 // ── Root / Health ───────────────────────────────────────────────────────────
 

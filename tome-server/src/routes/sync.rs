@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
 use axum::{Json, extract::Query};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use tome_core::hash::{FileHash, hex_encode};
-use tome_db::{entities::repository, ops};
 
 use super::Db;
 use crate::error::{AppError, AppResult};
@@ -75,20 +73,20 @@ pub struct PullResponse {
     tag = "sync"
 )]
 pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResponse>> {
-    let repo = find_repo_or_404(&db, &q.repo).await?;
+    let repo = find_repo_or_404(&**db, &q.repo).await?;
 
     let after_id: Option<i64> = q.after.as_deref().map(|s| s.parse()).transpose()?;
-    let snapshots = ops::snapshots_after(&db, repo.id, after_id).await?;
+    let snapshots = db.snapshots_after(repo.id, after_id).await?;
 
     let mut result = Vec::with_capacity(snapshots.len());
 
     for snap in snapshots {
         // entries with blob (LEFT JOIN)
-        let pairs = ops::entries_with_digest(&db, snap.id, "").await?;
+        let pairs = db.entries_with_digest(snap.id, "").await?;
 
         // batch-fetch replicas for all blobs in this snapshot
         let blob_ids: Vec<i64> = pairs.iter().filter_map(|(_, b)| b.as_ref().map(|b| b.id)).collect();
-        let all_replicas = ops::replicas_for_blobs(&db, &blob_ids).await?;
+        let all_replicas = db.replicas_for_blobs(&blob_ids).await?;
 
         // build a digest → [SyncReplica] map
         let blob_digest_map: HashMap<i64, String> =
@@ -192,23 +190,23 @@ pub struct PushResponse {
     tag = "sync"
 )]
 pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushRequest>) -> AppResult<Json<PushResponse>> {
-    let repo = ops::get_or_create_repository(&db, &q.repo).await?;
+    let repo = db.get_or_create_repository(&q.repo).await?;
 
     // Idempotency: if we already have a snapshot from this source, return it.
     if let (Some(mid), Some(sid_str)) = (body.source_machine_id, &body.source_snapshot_id) {
         let sid: i64 = sid_str.parse()?;
-        if let Some(existing) = ops::find_snapshot_by_source(&db, repo.id, mid, sid).await? {
+        if let Some(existing) = db.find_snapshot_by_source(repo.id, mid, sid).await? {
             return Ok(Json(PushResponse { snapshot_id: existing.id.to_string() }));
         }
     }
 
-    let parent = ops::latest_snapshot(&db, repo.id).await?.map(|s| s.id);
+    let parent = db.latest_snapshot(repo.id).await?.map(|s| s.id);
 
     let snap = if let (Some(mid), Some(sid_str)) = (body.source_machine_id, &body.source_snapshot_id) {
         let sid: i64 = sid_str.parse()?;
-        ops::create_snapshot_with_source(&db, repo.id, parent, &body.message, mid, sid).await?
+        db.create_snapshot_with_source(repo.id, parent, &body.message, mid, sid).await?
     } else {
-        ops::create_snapshot(&db, repo.id, parent, &body.message).await?
+        db.create_snapshot(repo.id, parent, &body.message).await?
     };
 
     // Insert entries and update entry_cache.
@@ -221,47 +219,44 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                     .try_into()
                     .map_err(|_| AppError::bad_request(format!("invalid digest length for {hex}")))?;
                 let fh = FileHash { size: size as u64, fast_digest: fast, digest: digest_arr };
-                let blob = ops::get_or_create_blob(&*db, &fh).await?;
+                let blob = db.get_or_create_blob(&fh).await?;
 
                 let mtime =
                     e.mtime.as_deref().map(|s| s.parse::<chrono::DateTime<chrono::FixedOffset>>()).transpose()?;
-                let entry = ops::insert_entry_present(&*db, snap.id, &e.path, blob.id, e.mode, mtime).await?;
+                let entry = db.insert_entry_present(snap.id, &e.path, blob.id, e.mode, mtime).await?;
 
-                ops::upsert_cache_present(
-                    &*db,
-                    ops::UpsertCachePresentParams {
-                        repository_id: repo.id,
-                        path: e.path.clone(),
-                        snapshot_id: snap.id,
-                        entry_id: entry.id,
-                        blob_id: blob.id,
-                        mtime,
-                        digest: Some(blob.digest.clone()),
-                        size: Some(blob.size),
-                        fast_digest: Some(blob.fast_digest),
-                    },
-                )
+                db.upsert_cache_present(tome_db::ops::UpsertCachePresentParams {
+                    repository_id: repo.id,
+                    path: e.path.clone(),
+                    snapshot_id: snap.id,
+                    entry_id: entry.id,
+                    blob_id: blob.id,
+                    mtime,
+                    digest: Some(blob.digest.clone()),
+                    size: Some(blob.size),
+                    fast_digest: Some(blob.fast_digest),
+                })
                 .await?;
             }
         } else {
-            let entry = ops::insert_entry_deleted(&*db, snap.id, &e.path).await?;
-            ops::upsert_cache_deleted(&*db, repo.id, &e.path, snap.id, entry.id).await?;
+            let entry = db.insert_entry_deleted(snap.id, &e.path).await?;
+            db.upsert_cache_deleted(repo.id, &e.path, snap.id, entry.id).await?;
         }
     }
 
     // Upsert stores and replicas.
     for r in &body.replicas {
-        let store = ops::get_or_create_store(&db, &r.store_name, &r.store_url, serde_json::json!({})).await?;
+        let store = db.get_or_create_store(&r.store_name, &r.store_url, serde_json::json!({})).await?;
         let digest_bytes = hex::decode(&r.blob_digest)?;
-        if let Some(blob) = ops::find_blob_by_digest(&*db, &digest_bytes).await? {
-            if !ops::replica_exists(&db, blob.id, store.id).await? {
-                ops::insert_replica(&db, blob.id, store.id, &r.path, r.encrypted).await?;
+        if let Some(blob) = db.find_blob_by_digest(&digest_bytes).await? {
+            if !db.replica_exists(blob.id, store.id).await? {
+                db.insert_replica(blob.id, store.id, &r.path, r.encrypted).await?;
             }
         }
     }
 
     if !body.metadata.is_null() {
-        ops::update_snapshot_metadata(&db, snap.id, body.metadata).await?;
+        db.update_snapshot_metadata(snap.id, body.metadata).await?;
     }
 
     Ok(Json(PushResponse { snapshot_id: snap.id.to_string() }))
@@ -269,10 +264,11 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async fn find_repo_or_404(db: &sea_orm::DatabaseConnection, name: &str) -> AppResult<repository::Model> {
-    repository::Entity::find()
-        .filter(repository::Column::Name.eq(name))
-        .one(db)
+async fn find_repo_or_404(
+    db: &dyn tome_db::store_trait::MetadataStore,
+    name: &str,
+) -> AppResult<tome_db::entities::repository::Model> {
+    db.find_repository_by_name(name)
         .await?
         .ok_or_else(|| AppError::not_found(format!("repository {:?} not found", name)))
 }
