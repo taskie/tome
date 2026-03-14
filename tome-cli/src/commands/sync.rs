@@ -6,6 +6,8 @@ use tracing::{info, warn};
 use tome_db::{connection::open as open_db, entities::blob, ops};
 use tome_server::routes::sync::{PullResponse, PushRequest, SyncEntry, SyncReplica};
 
+use super::aws_auth::{self, AwsSigner};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
@@ -202,6 +204,16 @@ fn is_http_peer(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
 
+/// Build an [`AwsSigner`] if the peer config has `"auth": "aws-iam"`.
+async fn build_signer(config: &serde_json::Value) -> Result<Option<AwsSigner>> {
+    if aws_auth::needs_aws_auth(config) {
+        let signer = AwsSigner::from_env(aws_auth::peer_region(config), aws_auth::peer_service(config)).await?;
+        Ok(Some(signer))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Apply a received snapshot (entries + replicas) to the local database.
 /// Used by both the DB-mode pull and the HTTP-mode pull.
 async fn apply_pulled_snapshot(
@@ -323,7 +335,13 @@ async fn sync_pull_http(
         url.push_str(&format!("&after={after}"));
     }
 
-    let resp = client.get(&url).send().await?.error_for_status()?;
+    let signer = build_signer(&peer.config).await?;
+    let resp = if let Some(ref signer) = signer {
+        let req = signer.sign_get(&client, &url)?;
+        client.execute(req).await?.error_for_status()?
+    } else {
+        client.get(&url).send().await?.error_for_status()?
+    };
     let data: PullResponse = resp.json().await?;
 
     if data.snapshots.is_empty() {
@@ -542,6 +560,7 @@ async fn sync_push_http(
 
     let client = reqwest::Client::new();
     let push_url = format!("{}/sync/push?repo={}", peer.url.trim_end_matches('/'), peer_repo_name);
+    let signer = build_signer(&peer.config).await?;
 
     let mut entries_synced = 0u64;
     let mut replicas_synced = 0u64;
@@ -598,7 +617,13 @@ async fn sync_push_http(
             replicas: sync_replicas,
         };
 
-        let resp = client.post(&push_url).json(&req).send().await?.error_for_status()?;
+        let resp = if let Some(ref signer) = signer {
+            let body = serde_json::to_vec(&req)?;
+            let signed = signer.sign_post(&client, &push_url, &body)?;
+            client.execute(signed).await?.error_for_status()?
+        } else {
+            client.post(&push_url).json(&req).send().await?.error_for_status()?
+        };
         let result: serde_json::Value = resp.json().await?;
         let remote_id = result["snapshot_id"].as_str().unwrap_or("?");
 

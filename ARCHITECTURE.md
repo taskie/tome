@@ -492,6 +492,23 @@ graph TB
 | `postgres://...` or `sqlite://...` | Direct DB connection (SeaORM) |
 | `http://...` or `https://...` | HTTP API (`POST /sync/push`, `GET /sync/pull`) |
 
+### Authentication
+
+HTTP sync peers can require AWS IAM authentication. Set `"auth": "aws-iam"` in the peer config:
+
+```bash
+tome sync add my-aws --repo myrepo --url https://xxxxx.lambda-url.us-west-2.on.aws
+tome sync set my-aws --repo myrepo --config '{"auth":"aws-iam","region":"us-west-2"}'
+```
+
+| Config key | Description | Default |
+|------------|-------------|---------|
+| `auth` | Authentication method (`"aws-iam"` or omit for none) | none |
+| `region` | AWS region for SigV4 signing | SDK default (`AWS_REGION`) |
+| `service` | AWS service name for SigV4 signing | `"lambda"` |
+
+When `"auth": "aws-iam"` is set, requests are signed with AWS SigV4 using credentials from the default chain (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, instance profile, SSO, etc.).
+
 `POST /sync/push` is idempotent: duplicate pushes identified by `(source_machine_id, source_snapshot_id)` return the existing server-side snapshot without re-inserting.
 
 ### machine_id allocation
@@ -503,6 +520,8 @@ graph TB
 ## AWS Lambda deployment
 
 `tome-server` can run as an AWS Lambda function using the `lambda` feature flag. The Lambda binary (`tome-lambda`) wraps the same axum router via `lambda_http`.
+
+Migrations are **not** executed on Lambda startup. The schema must be applied beforehand using `psqldef` or similar tools. The Lambda binary uses `connection::connect()` (connect-only) instead of `connection::open()` (connect + migrate).
 
 ### Build
 
@@ -539,9 +558,9 @@ represents the full target schema and can be applied directly:
 psqldef -U <user> -h <host> <database> < tome-db/schema.sql
 ```
 
-SeaORM migrations (`tome-db/src/migration/`) are still used at runtime via
-`connection::open()`, but the DDL file serves as the authoritative human-readable
-reference.
+SeaORM migrations (`tome-db/src/migration/`) are still used by `connection::open()`
+(CLI / local SQLite), while `connection::connect()` skips migrations for deployments
+where the schema is managed externally.
 
 ---
 

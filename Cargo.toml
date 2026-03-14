@@ -20,6 +20,9 @@ tower-http = { version = "0.6", features = ["trace"] }
 aws-config = "1"
 aws-sdk-s3 = "1"
 aws-sdk-secretsmanager = "1"
+aws-sigv4 = "1"
+aws-credential-types = "1"
+aws-smithy-runtime-api = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }

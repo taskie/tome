@@ -1,9 +1,12 @@
-//! Lambda エントリポイント。
-//! cargo lambda build --release --features lambda --bin tome-lambda でビルド。
+//! Lambda entry point.
+//! Build with: cargo lambda build --release --features lambda --bin tome-lambda
 //!
-//! 環境変数:
+//! Environment variables:
 //!   TOME_DB         — postgres://<user>:<password>@<endpoint>:5432/<database>
-//!   TOME_MACHINE_ID — 省略可（デフォルト 0）
+//!   TOME_MACHINE_ID — optional (default: 0)
+//!
+//! The schema must be applied beforehand (e.g. via psqldef).
+//! Migrations are NOT executed on Lambda startup.
 
 use anyhow::Context as _;
 
@@ -19,7 +22,7 @@ async fn main() -> Result<(), lambda_http::Error> {
 
     tome_core::id::init(machine_id, None::<i64>).expect("id init failed");
 
-    let db = tome_db::connection::open(&db_url).await.expect("DB connection failed");
+    let db = tome_db::connection::connect(&db_url).await.expect("DB connection failed");
 
     tome_server::run_lambda(db).await
 }

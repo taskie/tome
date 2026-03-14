@@ -4613,11 +4613,16 @@ name = "tome-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sigv4",
+ "aws-smithy-runtime-api",
  "chrono",
  "clap",
  "dirs",
  "hex",
  "hostname",
+ "http 1.4.0",
  "ignore",
  "notify",
  "reqwest",

@@ -31,3 +31,8 @@ hex = "0.4"
 reqwest = { workspace = true }
 hostname = { workspace = true }
 notify = "6"
+aws-config = { workspace = true }
+aws-sigv4 = { workspace = true, features = ["http1"] }
+aws-credential-types = { workspace = true }
+aws-smithy-runtime-api = { workspace = true }
+http = "1"

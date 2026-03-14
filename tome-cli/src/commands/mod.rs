@@ -1,3 +1,4 @@
+pub mod aws_auth;
 pub mod diff;
 pub mod gc;
 mod helpers;
