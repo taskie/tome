@@ -53,3 +53,10 @@ Lambda コードは実装済み（`tome-server --features lambda`）。
 - GC FK 制約修正 — entry_cache を先にクリアしてから entries を削除
 - エラーハンドリング改善（AppError 構造化、Mutex パニック除去、Context 付与）
 - tome-server Lambda 対応 — `cargo lambda build --release --features lambda --bin tome-lambda`
+- 宣言型 DDL — `tome-db/schema.sql` に PostgreSQL DDL を出力、DSQL 抽象化層を削除
+- AWS IAM SigV4 認証 — sync push/pull で Lambda Function URL に署名付きリクエスト
+- Lambda 起動時マイグレーション無効化 — `connection::connect()` で接続のみ（psqldef でスキーマ適用）
+- `MetadataStore` トレイト抽象化 — `tome-db/src/store_trait.rs`（~40 メソッド）、`SeaOrmStore` 実装
+- tome-server ルート全体を `dyn MetadataStore` に移行（sea-orm 直接依存を削除）
+- `tome-dynamo` クレート — DynamoDB シングルテーブル設計による `MetadataStore` 実装
+- Lambda DynamoDB 対応 — `--features dynamodb` + `TOME_DB=dynamodb://<table>` で DynamoDB バックエンドを選択

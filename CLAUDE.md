@@ -31,7 +31,8 @@ cd tome-web && npm run format && npm run lint
 
 ```
 tome-core/    — ハッシュ計算（SHA-256 / BLAKE3 + xxHash64）・ID生成・共通モデル
-tome-db/      — SeaORM エンティティ + マイグレーション + ops
+tome-db/      — SeaORM エンティティ + マイグレーション + ops + MetadataStore トレイト
+tome-dynamo/  — DynamoDB バックエンド（MetadataStore 実装、シングルテーブル設計）
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
 tome-cli/     — 統一 CLI（scan / store / sync / remote / push / pull / diff / restore / tag / verify / gc / init / serve / log / show / status / files / history / repo）

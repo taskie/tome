@@ -9,7 +9,8 @@
 | Crate | Description |
 |-------|-------------|
 | `tome-core` | Hash computation (delegates to treblo), ID generation (Sonyflake), shared models |
-| `tome-db` | SeaORM entities, migrations, query operations (`ops/` modules) |
+| `tome-db` | SeaORM entities, migrations, query operations (`ops/` modules), `MetadataStore` trait |
+| `tome-dynamo` | DynamoDB `MetadataStore` implementation (single-table design) |
 | `tome-store` | Async `Storage` trait + implementations: Local, SSH, S3, Encrypted |
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
 | `tome-cli` | Unified CLI: scan / watch / store / sync / diff / restore / tag / verify / gc / serve |
@@ -26,7 +27,8 @@ graph TD
     treblo["treblo<br/><small>hashing, file walk</small>"]
     aether["aether<br/><small>streaming AEAD</small>"]
     core["tome-core<br/><small>models, ID gen</small>"]
-    db["tome-db<br/><small>SeaORM, migrations</small>"]
+    db["tome-db<br/><small>SeaORM, MetadataStore trait</small>"]
+    dynamo["tome-dynamo<br/><small>DynamoDB backend</small>"]
     store["tome-store<br/><small>Storage trait</small>"]
     server["tome-server<br/><small>HTTP API</small>"]
     cli["tome-cli<br/><small>CLI entry point</small>"]
@@ -34,10 +36,13 @@ graph TD
 
     core --> treblo
     db --> core
+    dynamo --> core
+    dynamo --> db
     store --> core
     store --> aether
     server --> core
     server --> db
+    server -. "dynamodb feature" .-> dynamo
     cli --> core
     cli --> db
     cli --> server
@@ -49,6 +54,7 @@ graph TD
     style aether fill:#e8f5e9
     style core fill:#e3f2fd
     style db fill:#e3f2fd
+    style dynamo fill:#e3f2fd
     style store fill:#e3f2fd
     style server fill:#fff3e0
     style cli fill:#fce4ec
