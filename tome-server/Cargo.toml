@@ -6,7 +6,7 @@ rust-version = "1.85"
 
 [features]
 lambda = ["dep:lambda_http"]
-dynamodb = ["dep:tome-dynamo", "dep:aws-config"]
+dynamodb = ["dep:tome-dynamo", "dep:aws-config", "dep:aws-sdk-dynamodb"]
 
 [dependencies]
 tome-core = { path = "../tome-core" }
@@ -15,6 +15,7 @@ tome-dynamo = { path = "../tome-dynamo", optional = true }
 
 anyhow = { workspace = true }
 aws-config = { workspace = true, optional = true }
+aws-sdk-dynamodb = { workspace = true, optional = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 hex = "0.4"
