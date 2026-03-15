@@ -4717,6 +4717,7 @@ name = "tome-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-config",
  "axum",
  "chrono",
  "hex",
@@ -4727,6 +4728,7 @@ dependencies = [
  "tokio",
  "tome-core",
  "tome-db",
+ "tome-dynamo",
  "tower-http",
  "tracing",
  "tracing-subscriber",
