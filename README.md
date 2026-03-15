@@ -397,6 +397,7 @@ tome-server and tome-web do not implement application-level authentication.
 ```
 tome-core/     Hash computation (SHA-256 / BLAKE3 / xxHash64), ID generation, shared models
 tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
+tome-dynamo/   DynamoDB MetadataStore implementation (single-table design)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
 tome-cli/      Unified CLI (scan / watch / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
@@ -407,4 +408,4 @@ treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk 
 
 Legacy crates (`ichno`, `ichnome`, etc.) are archived under `obsolete/`.
 
-For detailed design documentation — DB schema, hash strategy, HTTP API reference — see [ARCHITECTURE.md](ARCHITECTURE.md).
+For detailed design documentation see [ARCHITECTURE.md](ARCHITECTURE.md), [docs/arch/](docs/arch/) (schema, API, encryption, sync, etc.), and [docs/adr/](docs/adr/) (architecture decision records).

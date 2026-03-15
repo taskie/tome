@@ -39,10 +39,10 @@
 各タスクは「機能実装 → テスト追加 → ドキュメント更新」の粒度でコミットする。
 完了後に `cargo fmt --all -- --check && cargo clippy --all --no-deps -- -D warnings && cargo test --all` を確認。
 
-## AWS デプロイ（Lambda + S3）
+## AWS デプロイ（Lambda + DynamoDB + S3）
 
-Lambda コードは実装済み（`tome-server --features lambda`）。
-スキーマ適用には `psqldef` を利用（`tome-db/schema.sql`）。
+Lambda コードは実装済み（`tome-server --features lambda,dynamodb`）。
+DynamoDB をメタデータバックエンドとして使用。詳細は [docs/arch/lambda-deployment.md](docs/arch/lambda-deployment.md) を参照。
 
 ## 実装済み（未ドキュメント）
 

@@ -4,7 +4,9 @@
 > スナップショット履歴を SQLite/PostgreSQL に記録する。
 
 - ソフトウェアの利用方法は **[README.md](README.md)** を参照。
-- 設計・スキーマ・API の詳細は **[ARCHITECTURE.md](ARCHITECTURE.md)** を参照。
+- 設計概要は **[ARCHITECTURE.md](ARCHITECTURE.md)** を参照。
+- 詳細設計は **[docs/arch/](docs/arch/)** 下の各ドキュメントを参照。
+- 設計判断の記録は **[docs/adr/](docs/adr/)** 下の ADR を参照。
 - 残タスク・改善計画は **[TODO.md](TODO.md)** を参照。
 - CLAUDE.md （当ファイル）には開発上の規約を記載する。
 
