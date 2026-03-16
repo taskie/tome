@@ -233,3 +233,46 @@ async fn scan_multiple_repos_are_independent() {
     // Different repos, different snapshot IDs.
     assert_ne!(snaps_a[0].id, snaps_b[0].id);
 }
+
+// ── Depth and mode ───────────────────────────────────────────────────────────
+
+/// Scanning populates `depth` (count of `/` in path) and `mode` (16384 for directories)
+/// on `entries` rows, including synthesised directory (tree) entries.
+#[tokio::test]
+async fn scan_populates_depth_and_mode() {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    use tome_db::entities::entry;
+
+    let env = Env::new().await;
+    env.write("a.txt", b"aaa");
+    env.write("src/b.txt", b"bbb");
+    env.write("src/cmd/c.txt", b"ccc");
+
+    env.scan().await.unwrap();
+
+    // Query the entries table for the snapshot to get both file and tree entries.
+    let snaps = env.snapshots().await;
+    assert_eq!(snaps.len(), 1);
+    let snap_id = snaps[0].id;
+
+    let entries: Vec<entry::Model> = entry::Entity::find()
+        .filter(entry::Column::SnapshotId.eq(snap_id))
+        .filter(entry::Column::Status.eq(1i16))
+        .all(&env.db)
+        .await
+        .unwrap();
+
+    let by_path: std::collections::HashMap<&str, &entry::Model> =
+        entries.iter().map(|e| (e.path.as_str(), e)).collect();
+
+    // File depths = number of `/` separators in the path.
+    assert_eq!(by_path["a.txt"].depth, 0, "a.txt depth");
+    assert_eq!(by_path["src/b.txt"].depth, 1, "src/b.txt depth");
+    assert_eq!(by_path["src/cmd/c.txt"].depth, 2, "src/cmd/c.txt depth");
+
+    // Directory (tree) entries should exist with mode=16384 (0o040000).
+    assert_eq!(by_path["src"].depth, 0, "src depth");
+    assert_eq!(by_path["src"].mode, Some(16384), "src mode");
+    assert_eq!(by_path["src/cmd"].depth, 1, "src/cmd depth");
+    assert_eq!(by_path["src/cmd"].mode, Some(16384), "src/cmd mode");
+}
