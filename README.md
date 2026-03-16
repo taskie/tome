@@ -95,13 +95,10 @@ max_delay    = 600  # max seconds from first change to forced snapshot (default:
 # Generate a 32-byte key
 dd if=/dev/urandom bs=32 count=1 of=~/.config/tome/keys/main.key
 
-# Register a local staging store and an encrypted S3 destination
-tome store add local  file:///data/local-store
+# Register an encrypted S3 store and push directly — no local staging needed
 tome store add remote s3://my-bucket/tome --encrypt --key-file ~/.config/tome/keys/main.key
-
-# Push locally, then copy to S3 — encryption is applied automatically
-tome store push local
-tome store copy local remote
+tome scan ~/documents
+tome store push remote
 
 # Or register the store with a key from an external secret manager
 tome store add remote s3://my-bucket/tome --encrypt --key-source env://TOME_KEY
@@ -113,7 +110,12 @@ tome store set remote --encrypt --key-source pass://tome/main-key
 tome store set remote --no-encrypt
 
 # Per-command override still works (overrides per-store config)
-tome store copy --encrypt --key-file ~/.config/tome/keys/main.key local remote
+tome store push --encrypt --key-file ~/.config/tome/keys/main.key remote
+
+# Two-stage workflow is also supported: push to local, then copy to S3
+tome store add local  file:///data/local-store
+tome store push local
+tome store copy local remote
 ```
 
 ### Sync history to a central server
@@ -263,12 +265,12 @@ tome store add <name> <url> [--encrypt] [--key-file <path>] [--key-source <uri>]
 tome store set <name> [--url <new-url>] [--encrypt|--no-encrypt] [--key-file <path>] [--key-source <uri>] [--cipher <alg>]
 tome store rm <name> [--force]                                 # remove a store
 tome store list                                                 # list stores (shows encrypt status)
-tome store push [--repo <name>] [<store>] [<path>]             # upload blobs (auto-encrypts if store config set)
+tome store push [--repo <name>] [--encrypt] [--key-file <path>] [--key-source <uri>] [--cipher <alg>] [<store>] [<path>]
 tome store copy [--encrypt] [--key-file <path>] [--key-source <uri>] [--cipher <alg>] <src> <dst>
 tome store verify <store>                                       # verify integrity
 ```
 
-When `--encrypt` and key options are provided to `store add` or `store set`, they are persisted in the store's config. Subsequent `store push` and `store copy` (to that destination) auto-apply encryption without repeating flags. CLI flags on `store copy` override per-store config.
+When `--encrypt` and key options are provided to `store add` or `store set`, they are persisted in the store's config. Subsequent `store push` and `store copy` (to that destination) auto-apply encryption without repeating flags. CLI flags on `store push` and `store copy` override per-store config. This allows pushing directly to remote stores (S3, SSH) with encryption in a single step.
 
 Supported URL schemes: `file:///path`, `ssh://user@host/path`, `s3://bucket/prefix`
 

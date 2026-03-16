@@ -179,6 +179,18 @@ pub struct StorePushArgs {
     pub store: Option<String>,
     /// Root directory where scanned files reside (overrides snapshot metadata)
     pub path: Option<std::path::PathBuf>,
+    /// Encrypt blobs (overrides per-store config)
+    #[arg(long)]
+    pub encrypt: bool,
+    /// Path to 32-byte binary key file for encryption
+    #[arg(long)]
+    pub key_file: Option<std::path::PathBuf>,
+    /// External secret manager URI for the encryption key
+    #[arg(long)]
+    pub key_source: Option<String>,
+    /// Cipher algorithm: aes256gcm (default) or chacha20-poly1305
+    #[arg(long)]
+    pub cipher: Option<String>,
 }
 
 #[derive(Args)]
@@ -348,9 +360,18 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
     // Determine scan root: CLI arg > snapshot metadata > error
     let scan_root = super::helpers::resolve_scan_root(db, repo.id, args.path).await?;
 
-    // Resolve per-store encryption (no CLI overrides for push).
+    // Resolve encryption: CLI flags override per-store config.
     let per_store = parse_store_config(&store.config);
-    let encryption = resolve_encryption_for_store(None, None, None, None, &per_store, cfg).await?;
+    let cli_encrypt = if args.encrypt { Some(true) } else { None };
+    let encryption = resolve_encryption_for_store(
+        cli_encrypt,
+        args.key_file.as_deref(),
+        args.key_source.as_deref(),
+        args.cipher.as_deref(),
+        &per_store,
+        cfg,
+    )
+    .await?;
     let is_encrypted = encryption.is_some();
 
     let storage: Box<dyn Storage> = if let Some((key, cipher_algo)) = encryption {

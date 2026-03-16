@@ -109,6 +109,10 @@ async fn store_push_incremental_scan_adds_new_replica() {
                 repo: "default".to_string(),
                 store: Some("local".to_string()),
                 path: Some(env.files_dir()),
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
             }),
         },
         &tome_cli::config::StoreConfig::default(),
@@ -391,6 +395,10 @@ async fn store_push_auto_encrypts() {
                 repo: "default".to_string(),
                 store: Some("enc-store".to_string()),
                 path: Some(env.files_dir()),
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
             }),
         },
         &tome_cli::config::StoreConfig::default(),
@@ -457,4 +465,71 @@ async fn store_list_shows_encrypt_status() {
 
     assert_eq!(plain.config["encrypt"], serde_json::json!(false));
     assert_eq!(secure.config["encrypt"], serde_json::json!(true));
+}
+
+// ── Direct remote push with CLI encryption override ──────────────────────────
+
+/// `tome store push --encrypt --key-file ...` encrypts even when the store has no encryption config.
+#[tokio::test]
+async fn store_push_with_cli_encrypt_override() {
+    let env = Env::new().await;
+    let store_url = format!("file://{}", env.store_dir().display());
+
+    // Write a 32-byte key file.
+    let key_dir = env.root.path().join("keys");
+    std::fs::create_dir_all(&key_dir).unwrap();
+    let key_path = key_dir.join("test.key");
+    std::fs::write(&key_path, &[0xCDu8; 32]).unwrap();
+
+    // Register a plain store (no encryption config).
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "remote".to_string(),
+                url: store_url,
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Scan a file.
+    env.write("data.bin", b"binary payload for remote");
+    env.scan().await.unwrap();
+
+    // Push with CLI --encrypt override.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Push(tome_cli::commands::store::StorePushArgs {
+                repo: "default".to_string(),
+                store: Some("remote".to_string()),
+                path: Some(env.files_dir()),
+                encrypt: true,
+                key_file: Some(key_path),
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Replica should be marked encrypted.
+    let store = ops::find_store_by_name(&env.db, "remote").await.unwrap().unwrap();
+    let replicas = ops::replicas_in_store(&env.db, store.id).await.unwrap();
+    assert_eq!(replicas.len(), 1);
+    assert!(replicas[0].encrypted, "replica should be encrypted via CLI override");
+
+    // Blob on disk should not match plaintext.
+    let blob_file = env.store_dir().join(&replicas[0].path);
+    let stored = std::fs::read(&blob_file).unwrap();
+    assert_ne!(stored.as_slice(), b"binary payload for remote");
 }
