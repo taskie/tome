@@ -121,12 +121,12 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
                   <td className={`px-3 py-1.5 ${isPresent ? "" : "line-through text-gray-300"}`}>
                     {historyHref && isPresent ? (
                       <Link href={historyHref} className="hover:underline text-blue-600">
-                        {e.mode === 16384 ? "📁 " : ""}
+                        {e.mode === 16384 ? "📁 " : "📄 "}
                         {e.path}
                       </Link>
                     ) : (
                       <>
-                        {e.mode === 16384 ? "📁 " : ""}
+                        {e.mode === 16384 ? "📁 " : "📄 "}
                         {e.path}
                       </>
                     )}

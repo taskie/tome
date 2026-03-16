@@ -156,16 +156,6 @@ export default async function FilesPage({ params, searchParams }: Props) {
                 </span>
               ))}
             </nav>
-            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer ml-4">
-              <input
-                type="checkbox"
-                name="include_deleted"
-                value="true"
-                defaultChecked={includeDeleted}
-                onChange="this.form?.submit()"
-              />
-              Show deleted
-            </label>
             {parentDir !== undefined && (
               <Link
                 href={buildUrl(baseUrl, { dir: parentDir, include_deleted: includeDeleted || undefined })}
@@ -174,9 +164,28 @@ export default async function FilesPage({ params, searchParams }: Props) {
                 ↑ Up
               </Link>
             )}
-            <Link href={baseUrl} className="text-xs text-gray-400 hover:underline">
+            <span className="text-xs text-gray-300">|</span>
+            <Link
+              href={buildUrl(baseUrl, {
+                prefix: dirPrefix || undefined,
+                include_deleted: includeDeleted || undefined,
+              })}
+              className="text-xs text-gray-500 hover:underline"
+            >
               Flat view
             </Link>
+            {includeDeleted ? (
+              <Link href={buildUrl(baseUrl, { dir: dirPath || "" })} className="text-xs text-gray-500 hover:underline">
+                Hide deleted
+              </Link>
+            ) : (
+              <Link
+                href={buildUrl(baseUrl, { dir: dirPath || "", include_deleted: true })}
+                className="text-xs text-gray-500 hover:underline"
+              >
+                Show deleted
+              </Link>
+            )}
           </>
         ) : (
           <form method="GET" action={baseUrl} className="flex flex-wrap gap-2 items-center">
@@ -198,9 +207,10 @@ export default async function FilesPage({ params, searchParams }: Props) {
                 Clear
               </Link>
             )}
+            <span className="text-xs text-gray-300">|</span>
             <Link
               href={buildUrl(baseUrl, { dir: "", include_deleted: includeDeleted || undefined })}
-              className="text-xs text-blue-600 hover:underline ml-2"
+              className="text-xs text-blue-600 hover:underline"
             >
               📁 Browse
             </Link>
@@ -243,6 +253,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
               const isPresent = e.status === 1;
               const isDir = e.is_directory;
               const label = isDirMode ? displayName(e.path, dirPrefix) : e.path;
+              const icon = isDir ? "📁 " : "📄 ";
 
               const linkHref = isDir
                 ? buildUrl(baseUrl, { dir: e.path, include_deleted: includeDeleted || undefined })
@@ -256,13 +267,13 @@ export default async function FilesPage({ params, searchParams }: Props) {
                   <td className={`px-3 py-1.5 ${!isPresent ? "line-through text-gray-400" : ""}`}>
                     {isPresent ? (
                       <Link href={linkHref} className="hover:underline text-blue-600">
-                        {isDir ? "📁 " : ""}
+                        {icon}
                         {label}
                         {isDir ? "/" : ""}
                       </Link>
                     ) : (
                       <span>
-                        {isDir ? "📁 " : ""}
+                        {icon}
                         {label}
                       </span>
                     )}
