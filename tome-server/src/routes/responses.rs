@@ -128,6 +128,7 @@ pub struct CacheEntryResponse {
     pub fast_digest: Option<String>,
     pub snapshot_id: String,
     pub entry_id: String,
+    pub is_directory: bool,
 }
 
 pub fn cache_entry_to_response(e: &tome_db::entities::entry_cache::Model) -> CacheEntryResponse {
@@ -140,8 +141,12 @@ pub fn cache_entry_to_response(e: &tome_db::entities::entry_cache::Model) -> Cac
         fast_digest: e.fast_digest.map(|fd| format!("{:016x}", fd as u64)),
         snapshot_id: e.snapshot_id.to_string(),
         entry_id: e.entry_id.to_string(),
+        is_directory: e.mode == Some(DIR_MODE),
     }
 }
+
+/// Directory entry mode constant (matching POSIX S_IFDIR).
+const DIR_MODE: i32 = 0o040000;
 
 #[derive(Serialize, ToSchema)]
 pub struct MachineResponse {

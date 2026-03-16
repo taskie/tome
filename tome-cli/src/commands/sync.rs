@@ -280,6 +280,7 @@ async fn apply_pulled_snapshot(
                         digest: Some(b.digest.clone()),
                         size: b.size,
                         fast_digest: b.fast_digest,
+                        mode: e.mode,
                     },
                 )
                 .await?;
@@ -481,6 +482,7 @@ async fn sync_pull_db(
                             digest: Some(b.digest.clone()),
                             size: b.size,
                             fast_digest: b.fast_digest,
+                            mode: remote_entry.mode,
                         },
                     )
                     .await?;

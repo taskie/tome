@@ -235,6 +235,7 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                     digest: Some(blob.digest.clone()),
                     size: blob.size,
                     fast_digest: blob.fast_digest,
+                    mode: e.mode,
                 })
                 .await?;
             }

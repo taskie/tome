@@ -13,6 +13,9 @@ use super::Db;
 use super::responses::*;
 use crate::error::{AppError, AppResult};
 
+/// Directory entry mode constant (matching POSIX S_IFDIR).
+const DIR_MODE: i32 = 0o040000;
+
 async fn find_repo_or_404(
     db: &dyn tome_db::store_trait::MetadataStore,
     name: &str,
@@ -221,9 +224,12 @@ pub async fn diff_snapshots(
 
 #[derive(Deserialize, IntoParams)]
 pub struct FilesQuery {
-    /// Optional path prefix filter.
+    /// Optional path prefix filter (mutually exclusive with `dir`).
     #[serde(default)]
     pub prefix: String,
+    /// Optional directory path for directory listing (mutually exclusive with `prefix`).
+    #[serde(default)]
+    pub dir: Option<String>,
     /// Include deleted entries (status=0).
     #[serde(default)]
     pub include_deleted: bool,
@@ -270,23 +276,47 @@ pub async fn list_files(
 ) -> AppResult<Json<FilesResponse>> {
     let repo = find_repo_or_404(&**db, &name).await?;
 
+    // `prefix` and `dir` are mutually exclusive.
+    if q.dir.is_some() && !q.prefix.is_empty() {
+        return Err(AppError::bad_request("prefix and dir are mutually exclusive"));
+    }
+
     let per_page = q.per_page.clamp(1, 500);
     let page = q.page.max(1);
 
-    let (entries, total) = db
-        .list_cache_entries(&ops::ListCacheEntriesParams {
+    let (entries, total) = if let Some(ref dir_raw) = q.dir {
+        // Directory listing mode: list direct children.
+        let dir = if dir_raw.is_empty() || dir_raw == "/" {
+            String::new()
+        } else {
+            let d = dir_raw.trim_matches('/');
+            format!("{d}/")
+        };
+        let depth = dir.bytes().filter(|&b| b == b'/').count() as i16;
+        db.list_dir_entries(&ops::ListDirEntriesParams {
+            repository_id: repo.id,
+            include_deleted: q.include_deleted,
+            dir,
+            depth,
+            page,
+            per_page,
+        })
+        .await?
+    } else {
+        db.list_cache_entries(&ops::ListCacheEntriesParams {
             repository_id: repo.id,
             include_deleted: q.include_deleted,
             prefix: q.prefix,
             page,
             per_page,
         })
-        .await?;
+        .await?
+    };
 
     let items = entries
         .into_iter()
         .map(|e| CacheEntryResponse {
-            path: e.path,
+            path: e.path.clone(),
             status: e.status,
             size: e.size,
             mtime: e.mtime.map(|t| t.to_rfc3339()),
@@ -294,6 +324,7 @@ pub async fn list_files(
             fast_digest: e.fast_digest.map(|fd| format!("{:016x}", fd as u64)),
             snapshot_id: e.snapshot_id.to_string(),
             entry_id: e.entry_id.to_string(),
+            is_directory: e.mode == Some(DIR_MODE),
         })
         .collect();
 

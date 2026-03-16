@@ -301,6 +301,7 @@ async fn process_file<C: ConnectionTrait>(
                             digest: cached.digest.clone(),
                             size: cached.size,
                             fast_digest: cached.fast_digest,
+                            mode: cached.mode,
                         },
                     )
                     .await?;
@@ -350,6 +351,7 @@ async fn record_present_file<C: ConnectionTrait>(
             digest: Some(file_hash.digest.to_vec()),
             size: Some(file_hash.size as i64),
             fast_digest: Some(file_hash.fast_digest),
+            mode: Some(mode),
         },
     )
     .await?;
