@@ -55,10 +55,11 @@ export const api = {
 
   files: (
     name: string,
-    opts: { prefix?: string; includeDeleted?: boolean; page?: number; perPage?: number },
+    opts: { prefix?: string; dir?: string; includeDeleted?: boolean; page?: number; perPage?: number },
   ): Promise<FilesResponse> => {
     const p = new URLSearchParams();
-    if (opts.prefix) p.set("prefix", opts.prefix);
+    if (opts.dir !== undefined) p.set("dir", opts.dir);
+    else if (opts.prefix) p.set("prefix", opts.prefix);
     if (opts.includeDeleted) p.set("include_deleted", "true");
     if (opts.page && opts.page > 1) p.set("page", String(opts.page));
     if (opts.perPage) p.set("per_page", String(opts.perPage));

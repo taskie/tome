@@ -22,23 +22,22 @@ function sp1(sp: { [key: string]: string | string[] | undefined }, key: string):
   return Array.isArray(v) ? v[0] : v;
 }
 
-function parentPrefix(prefix: string): string {
-  const trimmed = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-  const idx = trimmed.lastIndexOf("/");
-  return idx < 0 ? "" : trimmed.slice(0, idx + 1);
-}
-
 function buildUrl(base: string, params: Record<string, string | number | boolean | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "" && v !== false && v !== 1 && v !== 0) {
       p.set(k, String(v));
     }
-    // keep falsy defaults out of URL except include_deleted=true
     if (k === "include_deleted" && v === true) p.set(k, "true");
   }
   const qs = p.toString();
   return qs ? `${base}?${qs}` : base;
+}
+
+/** Extract display name from a full path (last segment). */
+function displayName(path: string, dir: string): string {
+  if (dir && path.startsWith(dir)) return path.slice(dir.length);
+  return path;
 }
 
 export default async function FilesPage({ params, searchParams }: Props) {
@@ -46,30 +45,60 @@ export default async function FilesPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const repoName = decodeURIComponent(name);
 
+  const dir = sp1(sp, "dir");
   const prefix = sp1(sp, "prefix") ?? "";
   const includeDeleted = sp1(sp, "include_deleted") === "true";
   const page = Math.max(1, Number(sp1(sp, "page") ?? "1"));
 
+  // Directory browsing mode when `dir` is present (even if empty string = root)
+  const isDirMode = dir !== undefined;
+  const dirPath = isDirMode ? dir || "" : "";
+
   let data;
   try {
-    data = await api.files(repoName, {
-      prefix,
-      includeDeleted,
-      page,
-      perPage: PER_PAGE,
-    });
+    data = isDirMode
+      ? await api.files(repoName, { dir: dirPath, includeDeleted, page, perPage: PER_PAGE })
+      : await api.files(repoName, { prefix, includeDeleted, page, perPage: PER_PAGE });
   } catch {
     notFound();
   }
 
   const { total, items } = data;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const parent = parentPrefix(prefix);
   const baseUrl = `/repositories/${name}/files`;
 
+  // Normalized dir prefix with trailing slash (for display name extraction)
+  const dirPrefix = dirPath && !dirPath.endsWith("/") ? dirPath + "/" : dirPath;
+
+  // Parent directory for "Up" navigation
+  const parentDir = (() => {
+    if (!isDirMode) return undefined;
+    if (!dirPath) return undefined; // already at root
+    const trimmed = dirPath.endsWith("/") ? dirPath.slice(0, -1) : dirPath;
+    const idx = trimmed.lastIndexOf("/");
+    return idx < 0 ? "" : trimmed.slice(0, idx);
+  })();
+
   function pageUrl(p: number) {
+    if (isDirMode) {
+      return buildUrl(baseUrl, {
+        dir: dirPath,
+        include_deleted: includeDeleted || undefined,
+        page: p > 1 ? p : undefined,
+      });
+    }
     return buildUrl(baseUrl, { prefix, include_deleted: includeDeleted || undefined, page: p > 1 ? p : undefined });
   }
+
+  // Breadcrumb segments for dir mode
+  const breadcrumbSegments = (() => {
+    if (!isDirMode || !dirPath) return [];
+    const parts = dirPath.split("/").filter(Boolean);
+    return parts.map((part, i) => ({
+      label: part,
+      path: parts.slice(0, i + 1).join("/"),
+    }));
+  })();
 
   return (
     <>
@@ -103,40 +132,86 @@ export default async function FilesPage({ params, searchParams }: Props) {
         </Link>
       </nav>
 
-      {/* Filter form */}
-      <form method="GET" action={baseUrl} className="flex flex-wrap gap-2 items-center mb-4">
-        <input
-          name="prefix"
-          defaultValue={prefix}
-          placeholder="Path prefix…"
-          className="text-xs border border-gray-300 rounded px-2 py-1 w-56"
-        />
-        <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
-          <input type="checkbox" name="include_deleted" value="true" defaultChecked={includeDeleted} />
-          Show deleted
-        </label>
-        <button type="submit" className="text-xs px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
-          Filter
-        </button>
-        {prefix && (
-          <Link
-            href={buildUrl(baseUrl, { prefix: parent || undefined, include_deleted: includeDeleted || undefined })}
-            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
-          >
-            ↑ Up
-          </Link>
+      {/* Mode toggle + filter */}
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        {isDirMode ? (
+          <>
+            {/* Breadcrumb navigation in dir mode */}
+            <nav className="flex items-center gap-1 text-xs">
+              <Link
+                href={buildUrl(baseUrl, { dir: "", include_deleted: includeDeleted || undefined })}
+                className="hover:underline text-blue-600"
+              >
+                /
+              </Link>
+              {breadcrumbSegments.map((seg) => (
+                <span key={seg.path}>
+                  {" / "}
+                  <Link
+                    href={buildUrl(baseUrl, { dir: seg.path, include_deleted: includeDeleted || undefined })}
+                    className="hover:underline text-blue-600"
+                  >
+                    {seg.label}
+                  </Link>
+                </span>
+              ))}
+            </nav>
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer ml-4">
+              <input
+                type="checkbox"
+                name="include_deleted"
+                value="true"
+                defaultChecked={includeDeleted}
+                onChange="this.form?.submit()"
+              />
+              Show deleted
+            </label>
+            {parentDir !== undefined && (
+              <Link
+                href={buildUrl(baseUrl, { dir: parentDir, include_deleted: includeDeleted || undefined })}
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              >
+                ↑ Up
+              </Link>
+            )}
+            <Link href={baseUrl} className="text-xs text-gray-400 hover:underline">
+              Flat view
+            </Link>
+          </>
+        ) : (
+          <form method="GET" action={baseUrl} className="flex flex-wrap gap-2 items-center">
+            <input
+              name="prefix"
+              defaultValue={prefix}
+              placeholder="Path prefix…"
+              className="text-xs border border-gray-300 rounded px-2 py-1 w-56"
+            />
+            <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" name="include_deleted" value="true" defaultChecked={includeDeleted} />
+              Show deleted
+            </label>
+            <button type="submit" className="text-xs px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
+              Filter
+            </button>
+            {prefix && (
+              <Link href={baseUrl} className="text-xs text-gray-400 hover:underline">
+                Clear
+              </Link>
+            )}
+            <Link
+              href={buildUrl(baseUrl, { dir: "", include_deleted: includeDeleted || undefined })}
+              className="text-xs text-blue-600 hover:underline ml-2"
+            >
+              📁 Browse
+            </Link>
+          </form>
         )}
-        {(prefix || includeDeleted) && (
-          <Link href={baseUrl} className="text-xs text-gray-400 hover:underline">
-            Clear
-          </Link>
-        )}
-      </form>
+      </div>
 
       {/* Summary + pagination info */}
       <p className="text-xs text-gray-400 mb-3">
-        {total.toLocaleString()} {includeDeleted ? "entries" : "files"}
-        {prefix && (
+        {total.toLocaleString()} {includeDeleted ? "entries" : "items"}
+        {!isDirMode && prefix && (
           <>
             {" "}
             matching <code className="font-mono">{prefix}…</code>
@@ -156,7 +231,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
         <table className="w-full border-collapse bg-white shadow-sm rounded overflow-hidden text-xs">
           <thead>
             <tr className="bg-gray-100 text-left">
-              <th className="px-3 py-2 border-b-2 border-gray-200">Path</th>
+              <th className="px-3 py-2 border-b-2 border-gray-200">Name</th>
               {includeDeleted && <th className="px-3 py-2 border-b-2 border-gray-200">Status</th>}
               <th className="px-3 py-2 border-b-2 border-gray-200 text-right">Size</th>
               <th className="px-3 py-2 border-b-2 border-gray-200">Modified</th>
@@ -166,7 +241,13 @@ export default async function FilesPage({ params, searchParams }: Props) {
           <tbody>
             {items.map((e) => {
               const isPresent = e.status === 1;
-              const historyHref = `/repositories/${name}/history?path=${encodeURIComponent(e.path)}`;
+              const isDir = e.is_directory;
+              const label = isDirMode ? displayName(e.path, dirPrefix) : e.path;
+
+              const linkHref = isDir
+                ? buildUrl(baseUrl, { dir: e.path, include_deleted: includeDeleted || undefined })
+                : `/repositories/${name}/history?path=${encodeURIComponent(e.path)}`;
+
               return (
                 <tr
                   key={e.path}
@@ -174,11 +255,16 @@ export default async function FilesPage({ params, searchParams }: Props) {
                 >
                   <td className={`px-3 py-1.5 ${!isPresent ? "line-through text-gray-400" : ""}`}>
                     {isPresent ? (
-                      <Link href={historyHref} className="hover:underline text-blue-600">
-                        {e.path}
+                      <Link href={linkHref} className="hover:underline text-blue-600">
+                        {isDir ? "📁 " : ""}
+                        {label}
+                        {isDir ? "/" : ""}
                       </Link>
                     ) : (
-                      e.path
+                      <span>
+                        {isDir ? "📁 " : ""}
+                        {label}
+                      </span>
                     )}
                   </td>
                   {includeDeleted && (
@@ -191,7 +277,7 @@ export default async function FilesPage({ params, searchParams }: Props) {
                     </td>
                   )}
                   <td className="px-3 py-1.5 text-right text-gray-500">
-                    {e.size != null ? e.size.toLocaleString() : ""}
+                    {!isDir && e.size != null ? e.size.toLocaleString() : ""}
                   </td>
                   <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
                   <td className="px-3 py-1.5 font-mono text-gray-400">

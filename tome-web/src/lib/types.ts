@@ -62,6 +62,7 @@ export type CacheEntry = {
   fast_digest: string | null;
   snapshot_id: string;
   entry_id: string;
+  is_directory: boolean;
 };
 
 export type FilesResponse = {
