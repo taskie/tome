@@ -406,6 +406,32 @@ impl Env {
         .await
     }
 
+    /// Run `tome sync config`.
+    pub async fn sync_config(
+        &self,
+        name: &str,
+        key: Option<&str>,
+        value: Option<&str>,
+        unset: Option<&str>,
+        list: bool,
+        repo: &str,
+    ) -> anyhow::Result<()> {
+        sync::run(
+            &self.db,
+            sync::SyncArgs {
+                command: sync::SyncCommands::Config(sync::SyncConfigArgs {
+                    name: name.to_string(),
+                    key: key.map(|s| s.to_string()),
+                    value: value.map(|s| s.to_string()),
+                    unset: unset.map(|s| s.to_string()),
+                    list,
+                    repo: repo.to_string(),
+                }),
+            },
+        )
+        .await
+    }
+
     // ── push / pull helpers ─────────────────────────────────────────────────
 
     /// Run `tome push <peer>` (scan + store push + sync push).

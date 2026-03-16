@@ -58,8 +58,18 @@ graph TB
 HTTP sync peers can require AWS IAM authentication. Set `"auth": "aws-iam"` in the peer config:
 
 ```bash
-tome sync add my-aws --repo myrepo --url https://xxxxx.lambda-url.us-west-2.on.aws
-tome sync set my-aws --repo myrepo --config '{"auth":"aws-iam","region":"us-west-2"}'
+tome sync add my-aws https://xxxxx.lambda-url.us-west-2.on.aws --repo myrepo
+tome sync config my-aws auth aws-iam
+tome sync config my-aws region us-west-2
+```
+
+`tome sync config` follows a git-config-like interface:
+
+```bash
+tome sync config <peer> <key> <value>   # set a key
+tome sync config <peer> <key>           # get a key
+tome sync config <peer> --unset <key>   # remove a key
+tome sync config <peer> --list          # list all keys
 ```
 
 | Config key | Description | Default |

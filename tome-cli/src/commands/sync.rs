@@ -28,6 +28,8 @@ pub enum SyncCommands {
     Rm(SyncRmArgs),
     /// List sync peers
     List(SyncListArgs),
+    /// Get or set peer config values (like git config)
+    Config(SyncConfigArgs),
     /// Pull changes from a sync peer
     Pull(SyncPullArgs),
     /// Push changes to a sync peer
@@ -80,6 +82,25 @@ pub struct SyncListArgs {
 }
 
 #[derive(Args)]
+pub struct SyncConfigArgs {
+    /// Peer name
+    pub name: String,
+    /// Config key to get or set
+    pub key: Option<String>,
+    /// Value to set (omit to read)
+    pub value: Option<String>,
+    /// Remove a config key
+    #[arg(long)]
+    pub unset: Option<String>,
+    /// List all config values
+    #[arg(short, long)]
+    pub list: bool,
+    /// Repository name [default: "default"]
+    #[arg(long, default_value = "default")]
+    pub repo: String,
+}
+
+#[derive(Args)]
 pub struct SyncPullArgs {
     /// Peer name
     pub name: String,
@@ -110,6 +131,7 @@ pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
         SyncCommands::Set(a) => sync_set(db, a).await,
         SyncCommands::Rm(a) => sync_rm(db, a).await,
         SyncCommands::List(a) => sync_list(db, a).await,
+        SyncCommands::Config(a) => sync_config(db, a).await,
         SyncCommands::Pull(a) => sync_pull(db, a).await,
         SyncCommands::Push(a) => sync_push(db, a).await,
     }
@@ -192,6 +214,72 @@ async fn sync_list(db: &DatabaseConnection, args: SyncListArgs) -> Result<()> {
     for p in peers {
         let last = p.last_snapshot_id.map(|id| id.to_string()).unwrap_or_else(|| "-".to_owned());
         println!("{:<20} {:<20} {}", p.name, last, p.url);
+    }
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// sync config
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn sync_config(db: &DatabaseConnection, args: SyncConfigArgs) -> Result<()> {
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let peer = ops::find_sync_peer(db, &args.name, repo.id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found in repo {:?}", args.name, args.repo))?;
+
+    // --list: print all config keys
+    if args.list {
+        if let Some(obj) = peer.config.as_object() {
+            for (k, v) in obj {
+                match v {
+                    serde_json::Value::String(s) => println!("{}={}", k, s),
+                    other => println!("{}={}", k, other),
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    // --unset <key>: remove a key
+    if let Some(ref key) = args.unset {
+        let mut cfg = peer.config.clone();
+        if cfg.as_object_mut().and_then(|o| o.remove(key)).is_none() {
+            bail!("key {:?} not found in config for peer {:?}", key, args.name);
+        }
+        ops::update_sync_peer(db, peer.id, None, Some(cfg)).await?;
+        return Ok(());
+    }
+
+    // <key> <value>: set a key
+    if let (Some(key), Some(value)) = (&args.key, &args.value) {
+        let mut cfg = peer.config.clone();
+        let obj = cfg.as_object_mut().ok_or_else(|| anyhow::anyhow!("peer config is not a JSON object"))?;
+        obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+        let updated = ops::update_sync_peer(db, peer.id, None, Some(cfg)).await?;
+        let stored = updated.config.get(key).and_then(|v| v.as_str()).unwrap_or(value);
+        println!("{}={}", key, stored);
+        return Ok(());
+    }
+
+    // <key>: get a key
+    if let Some(ref key) = args.key {
+        match peer.config.get(key) {
+            Some(serde_json::Value::String(s)) => println!("{}", s),
+            Some(v) => println!("{}", v),
+            None => bail!("key {:?} not found in config for peer {:?}", key, args.name),
+        }
+        return Ok(());
+    }
+
+    // No args: same as --list
+    if let Some(obj) = peer.config.as_object() {
+        for (k, v) in obj {
+            match v {
+                serde_json::Value::String(s) => println!("{}={}", k, s),
+                other => println!("{}={}", k, other),
+            }
+        }
     }
     Ok(())
 }

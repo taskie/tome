@@ -358,6 +358,10 @@ tome sync add --peer-repo docs central postgres://central/tome  # remote repo na
 tome sync set <name> [--peer-url <url>] [--peer-repo <name>]   # update peer settings
 tome sync rm <name> [--repo <name>]                             # remove a sync peer
 tome sync list                                      # list peers
+tome sync config <name> <key> <value>               # set a peer config value
+tome sync config <name> <key>                        # get a peer config value
+tome sync config <name> --unset <key>                # remove a peer config value
+tome sync config <name> --list                       # list all peer config values
 tome sync pull <name>                               # pull incremental snapshots from peer
 tome sync push <name> [--machine-id <N>]            # push local snapshots to peer
 ```
