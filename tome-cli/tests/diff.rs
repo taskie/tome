@@ -55,7 +55,7 @@ async fn diff_identical_snapshots_returns_ok() {
     let env = Env::new().await;
     env.write("file.txt", b"unchanged");
     env.scan().await.unwrap();
-    env.scan().await.unwrap(); // second snapshot with no changes
+    env.scan_allow_empty().await.unwrap(); // second snapshot with no changes
 
     let snaps = env.snapshots().await;
     let snap1_id = snaps[1].id.to_string(); // older (index 1 = second-newest)

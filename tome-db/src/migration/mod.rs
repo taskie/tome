@@ -13,6 +13,7 @@ mod m20230901_000009_create_sync_peers;
 mod m20230901_000010_create_machines;
 mod m20230901_000011_add_snapshot_source;
 mod m20230901_000012_add_replicas_store_idx;
+mod m20230901_000013_blobs_to_objects;
 
 pub struct Migrator;
 
@@ -32,6 +33,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230901_000010_create_machines::Migration),
             Box::new(m20230901_000011_add_snapshot_source::Migration),
             Box::new(m20230901_000012_add_replicas_store_idx::Migration),
+            Box::new(m20230901_000013_blobs_to_objects::Migration),
         ]
     }
 }

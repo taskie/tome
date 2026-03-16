@@ -74,7 +74,7 @@ async fn gc_keep_larger_than_count_is_noop() {
     let env = Env::new().await;
     env.write("file.txt", b"content");
     env.scan().await.unwrap();
-    env.scan().await.unwrap();
+    env.scan_allow_empty().await.unwrap();
 
     env.gc(gc::GcArgs {
         dry_run: false,
@@ -137,11 +137,11 @@ async fn gc_repo_flag_only_prunes_target_repo() {
     // Populate two repositories.
     env.write("a.txt", b"a");
     env.scan_with("repo_a", "").await.unwrap();
-    env.scan_with("repo_a", "").await.unwrap();
+    env.scan_with_allow_empty("repo_a", "").await.unwrap();
 
     env.write("b.txt", b"b");
     env.scan_with("repo_b", "").await.unwrap();
-    env.scan_with("repo_b", "").await.unwrap();
+    env.scan_with_allow_empty("repo_b", "").await.unwrap();
 
     // GC only repo_a.
     env.gc(gc::GcArgs {

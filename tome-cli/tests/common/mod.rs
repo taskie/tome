@@ -71,18 +71,45 @@ impl Env {
         self.scan_with("default", "").await
     }
 
+    /// Run `tome scan` keeping the snapshot even if nothing changed.
+    pub async fn scan_allow_empty(&self) -> anyhow::Result<()> {
+        scan::run(
+            &self.db,
+            scan::ScanArgs {
+                repo: "default".to_string(),
+                no_ignore: true,
+                message: String::new(),
+                digest_algorithm: DigestAlgorithm::Sha256,
+                fast_hash_algorithm: FastHashAlgorithm::default(),
+                batch_size: 1000,
+                allow_empty: true,
+                path: Some(self.files_dir()),
+            },
+        )
+        .await
+    }
+
     /// Run `tome scan` with a custom repo name and optional message.
     pub async fn scan_with(&self, repo: &str, message: &str) -> anyhow::Result<()> {
+        self.scan_with_opts(repo, message, false).await
+    }
+
+    /// Run `tome scan` with a custom repo name, keeping empty snapshots.
+    pub async fn scan_with_allow_empty(&self, repo: &str, message: &str) -> anyhow::Result<()> {
+        self.scan_with_opts(repo, message, true).await
+    }
+
+    async fn scan_with_opts(&self, repo: &str, message: &str, allow_empty: bool) -> anyhow::Result<()> {
         scan::run(
             &self.db,
             scan::ScanArgs {
                 repo: repo.to_string(),
-                no_ignore: true, // always ignore .gitignore in tests
+                no_ignore: true,
                 message: message.to_string(),
                 digest_algorithm: DigestAlgorithm::Sha256,
                 fast_hash_algorithm: FastHashAlgorithm::default(),
                 batch_size: 1000,
-                allow_empty: false,
+                allow_empty,
                 path: Some(self.files_dir()),
             },
         )

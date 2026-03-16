@@ -32,6 +32,14 @@ impl DigestAlgorithm {
             Self::Blake3 => "blake3",
         }
     }
+
+    /// Convert to the corresponding [`crate::mode::HashAlgorithm`].
+    pub fn to_hash_algorithm(self) -> crate::mode::HashAlgorithm {
+        match self {
+            Self::Sha256 => crate::mode::HashAlgorithm::Sha256,
+            Self::Blake3 => crate::mode::HashAlgorithm::Blake3,
+        }
+    }
 }
 
 impl std::fmt::Display for DigestAlgorithm {

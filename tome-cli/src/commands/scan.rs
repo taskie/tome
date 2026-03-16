@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashMap, HashSet},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
@@ -203,10 +203,16 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
 
     txn.commit().await?;
 
-    // 9. Persist the scan root in the repository config.
+    // 9. Compute tree hashes bottom-up and insert directory entries.
+    let root_object_id = compute_tree_objects(db, snapshot.id, algo).await?;
+    if let Some(root_id) = root_object_id {
+        ops::update_snapshot_root_object(db, snapshot.id, root_id).await?;
+    }
+
+    // 10. Persist the scan root in the repository config.
     ops::set_repository_scan_root(db, &repo, &scan_root.to_string_lossy()).await?;
 
-    // 10. Discard the snapshot if nothing changed and --allow-empty is not set.
+    // 11. Discard the snapshot if nothing changed and --allow-empty is not set.
     if stats.added == 0 && stats.modified == 0 && stats.deleted == 0 && !args.allow_empty {
         ops::delete_snapshot_records(db, &[snapshot.id]).await?;
         println!(
@@ -216,7 +222,7 @@ pub async fn run(db: &DatabaseConnection, args: ScanArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 11. Update snapshot metadata with scan statistics.
+    // 12. Update snapshot metadata with scan statistics.
     let metadata = tome_core::metadata::ScanMetadata {
         scan_root: scan_root.to_string_lossy().into_owned(),
         scanned: stats.scanned,
@@ -366,4 +372,126 @@ async fn record_present_file<C: ConnectionTrait>(
 fn make_mtime(secs: i64, nanos: u32) -> chrono::DateTime<chrono::FixedOffset> {
     use chrono::TimeZone;
     chrono::Utc.timestamp_opt(secs, nanos).single().unwrap_or_else(chrono::Utc::now).fixed_offset()
+}
+
+/// Directory entry mode constant (matching POSIX S_IFDIR | 0o755).
+const DIR_MODE: i32 = 0o040000;
+
+/// Compute tree hash objects bottom-up for all directories in the snapshot.
+///
+/// Returns the root tree object ID, or `None` if the snapshot has no entries.
+async fn compute_tree_objects(db: &DatabaseConnection, snapshot_id: i64, algo: DigestAlgorithm) -> Result<Option<i64>> {
+    let entries = ops::entries_with_digest(db, snapshot_id, "").await?;
+    if entries.is_empty() {
+        return Ok(None);
+    }
+
+    // Group file entries by parent directory.
+    // Key: directory path (empty string = root), Value: list of (name, digest)
+    let mut dir_files: BTreeMap<String, Vec<(String, Vec<u8>)>> = BTreeMap::new();
+    let mut all_dirs: HashSet<String> = HashSet::new();
+
+    for (entry, obj) in &entries {
+        if entry.status != EntryStatus::Present.as_i16() {
+            continue;
+        }
+        let obj = match obj {
+            Some(o) => o,
+            None => continue,
+        };
+
+        let path = &entry.path;
+        let (parent, name) = match path.rfind('/') {
+            Some(pos) => (path[..pos].to_owned(), &path[pos + 1..]),
+            None => (String::new(), path.as_str()),
+        };
+
+        dir_files.entry(parent.clone()).or_default().push((name.to_owned(), obj.digest.clone()));
+
+        // Register all ancestor directories.
+        let mut dir = parent.as_str();
+        while !dir.is_empty() {
+            if !all_dirs.insert(dir.to_owned()) {
+                break;
+            }
+            dir = match dir.rfind('/') {
+                Some(pos) => &dir[..pos],
+                None => "",
+            };
+        }
+        all_dirs.insert(String::new()); // root
+    }
+
+    // Ensure leaf directories with no files but with subdirectories are included.
+    for dir in &all_dirs {
+        dir_files.entry(dir.clone()).or_default();
+    }
+
+    let hash_algo = algo.to_hash_algorithm();
+
+    // Sort directories by depth (deepest first) for bottom-up processing.
+    let mut dirs: Vec<String> = dir_files.keys().cloned().collect();
+    dirs.sort_by(|a, b| {
+        let depth_a = if a.is_empty() { 0 } else { a.matches('/').count() + 1 };
+        let depth_b = if b.is_empty() { 0 } else { b.matches('/').count() + 1 };
+        depth_b.cmp(&depth_a).then_with(|| a.cmp(b))
+    });
+
+    // tree_digest[dir_path] = (object_id, digest_bytes)
+    let mut tree_digest: HashMap<String, (i64, Vec<u8>)> = HashMap::new();
+
+    let txn = db.begin().await?;
+
+    for dir in &dirs {
+        // Build children list: files (b'F') + subdirectories (b'D')
+        let mut children: Vec<(u8, String, Vec<u8>)> = Vec::new();
+
+        // File children
+        if let Some(files) = dir_files.get(dir) {
+            for (name, digest) in files {
+                children.push((b'F', name.clone(), digest.clone()));
+            }
+        }
+
+        // Directory children (already computed due to bottom-up order)
+        let prefix = if dir.is_empty() { String::new() } else { format!("{dir}/") };
+        for (child_dir, (_, child_digest)) in &tree_digest {
+            let suffix = child_dir.strip_prefix(prefix.as_str()).unwrap_or(child_dir);
+            // Direct child: no more '/' separators after stripping prefix
+            if !prefix.is_empty() {
+                if let Some(s) = child_dir.strip_prefix(prefix.as_str()) {
+                    if !s.contains('/') {
+                        children.push((b'D', s.to_owned(), child_digest.clone()));
+                    }
+                }
+            } else if !child_dir.is_empty() && !suffix.contains('/') {
+                children.push((b'D', child_dir.clone(), child_digest.clone()));
+            }
+        }
+
+        // Compute tree hash
+        let children_refs: Vec<(u8, &str, &[u8])> =
+            children.iter().map(|(k, n, d)| (*k, n.as_str(), d.as_slice())).collect();
+        let digest = treblo::native::tree::compute_tree_hash(&children_refs, hash_algo);
+
+        let tree_obj = ops::get_or_create_tree(&txn, &digest).await?;
+
+        // Insert directory entry (skip root — root is referenced via snapshot.root_object_id)
+        if !dir.is_empty() {
+            ops::insert_entry_present(&txn, snapshot_id, dir, tree_obj.id, Some(DIR_MODE), None).await?;
+        }
+
+        debug!(
+            "tree       {}  {}",
+            tome_core::hash::hex_encode(&digest)[..12].to_owned(),
+            if dir.is_empty() { "(root)" } else { dir },
+        );
+
+        tree_digest.insert(dir.clone(), (tree_obj.id, digest));
+    }
+
+    txn.commit().await?;
+
+    // Return root tree object ID
+    Ok(tree_digest.get("").map(|(id, _)| *id))
 }

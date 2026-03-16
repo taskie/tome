@@ -23,9 +23,9 @@ pub async fn object_ids_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i6
     Ok(ids.into_iter().collect())
 }
 
-/// Return objects that are not referenced by any entry (truly orphaned).
+/// Return objects that are not referenced by any entry or snapshot root (truly orphaned).
 pub async fn unreferenced_objects(db: &DatabaseConnection) -> anyhow::Result<Vec<object::Model>> {
-    let referenced: HashSet<i64> = entry::Entity::find()
+    let mut referenced: HashSet<i64> = entry::Entity::find()
         .filter(entry::Column::ObjectId.is_not_null())
         .select_only()
         .column(entry::Column::ObjectId)
@@ -35,6 +35,16 @@ pub async fn unreferenced_objects(db: &DatabaseConnection) -> anyhow::Result<Vec
         .into_iter()
         .flatten()
         .collect();
+
+    // Also consider objects referenced as snapshot root_object_id.
+    let root_ids: Vec<Option<i64>> = snapshot::Entity::find()
+        .filter(snapshot::Column::RootObjectId.is_not_null())
+        .select_only()
+        .column(snapshot::Column::RootObjectId)
+        .into_tuple()
+        .all(db)
+        .await?;
+    referenced.extend(root_ids.into_iter().flatten());
 
     let all = object::Entity::find().all(db).await?;
     Ok(all.into_iter().filter(|b| !referenced.contains(&b.id)).collect())

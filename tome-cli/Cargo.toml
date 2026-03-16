@@ -13,6 +13,7 @@ tome-core = { path = "../tome-core" }
 tome-db = { path = "../tome-db" }
 tome-server = { path = "../tome-server" }
 tome-store = { path = "../tome-store" }
+treblo = { path = "../treblo" }
 
 anyhow = { workspace = true }
 chrono = { workspace = true }

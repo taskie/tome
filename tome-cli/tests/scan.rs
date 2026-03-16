@@ -41,7 +41,7 @@ async fn scan_rescan_unchanged_files_shows_zero_delta() {
     env.write("b.txt", b"content b");
 
     env.scan().await.unwrap(); // initial scan
-    env.scan().await.unwrap(); // rescan — nothing changed
+    env.scan_allow_empty().await.unwrap(); // rescan — nothing changed
 
     let meta = env.last_meta().await;
     assert_eq!(meta_count(&meta, "added"), 0);
@@ -194,6 +194,7 @@ async fn scan_with_blake3_digest_algorithm() {
             digest_algorithm: DigestAlgorithm::Blake3,
             fast_hash_algorithm: FastHashAlgorithm::default(),
             batch_size: 1000,
+            allow_empty: false,
             path: Some(env.files_dir()),
         },
     )

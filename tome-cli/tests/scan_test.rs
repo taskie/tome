@@ -18,6 +18,22 @@ async fn scan(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
         digest_algorithm: Default::default(),
         fast_hash_algorithm: Default::default(),
         batch_size: 1000,
+        allow_empty: false,
+    };
+    scan_run(db, args).await.expect("scan failed");
+}
+
+/// Run a scan keeping the snapshot even if nothing changed.
+async fn scan_allow_empty(db: &sea_orm::DatabaseConnection, dir: &std::path::Path) {
+    let args = ScanArgs {
+        repo: "default".to_owned(),
+        path: Some(dir.to_path_buf()),
+        no_ignore: false,
+        message: String::new(),
+        digest_algorithm: Default::default(),
+        fast_hash_algorithm: Default::default(),
+        batch_size: 1000,
+        allow_empty: true,
     };
     scan_run(db, args).await.expect("scan failed");
 }
@@ -32,6 +48,7 @@ async fn scan_repo(db: &sea_orm::DatabaseConnection, repo: &str, dir: &std::path
         digest_algorithm: Default::default(),
         fast_hash_algorithm: Default::default(),
         batch_size: 1000,
+        allow_empty: false,
     };
     scan_run(db, args).await.expect("scan failed");
 }
@@ -46,6 +63,7 @@ async fn scan_no_ignore(db: &sea_orm::DatabaseConnection, dir: &std::path::Path)
         digest_algorithm: Default::default(),
         fast_hash_algorithm: Default::default(),
         batch_size: 1000,
+        allow_empty: false,
     };
     scan_run(db, args).await.expect("scan failed");
 }
@@ -97,7 +115,7 @@ async fn test_rescan_unchanged() {
     let cache_before = ops::load_entry_cache(&db, repo.id).await.unwrap();
     let blob_id_before = cache_before["file.txt"].object_id;
 
-    scan(&db, files_dir.path()).await; // second scan — file should be unchanged
+    scan_allow_empty(&db, files_dir.path()).await; // second scan — file should be unchanged
 
     // Two snapshots should exist.
     let snapshots = ops::snapshots_after(&db, repo.id, None).await.unwrap();
@@ -258,7 +276,7 @@ async fn test_scan_empty_directory() {
     let files_dir = tempfile::tempdir().unwrap();
     let db = open_test_db(&db_dir).await;
 
-    scan(&db, files_dir.path()).await;
+    scan_allow_empty(&db, files_dir.path()).await;
 
     let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
     let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
