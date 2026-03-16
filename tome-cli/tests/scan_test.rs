@@ -72,7 +72,7 @@ async fn test_scan_adds_files() {
 
     for entry in cache.values() {
         assert_eq!(entry.status, 1, "expected status=1 (present)");
-        assert!(entry.blob_id.is_some(), "blob_id should be set");
+        assert!(entry.object_id.is_some(), "blob_id should be set");
         assert!(entry.digest.is_some(), "digest should be set");
         assert!(entry.size.is_some(), "size should be set");
     }
@@ -95,7 +95,7 @@ async fn test_rescan_unchanged() {
     // Capture blob_id from entry_cache after first scan.
     let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
     let cache_before = ops::load_entry_cache(&db, repo.id).await.unwrap();
-    let blob_id_before = cache_before["file.txt"].blob_id;
+    let blob_id_before = cache_before["file.txt"].object_id;
 
     scan(&db, files_dir.path()).await; // second scan — file should be unchanged
 
@@ -106,7 +106,7 @@ async fn test_rescan_unchanged() {
     // Unchanged file does NOT produce a new entry in snapshot2 — only added/modified files do.
     // But entry_cache should still point to the same blob.
     let cache_after = ops::load_entry_cache(&db, repo.id).await.unwrap();
-    let blob_id_after = cache_after["file.txt"].blob_id;
+    let blob_id_after = cache_after["file.txt"].object_id;
     assert_eq!(blob_id_before, blob_id_after, "blob_id should be identical for unchanged file");
 
     // The first snapshot should have the entry; the second should have no entries (all unchanged).
@@ -140,7 +140,7 @@ async fn test_scan_detects_modification() {
 
     let s1_entries = ops::entries_in_snapshot(&db, snapshots[0].id).await.unwrap();
     let s2_entries = ops::entries_in_snapshot(&db, snapshots[1].id).await.unwrap();
-    assert_ne!(s1_entries[0].blob_id, s2_entries[0].blob_id, "blob_id should differ after modification");
+    assert_ne!(s1_entries[0].object_id, s2_entries[0].object_id, "blob_id should differ after modification");
 }
 
 #[tokio::test]
@@ -283,8 +283,8 @@ async fn test_scan_identical_content_shares_blob() {
 
     let repo = ops::get_or_create_repository(&db, "default").await.unwrap();
     let cache = ops::load_entry_cache(&db, repo.id).await.unwrap();
-    let blob_a = cache["file_a.txt"].blob_id;
-    let blob_b = cache["file_b.txt"].blob_id;
+    let blob_a = cache["file_a.txt"].object_id;
+    let blob_b = cache["file_b.txt"].object_id;
     assert_eq!(blob_a, blob_b, "files with identical content should share the same blob");
 }
 

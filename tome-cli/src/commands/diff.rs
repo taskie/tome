@@ -3,7 +3,7 @@ use clap::Args;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 
-use tome_db::{entities::blob, ops};
+use tome_db::{entities::object, ops};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
@@ -61,33 +61,33 @@ pub async fn run(db: &DatabaseConnection, args: DiffArgs) -> Result<()> {
         bail!("no entries found — check that the snapshot IDs are correct");
     }
 
-    // Build maps: path → (blob_id, blob_model) for present entries only.
-    let map1: HashMap<String, (Option<i64>, Option<blob::Model>)> =
-        entries1.into_iter().filter(|(e, _)| e.status == 1).map(|(e, b)| (e.path, (e.blob_id, b))).collect();
+    // Build maps: path → (object_id, object_model) for present entries only.
+    let map1: HashMap<String, (Option<i64>, Option<object::Model>)> =
+        entries1.into_iter().filter(|(e, _)| e.status == 1).map(|(e, b)| (e.path, (e.object_id, b))).collect();
 
-    let map2: HashMap<String, (Option<i64>, Option<blob::Model>)> =
-        entries2.into_iter().filter(|(e, _)| e.status == 1).map(|(e, b)| (e.path, (e.blob_id, b))).collect();
+    let map2: HashMap<String, (Option<i64>, Option<object::Model>)> =
+        entries2.into_iter().filter(|(e, _)| e.status == 1).map(|(e, b)| (e.path, (e.object_id, b))).collect();
 
     // Compute diff rows.
     let mut rows: Vec<DiffRow> = Vec::new();
 
-    for (path, (blob_id1, blob1)) in &map1 {
-        if let Some((blob_id2, blob2)) = map2.get(path) {
-            if blob_id1 == blob_id2 {
+    for (path, (object_id1, blob1)) in &map1 {
+        if let Some((object_id2, blob2)) = map2.get(path) {
+            if object_id1 == object_id2 {
                 // unchanged — omit
             } else {
                 rows.push(DiffRow {
                     status: DiffStatus::Modified,
                     path: path.clone(),
-                    size_before: blob1.as_ref().map(|b| b.size),
-                    size_after: blob2.as_ref().map(|b| b.size),
+                    size_before: blob1.as_ref().and_then(|b| b.size),
+                    size_after: blob2.as_ref().and_then(|b| b.size),
                 });
             }
         } else {
             rows.push(DiffRow {
                 status: DiffStatus::Deleted,
                 path: path.clone(),
-                size_before: blob1.as_ref().map(|b| b.size),
+                size_before: blob1.as_ref().and_then(|b| b.size),
                 size_after: None,
             });
         }
@@ -99,7 +99,7 @@ pub async fn run(db: &DatabaseConnection, args: DiffArgs) -> Result<()> {
                 status: DiffStatus::Added,
                 path: path.clone(),
                 size_before: None,
-                size_after: blob2.as_ref().map(|b| b.size),
+                size_after: blob2.as_ref().and_then(|b| b.size),
             });
         }
     }

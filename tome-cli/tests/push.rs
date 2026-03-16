@@ -62,7 +62,7 @@ async fn push_scans_and_pushes_to_store_and_peer() {
     let repos = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repos.id).await.unwrap();
     assert!(!entries.is_empty());
-    let blob_id = entries[0].blob_id.unwrap();
+    let blob_id = entries[0].object_id.unwrap();
     let stores = ops::list_stores(&env.db).await.unwrap();
     assert!(ops::replica_exists(&env.db, blob_id, stores[0].id).await.unwrap());
 
@@ -118,7 +118,7 @@ async fn push_no_store_skips_blob_upload() {
     let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
     if !entries.is_empty() {
-        let blob_id = entries[0].blob_id.unwrap();
+        let blob_id = entries[0].object_id.unwrap();
         let stores = ops::list_stores(&env.db).await.unwrap();
         assert!(!ops::replica_exists(&env.db, blob_id, stores[0].id).await.unwrap(), "no replica should exist");
     }

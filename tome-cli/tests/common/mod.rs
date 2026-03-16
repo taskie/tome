@@ -269,8 +269,8 @@ impl Env {
     pub async fn first_blob_digest_hex(&self) -> String {
         let repo = ops::get_or_create_repository(&self.db, "default").await.unwrap();
         let entries = ops::present_cache_entries(&self.db, repo.id).await.unwrap();
-        let blob_id = entries[0].blob_id.unwrap();
-        let blobs = ops::blobs_by_ids(&self.db, &[blob_id]).await.unwrap();
+        let blob_id = entries[0].object_id.unwrap();
+        let blobs = ops::objects_by_ids(&self.db, &[blob_id]).await.unwrap();
         tome_core::hash::hex_encode(&blobs[0].digest)
     }
 

@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use sea_orm::DatabaseConnection;
 use tracing::{info, warn};
 
-use tome_db::{connection::open as open_db, entities::blob, ops};
+use tome_db::{connection::open as open_db, entities::object, ops};
 use tome_server::routes::sync::{PullResponse, PushRequest, SyncEntry, SyncReplica};
 
 use super::aws_auth::{self, AwsSigner};
@@ -243,7 +243,7 @@ async fn apply_pulled_snapshot(
                 let digest_arr: [u8; 32] =
                     digest_bytes.as_slice().try_into().context("invalid digest length in sync entry")?;
 
-                let b: blob::Model = if let Some(b) = ops::find_blob_by_digest(local_db, &digest_bytes).await? {
+                let b: object::Model = if let Some(b) = ops::find_object_by_digest(local_db, &digest_bytes).await? {
                     b
                 } else {
                     let fh = tome_core::hash::FileHash { size: size as u64, fast_digest: fast, digest: digest_arr };
@@ -275,11 +275,11 @@ async fn apply_pulled_snapshot(
                         path: e.path.clone(),
                         snapshot_id: local_snap.id,
                         entry_id: entry.id,
-                        blob_id: b.id,
+                        object_id: b.id,
                         mtime,
                         digest: Some(b.digest.clone()),
-                        size: Some(b.size),
-                        fast_digest: Some(b.fast_digest),
+                        size: b.size,
+                        fast_digest: b.fast_digest,
                     },
                 )
                 .await?;
@@ -412,21 +412,21 @@ async fn sync_pull_db(
         let remote_entries = ops::entries_in_snapshot(&peer_db, remote_snap.id).await?;
 
         for remote_entry in &remote_entries {
-            let local_blob: Option<blob::Model> = if let Some(ref remote_blob_id) = remote_entry.blob_id {
-                let remote_blob = match ops::find_blob_by_id(&peer_db, *remote_blob_id).await? {
+            let local_blob: Option<object::Model> = if let Some(ref remote_object_id) = remote_entry.object_id {
+                let remote_blob = match ops::find_object_by_id(&peer_db, *remote_object_id).await? {
                     Some(b) => b,
                     None => {
-                        warn!("blob {} not found in peer", remote_blob_id);
+                        warn!("object {} not found in peer", remote_object_id);
                         continue;
                     }
                 };
 
-                let b = if let Some(b) = ops::find_blob_by_digest(local_db, &remote_blob.digest).await? {
+                let b = if let Some(b) = ops::find_object_by_digest(local_db, &remote_blob.digest).await? {
                     b
                 } else {
                     let fh = tome_core::hash::FileHash {
-                        size: remote_blob.size as u64,
-                        fast_digest: remote_blob.fast_digest,
+                        size: remote_blob.size.unwrap_or(0) as u64,
+                        fast_digest: remote_blob.fast_digest.unwrap_or(0),
                         digest: remote_blob
                             .digest
                             .as_slice()
@@ -438,7 +438,7 @@ async fn sync_pull_db(
                     b
                 };
 
-                let remote_replicas = ops::replicas_for_blob(&peer_db, *remote_blob_id).await?;
+                let remote_replicas = ops::replicas_for_object(&peer_db, *remote_object_id).await?;
                 for (rr, remote_store) in &remote_replicas {
                     let local_store = ops::get_or_create_store(
                         local_db,
@@ -476,11 +476,11 @@ async fn sync_pull_db(
                             path: remote_entry.path.clone(),
                             snapshot_id: local_snap.id,
                             entry_id: local_entry.id,
-                            blob_id: b.id,
+                            object_id: b.id,
                             mtime: remote_entry.mtime,
                             digest: Some(b.digest.clone()),
-                            size: Some(b.size),
-                            fast_digest: Some(b.fast_digest),
+                            size: b.size,
+                            fast_digest: b.fast_digest,
                         },
                     )
                     .await?;
@@ -572,7 +572,7 @@ async fn sync_push_http(
 
         // Collect all blob IDs to fetch replicas in batch.
         let blob_ids: Vec<i64> = pairs.iter().filter_map(|(_, b)| b.as_ref().map(|b| b.id)).collect();
-        let all_replicas = ops::replicas_for_blobs(local_db, &blob_ids).await?;
+        let all_replicas = ops::replicas_for_objects(local_db, &blob_ids).await?;
 
         // Build blob_id → digest map for replica records.
         let blob_digest_map: std::collections::HashMap<i64, String> = pairs
@@ -588,15 +588,15 @@ async fn sync_push_http(
                 path: entry.path.clone(),
                 status: entry.status,
                 blob_digest: blob.as_ref().map(|b| tome_core::hash::hex_encode(&b.digest)),
-                blob_size: blob.as_ref().map(|b| b.size),
-                blob_fast_digest: blob.as_ref().map(|b| b.fast_digest),
+                blob_size: blob.as_ref().and_then(|b| b.size),
+                blob_fast_digest: blob.as_ref().and_then(|b| b.fast_digest),
                 mode: entry.mode,
                 mtime: entry.mtime.map(|t| t.to_rfc3339()),
             });
         }
 
         for (replica, store) in &all_replicas {
-            if let Some(digest) = blob_digest_map.get(&replica.blob_id) {
+            if let Some(digest) = blob_digest_map.get(&replica.object_id) {
                 sync_replicas.push(SyncReplica {
                     blob_digest: digest.clone(),
                     store_name: store.name.clone(),
@@ -685,21 +685,21 @@ async fn sync_push_db(
         let local_entries = ops::entries_in_snapshot(local_db, local_snap.id).await?;
 
         for local_entry in &local_entries {
-            let remote_blob_id = if let Some(local_blob_id) = local_entry.blob_id {
-                let local_blob = match ops::find_blob_by_id(local_db, local_blob_id).await? {
+            let remote_blob_id = if let Some(local_blob_id) = local_entry.object_id {
+                let local_blob = match ops::find_object_by_id(local_db, local_blob_id).await? {
                     Some(b) => b,
                     None => {
-                        warn!("blob {} not found locally", local_blob_id);
+                        warn!("object {} not found locally", local_blob_id);
                         continue;
                     }
                 };
 
-                let remote_blob = if let Some(b) = ops::find_blob_by_digest(&peer_db, &local_blob.digest).await? {
+                let remote_blob = if let Some(b) = ops::find_object_by_digest(&peer_db, &local_blob.digest).await? {
                     b
                 } else {
                     let fh = tome_core::hash::FileHash {
-                        size: local_blob.size as u64,
-                        fast_digest: local_blob.fast_digest,
+                        size: local_blob.size.unwrap_or(0) as u64,
+                        fast_digest: local_blob.fast_digest.unwrap_or(0),
                         digest: local_blob
                             .digest
                             .as_slice()
@@ -711,7 +711,7 @@ async fn sync_push_db(
                     b
                 };
 
-                let local_replicas = ops::replicas_for_blob(local_db, local_blob_id).await?;
+                let local_replicas = ops::replicas_for_object(local_db, local_blob_id).await?;
                 for (lr, local_store) in &local_replicas {
                     let peer_store = ops::get_or_create_store(
                         &peer_db,
@@ -732,12 +732,12 @@ async fn sync_push_db(
             };
 
             if local_entry.status == 1 {
-                if let Some(blob_id) = remote_blob_id {
+                if let Some(object_id) = remote_blob_id {
                     ops::insert_entry_present(
                         &peer_db,
                         remote_snap.id,
                         &local_entry.path,
-                        blob_id,
+                        object_id,
                         local_entry.mode,
                         local_entry.mtime,
                     )

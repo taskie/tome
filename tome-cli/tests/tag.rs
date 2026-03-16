@@ -24,7 +24,7 @@ async fn tag_set_and_list() {
     // Verify via ops directly.
     let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
-    let blob_id = entries[0].blob_id.unwrap();
+    let blob_id = entries[0].object_id.unwrap();
     let tags = ops::list_tags(&env.db, blob_id).await.unwrap();
 
     assert_eq!(tags.len(), 2);
@@ -45,7 +45,7 @@ async fn tag_set_without_value() {
 
     let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
-    let blob_id = entries[0].blob_id.unwrap();
+    let blob_id = entries[0].object_id.unwrap();
     let tags = ops::list_tags(&env.db, blob_id).await.unwrap();
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].key, "reviewed");
@@ -68,7 +68,7 @@ async fn tag_delete_removes_tag() {
 
     let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
-    let blob_id = entries[0].blob_id.unwrap();
+    let blob_id = entries[0].object_id.unwrap();
     let tags = ops::list_tags(&env.db, blob_id).await.unwrap();
 
     assert_eq!(tags.len(), 1);
@@ -89,19 +89,19 @@ async fn tag_search_by_key() {
     let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
     let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
     for entry in &entries {
-        let blob_id = entry.blob_id.unwrap();
-        let blobs = ops::blobs_by_ids(&env.db, &[blob_id]).await.unwrap();
+        let blob_id = entry.object_id.unwrap();
+        let blobs = ops::objects_by_ids(&env.db, &[blob_id]).await.unwrap();
         let digest = tome_core::hash::hex_encode(&blobs[0].digest);
         let val = if entry.path == "a.txt" { "alpha" } else { "beta" };
         env.tag_set(&digest, "category", Some(val)).await.unwrap();
     }
 
     // Search by key only — should find 2 blobs.
-    let results = ops::search_blobs_by_tag(&env.db, "category", None).await.unwrap();
+    let results = ops::search_objects_by_tag(&env.db, "category", None).await.unwrap();
     assert_eq!(results.len(), 2);
 
     // Search by key + value — should find exactly 1.
-    let results = ops::search_blobs_by_tag(&env.db, "category", Some("alpha")).await.unwrap();
+    let results = ops::search_objects_by_tag(&env.db, "category", Some("alpha")).await.unwrap();
     assert_eq!(results.len(), 1);
 }
 

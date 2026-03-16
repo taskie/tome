@@ -121,16 +121,16 @@ pub async fn run(db: &DatabaseConnection, args: GcArgs) -> Result<()> {
 
     if args.dry_run {
         // Pre-compute without touching the DB.
-        let current_orphans: HashSet<i64> = ops::unreferenced_blobs(db).await?.into_iter().map(|b| b.id).collect();
+        let current_orphans: HashSet<i64> = ops::unreferenced_objects(db).await?.into_iter().map(|b| b.id).collect();
 
         let exclusive_from_prune = if prune_ids_vec.is_empty() {
             HashSet::new()
         } else {
-            let pruned_blobs = ops::blob_ids_in_snapshots(db, &prune_ids_vec).await?;
+            let pruned_blobs = ops::object_ids_in_snapshots(db, &prune_ids_vec).await?;
             // Retained = all snapshot IDs NOT in the prune set.
             let all_ids = ops::all_snapshot_ids(db).await?;
             let retained_ids: Vec<i64> = all_ids.into_iter().filter(|id| !prune_snap_ids.contains(id)).collect();
-            let retained_blobs = ops::blob_ids_in_snapshots(db, &retained_ids).await?;
+            let retained_blobs = ops::object_ids_in_snapshots(db, &retained_ids).await?;
             pruned_blobs.difference(&retained_blobs).copied().collect()
         };
 
@@ -151,7 +151,7 @@ pub async fn run(db: &DatabaseConnection, args: GcArgs) -> Result<()> {
         }
 
         // Now collect all blobs with no remaining entries.
-        orphaned_blob_ids = ops::unreferenced_blobs(db).await?.into_iter().map(|b| b.id).collect();
+        orphaned_blob_ids = ops::unreferenced_objects(db).await?.into_iter().map(|b| b.id).collect();
     }
 
     if orphaned_blob_ids.is_empty() {
@@ -175,12 +175,12 @@ pub async fn run(db: &DatabaseConnection, args: GcArgs) -> Result<()> {
     // keeping the blob record while some replicas remain lets the user resume GC
     // (e.g., for a different store) without losing track of the blob.
 
-    let replicas = ops::replicas_for_blobs(db, &orphaned_blob_ids).await?;
+    let replicas = ops::replicas_for_objects(db, &orphaned_blob_ids).await?;
 
     // Group replicas by blob_id for fast lookup.
     let mut replica_map: HashMap<i64, Vec<_>> = HashMap::new();
     for (r, s) in replicas {
-        replica_map.entry(r.blob_id).or_default().push((r, s));
+        replica_map.entry(r.object_id).or_default().push((r, s));
     }
 
     let mut files_deleted = 0u64;
@@ -247,7 +247,7 @@ pub async fn run(db: &DatabaseConnection, args: GcArgs) -> Result<()> {
 
         // Remove the blob record only when every replica has been cleaned up.
         if !args.dry_run && blob_fully_cleaned {
-            ops::delete_blob_records(db, &[*blob_id]).await?;
+            ops::delete_object_records(db, &[*blob_id]).await?;
             blob_records_deleted += 1;
         } else if args.dry_run {
             blob_records_deleted += 1;

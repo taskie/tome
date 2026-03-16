@@ -143,7 +143,7 @@ async fn tag_list(db: &DatabaseConnection, args: TagListArgs) -> Result<()> {
 // ──────────────────────────────────────────────────────────────────────────────
 
 async fn tag_search(db: &DatabaseConnection, args: TagSearchArgs) -> Result<()> {
-    let results = ops::search_blobs_by_tag(db, &args.key, args.value.as_deref()).await?;
+    let results = ops::search_objects_by_tag(db, &args.key, args.value.as_deref()).await?;
 
     if results.is_empty() {
         println!("no blobs found");
@@ -162,7 +162,7 @@ async fn tag_search(db: &DatabaseConnection, args: TagSearchArgs) -> Result<()> 
             })
             .collect::<Vec<_>>()
             .join(", ");
-        println!("{:<20} {:>14} {}", &digest_hex[..20], blob.size.to_string(), tag_str);
+        println!("{:<20} {:>14} {}", &digest_hex[..20], blob.size.map(|s| s.to_string()).unwrap_or_default(), tag_str);
     }
     Ok(())
 }

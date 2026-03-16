@@ -45,7 +45,7 @@ pub async fn run(db: &DatabaseConnection, args: RestoreArgs) -> Result<()> {
 
     // Fetch all present entries in the snapshot (with blob info).
     let entries = ops::entries_with_digest(db, snapshot_id, &args.prefix).await?;
-    let present: Vec<_> = entries.into_iter().filter(|(e, _)| e.status == 1 && e.blob_id.is_some()).collect();
+    let present: Vec<_> = entries.into_iter().filter(|(e, _)| e.status == 1 && e.object_id.is_some()).collect();
 
     if present.is_empty() {
         println!("no files to restore in snapshot {}", snapshot_id);
@@ -60,22 +60,22 @@ pub async fn run(db: &DatabaseConnection, args: RestoreArgs) -> Result<()> {
     let mut errors = 0u64;
 
     for (entry, _blob) in &present {
-        let blob_id = entry.blob_id.context("present entry has no blob_id")?;
+        let object_id = entry.object_id.context("present entry has no object_id")?;
 
-        // Find usable replicas for this blob.
-        let replicas = ops::replicas_for_blob(db, blob_id).await?;
+        // Find usable replicas for this object.
+        let replicas = ops::replicas_for_object(db, object_id).await?;
         let candidates: Vec<_> =
             replicas.iter().filter(|(r, s)| !r.encrypted && store_filter.is_none_or(|sid| s.id == sid)).collect();
 
         if candidates.is_empty() {
-            warn!("no replica found for blob {} (path: {})", blob_id, entry.path);
+            warn!("no replica found for object {} (path: {})", object_id, entry.path);
             skipped += 1;
             continue;
         }
 
         // Try each candidate until one succeeds.
         let mut downloaded = false;
-        let tmp_file = tmp_dir.path().join(blob_id.to_string());
+        let tmp_file = tmp_dir.path().join(object_id.to_string());
 
         for (replica, store) in &candidates {
             let storage = match factory::open_storage(&store.url).await {

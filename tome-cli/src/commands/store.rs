@@ -394,19 +394,19 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
     let mut errors = 0u64;
 
     for cache in &entries {
-        let blob_id = match cache.blob_id {
+        let object_id = match cache.object_id {
             Some(id) => id,
             None => continue,
         };
 
         // Skip if replica already exists.
-        if ops::replica_exists(db, blob_id, store.id).await? {
+        if ops::replica_exists(db, object_id, store.id).await? {
             skipped += 1;
             continue;
         }
 
         let digest_hex =
-            cache.digest.as_ref().map(|d| hash::hex_encode(d)).unwrap_or_else(|| format!("blob-{}", blob_id));
+            cache.digest.as_ref().map(|d| hash::hex_encode(d)).unwrap_or_else(|| format!("object-{}", object_id));
 
         let local_file = scan_root.join(&cache.path);
         if !local_file.exists() {
@@ -418,7 +418,7 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
         let remote_path = blob_path(&digest_hex);
         match storage.upload(&remote_path, &local_file).await {
             Ok(()) => {
-                ops::insert_replica(db, blob_id, store.id, &remote_path, is_encrypted).await?;
+                ops::insert_replica(db, object_id, store.id, &remote_path, is_encrypted).await?;
                 info!("pushed: {}", cache.path);
                 pushed += 1;
             }
@@ -459,16 +459,16 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
     let src_storage = factory::open_storage(&src_store.url).await?;
 
     // Find blobs missing in dst.
-    let blobs = ops::blobs_missing_in_dst(db, src_store.id, dst_store.id).await?;
+    let blobs = ops::objects_missing_in_dst(db, src_store.id, dst_store.id).await?;
     if blobs.is_empty() {
         println!("nothing to copy: all blobs already present in {:?}", args.dst);
         return Ok(());
     }
     println!("copying {} blob(s) from {:?} to {:?} ...", blobs.len(), args.src, args.dst);
 
-    // Fetch all source replicas once and index by blob_id (avoids N+1 queries).
+    // Fetch all source replicas once and index by object_id (avoids N+1 queries).
     let src_replica_map: std::collections::HashMap<i64, _> =
-        ops::replicas_in_store(db, src_store.id).await?.into_iter().map(|r| (r.blob_id, r)).collect();
+        ops::replicas_in_store(db, src_store.id).await?.into_iter().map(|r| (r.object_id, r)).collect();
 
     // Open destination storage once (upload takes &self, so it can be reused).
     let dst_storage: Box<dyn Storage> = if let Some((key, cipher_algo)) = encryption {
@@ -538,7 +538,7 @@ async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<
     let store = resolve_store(db, &args.store).await?;
 
     let storage = factory::open_storage(&store.url).await?;
-    let replicas = ops::replicas_with_blobs_in_store(db, store.id).await?;
+    let replicas = ops::replicas_with_objects_in_store(db, store.id).await?;
 
     if replicas.is_empty() {
         println!("no replicas in store {:?}", args.store);
@@ -582,7 +582,9 @@ async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<
             }
         };
 
-        if file_hash.digest.as_slice() == blob.digest.as_slice() && file_hash.size as i64 == blob.size {
+        if file_hash.digest.as_slice() == blob.digest.as_slice()
+            && Some(file_hash.size as i64) == blob.size
+        {
             ops::update_replica_verified_at(db, replica.id, now).await?;
             info!("ok: {}", digest_hex);
             ok += 1;
