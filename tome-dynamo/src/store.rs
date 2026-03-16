@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use tome_core::hash::{FileHash, hex_encode};
 use tome_core::id::next_id;
-use tome_db::entities::{blob, entry, entry_cache, machine, replica, repository, snapshot, store, sync_peer, tag};
+use tome_db::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
 use tome_db::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
 use tome_db::store_trait::MetadataStore;
 
@@ -213,16 +213,18 @@ fn item_to_snapshot(item: &Item) -> anyhow::Result<snapshot::Model> {
         metadata: get_json_or_null(item, "metadata"),
         source_machine_id: get_n_i16_opt(item, "source_machine_id"),
         source_snapshot_id: get_n_i64_opt(item, "source_snapshot_id"),
+        root_object_id: get_n_i64_opt(item, "root_object_id"),
         created_at: get_datetime(item, "created_at")?,
     })
 }
 
-fn item_to_blob(item: &Item) -> anyhow::Result<blob::Model> {
-    Ok(blob::Model {
+fn item_to_object(item: &Item) -> anyhow::Result<object::Model> {
+    Ok(object::Model {
         id: get_n_i64(item, "id")?,
+        object_type: get_n_i16(item, "object_type").unwrap_or(0),
         digest: get_bytes(item, "digest")?,
-        size: get_n_i64(item, "size")?,
-        fast_digest: get_n_i64(item, "fast_digest")?,
+        size: get_n_i64_opt(item, "size"),
+        fast_digest: get_n_i64_opt(item, "fast_digest"),
         created_at: get_datetime(item, "created_at")?,
     })
 }
@@ -233,7 +235,7 @@ fn item_to_entry(item: &Item) -> anyhow::Result<entry::Model> {
         snapshot_id: get_n_i64(item, "snapshot_id")?,
         path: get_s(item, "path")?,
         status: get_n_i16(item, "status")?,
-        blob_id: get_n_i64_opt(item, "blob_id"),
+        object_id: get_n_i64_opt(item, "object_id"),
         mode: get_n_i32_opt(item, "mode"),
         mtime: get_datetime_opt(item, "mtime"),
         created_at: get_datetime(item, "created_at")?,
@@ -247,7 +249,7 @@ fn item_to_entry_cache(item: &Item) -> anyhow::Result<entry_cache::Model> {
         snapshot_id: get_n_i64(item, "snapshot_id")?,
         entry_id: get_n_i64(item, "entry_id")?,
         status: get_n_i16(item, "status")?,
-        blob_id: get_n_i64_opt(item, "blob_id"),
+        object_id: get_n_i64_opt(item, "object_id"),
         mtime: get_datetime_opt(item, "mtime"),
         digest: get_bytes_opt(item, "digest"),
         size: get_n_i64_opt(item, "size"),
@@ -270,7 +272,7 @@ fn item_to_store(item: &Item) -> anyhow::Result<store::Model> {
 fn item_to_replica(item: &Item) -> anyhow::Result<replica::Model> {
     Ok(replica::Model {
         id: get_n_i64(item, "id")?,
-        blob_id: get_n_i64(item, "blob_id")?,
+        object_id: get_n_i64(item, "object_id")?,
         store_id: get_n_i64(item, "store_id")?,
         path: get_s(item, "path")?,
         encrypted: get_bool(item, "encrypted")?,
@@ -292,7 +294,7 @@ fn item_to_machine(item: &Item) -> anyhow::Result<machine::Model> {
 fn item_to_tag(item: &Item) -> anyhow::Result<tag::Model> {
     Ok(tag::Model {
         id: get_n_i64(item, "id")?,
-        blob_id: get_n_i64(item, "blob_id")?,
+        object_id: get_n_i64(item, "object_id")?,
         key: get_s(item, "key")?,
         value: get_s_opt(item, "value"),
         created_at: get_datetime(item, "created_at")?,
@@ -489,14 +491,14 @@ impl MetadataStore for DynamoStore {
         Ok(())
     }
 
-    // ── Blob ────────────────────────────────────────────────────────────
+    // ── Object ───────────────────────────────────────────────────────────
 
-    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<blob::Model> {
+    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<object::Model> {
         let digest_hex = hex_encode(&file_hash.digest);
-        let pk = keys::blob_pk(&digest_hex);
+        let pk = keys::obj_pk(&digest_hex);
 
         if let Some(item) = self.get_item(&pk, keys::META_SK).await? {
-            return item_to_blob(&item);
+            return item_to_object(&item);
         }
 
         let now = now_iso();
@@ -504,7 +506,10 @@ impl MetadataStore for DynamoStore {
         let mut item = HashMap::new();
         item.insert("PK".into(), s(&pk));
         item.insert("SK".into(), s(keys::META_SK));
+        item.insert("GSI3PK".into(), s(&keys::gsi3pk_type("OBJ")));
+        item.insert("GSI3SK".into(), s(&digest_hex));
         item.insert("id".into(), n_i64(id));
+        item.insert("object_type".into(), n_i16(0));
         item.insert("digest".into(), b(&file_hash.digest));
         item.insert("size".into(), n_i64(file_hash.size as i64));
         item.insert("fast_digest".into(), n_i64(file_hash.fast_digest));
@@ -514,38 +519,38 @@ impl MetadataStore for DynamoStore {
         if !created {
             // Race: re-read
             return self
-                .find_blob_by_digest(&file_hash.digest)
+                .find_object_by_digest(&file_hash.digest)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("blob vanished after conflict"));
+                .ok_or_else(|| anyhow::anyhow!("object vanished after conflict"));
         }
-        self.find_blob_by_digest(&file_hash.digest)
+        self.find_object_by_digest(&file_hash.digest)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("blob not found after creation"))
+            .ok_or_else(|| anyhow::anyhow!("object not found after creation"))
     }
 
-    async fn find_blob_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<blob::Model>> {
+    async fn find_object_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<object::Model>> {
         let digest_hex = hex_encode(digest);
-        let pk = keys::blob_pk(&digest_hex);
+        let pk = keys::obj_pk(&digest_hex);
         match self.get_item(&pk, keys::META_SK).await? {
-            Some(item) => Ok(Some(item_to_blob(&item)?)),
+            Some(item) => Ok(Some(item_to_object(&item)?)),
             None => Ok(None),
         }
     }
 
-    async fn blobs_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<blob::Model>> {
+    async fn objects_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<object::Model>> {
         // DynamoDB BatchGetItem requires knowing the PK. Since we have IDs not digests,
-        // we use GSI3 to find blobs by type, then filter. For small sets this is acceptable.
-        // TODO: consider a BLOB_ID#<id> → digest lookup item for O(1) access
+        // we use GSI3 to find objects by type, then filter. For small sets this is acceptable.
+        // TODO: consider an OBJ_ID#<id> → digest lookup item for O(1) access
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let all_blobs = self.query_gsi("GSI3", "GSI3PK", &keys::gsi3pk_type("BLOB"), None, None).await?;
+        let all_objects = self.query_gsi("GSI3", "GSI3PK", &keys::gsi3pk_type("OBJ"), None, None).await?;
         let id_set: std::collections::HashSet<i64> = ids.iter().copied().collect();
-        all_blobs
+        all_objects
             .iter()
             .filter_map(|item| {
                 let id = get_n_i64(item, "id").ok()?;
-                if id_set.contains(&id) { Some(item_to_blob(item)) } else { None }
+                if id_set.contains(&id) { Some(item_to_object(item)) } else { None }
             })
             .collect()
     }
@@ -556,14 +561,14 @@ impl MetadataStore for DynamoStore {
         &self,
         snapshot_id: i64,
         path: &str,
-        blob_id: i64,
+        object_id: i64,
         mode: Option<i32>,
         mtime: Option<DateTime<FixedOffset>>,
     ) -> anyhow::Result<entry::Model> {
         let id = next_id()?;
         let now = now_iso();
 
-        // Denormalize: look up blob for embedded fields
+        // Denormalize: look up snapshot for repo name
         let snap = self
             .find_snapshot_by_id(snapshot_id)
             .await?
@@ -583,7 +588,7 @@ impl MetadataStore for DynamoStore {
         item.insert("snapshot_id".into(), n_i64(snapshot_id));
         item.insert("path".into(), s(path));
         item.insert("status".into(), n_i16(1)); // present
-        item.insert("blob_id".into(), n_i64(blob_id));
+        item.insert("object_id".into(), n_i64(object_id));
         if let Some(m) = mode {
             item.insert("mode".into(), n_i32(m));
         }
@@ -599,7 +604,7 @@ impl MetadataStore for DynamoStore {
             snapshot_id,
             path: path.to_owned(),
             status: 1,
-            blob_id: Some(blob_id),
+            object_id: Some(object_id),
             mode,
             mtime,
             created_at: now.parse()?,
@@ -637,7 +642,7 @@ impl MetadataStore for DynamoStore {
             snapshot_id,
             path: path.to_owned(),
             status: 2,
-            blob_id: None,
+            object_id: None,
             mode: None,
             mtime: None,
             created_at: now.parse()?,
@@ -648,39 +653,39 @@ impl MetadataStore for DynamoStore {
         &self,
         snapshot_id: i64,
         prefix: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>)>> {
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>)>> {
         let pk = keys::snap_pk(snapshot_id);
         let sk_prefix = if prefix.is_empty() { "ENTRY#".to_owned() } else { format!("ENTRY#{prefix}") };
         let items = self.query_pk_sk_begins(&pk, Some(&sk_prefix)).await?;
 
         let mut results = Vec::with_capacity(items.len());
-        // Collect unique blob digests for batch lookup
-        let mut blob_cache: HashMap<i64, blob::Model> = HashMap::new();
+        // Collect unique object digests for batch lookup
+        let mut object_cache: HashMap<i64, object::Model> = HashMap::new();
 
         for item in &items {
             let entry = item_to_entry(item)?;
-            let blob = if let Some(blob_id) = entry.blob_id {
-                if let Some(cached) = blob_cache.get(&blob_id) {
+            let obj = if let Some(object_id) = entry.object_id {
+                if let Some(cached) = object_cache.get(&object_id) {
                     Some(cached.clone())
                 } else {
-                    // Look up blob by denormalized digest if available, else by ID scan
-                    let blob_digest = get_bytes_opt(item, "blob_digest");
-                    let found = if let Some(digest) = blob_digest {
-                        self.find_blob_by_digest(&digest).await?
+                    // Look up object by denormalized digest if available, else by ID scan
+                    let obj_digest = get_bytes_opt(item, "blob_digest");
+                    let found = if let Some(digest) = obj_digest {
+                        self.find_object_by_digest(&digest).await?
                     } else {
-                        // Fallback: find blob by ID (expensive)
-                        let blobs = self.blobs_by_ids(&[blob_id]).await?;
-                        blobs.into_iter().next()
+                        // Fallback: find object by ID (expensive)
+                        let objects = self.objects_by_ids(&[object_id]).await?;
+                        objects.into_iter().next()
                     };
-                    if let Some(ref b) = found {
-                        blob_cache.insert(blob_id, b.clone());
+                    if let Some(ref o) = found {
+                        object_cache.insert(object_id, o.clone());
                     }
                     found
                 }
             } else {
                 None
             };
-            results.push((entry, blob));
+            results.push((entry, obj));
         }
 
         Ok(results)
@@ -693,19 +698,19 @@ impl MetadataStore for DynamoStore {
         items.iter().map(item_to_entry).collect()
     }
 
-    async fn entries_for_blob(&self, blob_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
-        // No direct index on blob_id for entries. Scan GSI3 for all snapshots,
+    async fn entries_for_object(&self, object_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
+        // No direct index on object_id for entries. Scan GSI3 for all snapshots,
         // then query each. This is expensive but rarely used in the server hot path.
-        // TODO: consider adding a GSI or denormalized item for blob → entries
-        let _ = blob_id;
-        bail!("entries_for_blob is not efficiently supported on DynamoDB; use SQL backend for blob analysis")
+        // TODO: consider adding a GSI or denormalized item for object → entries
+        let _ = object_id;
+        bail!("entries_for_object is not efficiently supported on DynamoDB; use SQL backend for object analysis")
     }
 
     async fn path_history(
         &self,
         repository_id: i64,
         path: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>, snapshot::Model)>> {
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>, snapshot::Model)>> {
         let repo_name = self.resolve_repo_name(repository_id).await?;
         let gsi2pk = keys::gsi2pk_path(&repo_name, path);
         let items = self.query_gsi("GSI2", "GSI2PK", &gsi2pk, None, None).await?;
@@ -717,13 +722,13 @@ impl MetadataStore for DynamoStore {
                 .find_snapshot_by_id(entry.snapshot_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", entry.snapshot_id))?;
-            let blob = if let Some(blob_id) = entry.blob_id {
-                let blobs = self.blobs_by_ids(&[blob_id]).await?;
-                blobs.into_iter().next()
+            let obj = if let Some(object_id) = entry.object_id {
+                let objects = self.objects_by_ids(&[object_id]).await?;
+                objects.into_iter().next()
             } else {
                 None
             };
-            results.push((entry, blob, snap));
+            results.push((entry, obj, snap));
         }
         Ok(results)
     }
@@ -744,7 +749,7 @@ impl MetadataStore for DynamoStore {
         item.insert("snapshot_id".into(), n_i64(params.snapshot_id));
         item.insert("entry_id".into(), n_i64(params.entry_id));
         item.insert("status".into(), n_i16(1));
-        item.insert("blob_id".into(), n_i64(params.blob_id));
+        item.insert("object_id".into(), n_i64(params.object_id));
         if let Some(mt) = &params.mtime {
             item.insert("mtime".into(), s(&datetime_iso(mt)));
         }
@@ -865,15 +870,15 @@ impl MetadataStore for DynamoStore {
 
     // ── Replica ─────────────────────────────────────────────────────────
 
-    async fn replica_exists(&self, blob_id: i64, store_id: i64) -> anyhow::Result<bool> {
-        // We need the blob digest and store name to construct the key.
-        let blobs = self.blobs_by_ids(&[blob_id]).await?;
-        let blob = match blobs.first() {
-            Some(b) => b,
+    async fn replica_exists(&self, object_id: i64, store_id: i64) -> anyhow::Result<bool> {
+        // We need the object digest and store name to construct the key.
+        let objects = self.objects_by_ids(&[object_id]).await?;
+        let obj = match objects.first() {
+            Some(o) => o,
             None => return Ok(false),
         };
-        let digest_hex = hex_encode(&blob.digest);
-        let pk = keys::blob_pk(&digest_hex);
+        let digest_hex = hex_encode(&obj.digest);
+        let pk = keys::obj_pk(&digest_hex);
 
         // Find the store name
         let store = self.find_store_by_id(store_id).await?;
@@ -888,15 +893,15 @@ impl MetadataStore for DynamoStore {
 
     async fn insert_replica(
         &self,
-        blob_id: i64,
+        object_id: i64,
         store_id: i64,
         path: &str,
         encrypted: bool,
     ) -> anyhow::Result<replica::Model> {
-        let blobs = self.blobs_by_ids(&[blob_id]).await?;
-        let blob = blobs.first().ok_or_else(|| anyhow::anyhow!("blob {blob_id} not found"))?;
-        let digest_hex = hex_encode(&blob.digest);
-        let pk = keys::blob_pk(&digest_hex);
+        let objects = self.objects_by_ids(&[object_id]).await?;
+        let obj = objects.first().ok_or_else(|| anyhow::anyhow!("object {object_id} not found"))?;
+        let digest_hex = hex_encode(&obj.digest);
+        let pk = keys::obj_pk(&digest_hex);
 
         let store =
             self.find_store_by_id(store_id).await?.ok_or_else(|| anyhow::anyhow!("store {store_id} not found"))?;
@@ -908,7 +913,7 @@ impl MetadataStore for DynamoStore {
         item.insert("PK".into(), s(&pk));
         item.insert("SK".into(), s(&sk));
         item.insert("id".into(), n_i64(id));
-        item.insert("blob_id".into(), n_i64(blob_id));
+        item.insert("object_id".into(), n_i64(object_id));
         item.insert("store_id".into(), n_i64(store_id));
         item.insert("path".into(), s(path));
         item.insert("encrypted".into(), bool_val(encrypted));
@@ -920,7 +925,7 @@ impl MetadataStore for DynamoStore {
 
         Ok(replica::Model {
             id,
-            blob_id,
+            object_id,
             store_id,
             path: path.to_owned(),
             encrypted,
@@ -929,21 +934,21 @@ impl MetadataStore for DynamoStore {
         })
     }
 
-    async fn replicas_for_blobs(&self, blob_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
-        if blob_ids.is_empty() {
+    async fn replicas_for_objects(&self, object_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
+        if object_ids.is_empty() {
             return Ok(Vec::new());
         }
 
         let mut results = Vec::new();
-        // Build a blob_id → digest_hex map
-        let blobs = self.blobs_by_ids(blob_ids).await?;
-        let blob_map: HashMap<i64, String> = blobs.iter().map(|b| (b.id, hex_encode(&b.digest))).collect();
+        // Build an object_id → digest_hex map
+        let objects = self.objects_by_ids(object_ids).await?;
+        let object_map: HashMap<i64, String> = objects.iter().map(|o| (o.id, hex_encode(&o.digest))).collect();
 
         // Cache stores by name
         let mut store_cache: HashMap<String, store::Model> = HashMap::new();
 
-        for (blob_id, digest_hex) in &blob_map {
-            let pk = keys::blob_pk(digest_hex);
+        for (_object_id, digest_hex) in &object_map {
+            let pk = keys::obj_pk(digest_hex);
             let items = self.query_pk_sk_begins(&pk, Some("REPLICA#")).await?;
 
             for item in items {
@@ -966,7 +971,7 @@ impl MetadataStore for DynamoStore {
                         None => continue,
                     }
                 };
-                let _ = blob_id; // used above in map iteration
+                let _ = _object_id; // used above in map iteration
                 results.push((rep, st));
             }
         }
@@ -1122,6 +1127,7 @@ impl DynamoStore {
             metadata: Value::Null,
             source_machine_id,
             source_snapshot_id,
+            root_object_id: None,
             created_at: now.parse()?,
         })
     }
