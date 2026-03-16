@@ -82,6 +82,7 @@ impl Env {
                 digest_algorithm: DigestAlgorithm::Sha256,
                 fast_hash_algorithm: FastHashAlgorithm::default(),
                 batch_size: 1000,
+                allow_empty: false,
                 path: Some(self.files_dir()),
             },
         )
@@ -130,6 +131,10 @@ impl Env {
                 command: store::StoreCommands::Add(store::StoreAddArgs {
                     name: store_name.to_string(),
                     url: store_url,
+                    encrypt: false,
+                    key_file: None,
+                    key_source: None,
+                    cipher: None,
                 }),
             },
             &StoreConfig::default(),
@@ -275,6 +280,11 @@ impl Env {
                 command: store::StoreCommands::Set(store::StoreSetArgs {
                     name: name.to_string(),
                     url: url.map(|u| u.to_string()),
+                    encrypt: false,
+                    no_encrypt: false,
+                    key_file: None,
+                    key_source: None,
+                    cipher: None,
                 }),
             },
             &StoreConfig::default(),

@@ -17,6 +17,10 @@ async fn setup_store_and_peer(env: &Env, store_name: &str, peer_name: &str) -> (
             command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
                 name: store_name.to_string(),
                 url: store_url,
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
             }),
         },
         &tome_cli::config::StoreConfig::default(),

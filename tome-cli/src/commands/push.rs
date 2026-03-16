@@ -149,7 +149,7 @@ pub async fn pull(db: &DatabaseConnection, args: PullArgs, cfg: &StoreConfig) ->
                     encrypt: false,
                     key_file: None,
                     key_source: None,
-                    cipher: "aes256gcm".to_string(),
+                    cipher: None,
                 }),
             },
             cfg,

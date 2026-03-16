@@ -20,7 +20,6 @@
 | 中 | 並列ハッシュ計算 — `tokio::task::spawn_blocking` + `--jobs N`（デフォルト: num_cpus）。DB 書き込みは逐次 |
 | 中 | `store push` / `store copy` 並列化 — `tokio::sync::Semaphore` で同時接続数を制限（`--jobs N`）。スキーム別デフォルト: `file://`=4, `ssh://`=4, `s3://`=8 |
 | 中 | `store push` のバッチクエリ化 — N+1 クエリ（blob ごとに `replica_exists`）を `blobs_missing_in_store` 1クエリに削減 |
-| 中 | ストアへの暗号化設定紐付け — `tome store add s3 <url> --encrypt --key-source pass://tome/key --cipher aes256gcm` で `stores.config` に保存し、`store push` / `store copy` で自動適用。`store set --no-encrypt` で無効化。`store list` で暗号化状態を表示 |
 | 中 | `store push` の直接リモート対応 — ローカルストアを中間バッファとせずスキャン元から任意ストアに直接 push。暗号化ストアにも対応（ストア設定を自動参照） |
 | 中 | `--format json` — `log`, `show`, `files`, `history`, `diff`, `status`, `repo list`, `store list`, `remote list`, `store push` に追加。`store push --format json` は `{pushed, skipped, errors, bytes_transferred, duration_ms}` を出力 |
 | 中 | `verify` 統合 — `tome verify --store <name>` / `--all` を追加（`tome store verify` はエイリアスとして残す） |
@@ -60,3 +59,4 @@ DynamoDB をメタデータバックエンドとして使用。詳細は [docs/a
 - tome-server ルート全体を `dyn MetadataStore` に移行（sea-orm 直接依存を削除）
 - `tome-dynamo` クレート — DynamoDB シングルテーブル設計による `MetadataStore` 実装
 - Lambda DynamoDB 対応 — `--features dynamodb` + `TOME_DB=dynamodb://<table>` で DynamoDB バックエンドを選択
+- ストアへの暗号化設定紐付け — `store add/set` に `--encrypt --key-source/--key-file --cipher` を追加し `stores.config` に保存。`store push` / `store copy` で自動適用。`store set --no-encrypt` で無効化。`store list` に暗号化状態列を追加

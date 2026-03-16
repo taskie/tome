@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use sea_orm::DatabaseConnection;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use tome_core::hash::{self, DigestAlgorithm};
@@ -10,6 +11,83 @@ use tome_store::{CipherAlgorithm, Storage, encrypted::EncryptedStorage, factory,
 use crate::config::{self, StoreConfig};
 
 use super::helpers::resolve_store;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Per-store encryption config (stored in store.config JSON)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct PerStoreEncryptConfig {
+    #[serde(default)]
+    encrypt: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cipher: Option<String>,
+}
+
+fn parse_store_config(config: &serde_json::Value) -> PerStoreEncryptConfig {
+    serde_json::from_value(config.clone()).unwrap_or_default()
+}
+
+fn build_encrypt_config(
+    encrypt: bool,
+    key_source: Option<String>,
+    key_file: Option<String>,
+    cipher: Option<String>,
+) -> PerStoreEncryptConfig {
+    PerStoreEncryptConfig { encrypt, key_source, key_file, cipher }
+}
+
+/// Resolve encryption key and cipher for a store operation.
+///
+/// Priority: CLI key_file > CLI key_source > per-store key_file > per-store key_source
+///           > global store.key_file > global store.key_source > error.
+async fn resolve_encryption_for_store(
+    cli_encrypt: Option<bool>,
+    cli_key_file: Option<&std::path::Path>,
+    cli_key_source: Option<&str>,
+    cli_cipher: Option<&str>,
+    per_store: &PerStoreEncryptConfig,
+    global_cfg: &StoreConfig,
+) -> Result<Option<([u8; 32], CipherAlgorithm)>> {
+    let should_encrypt = cli_encrypt.unwrap_or(per_store.encrypt);
+    if !should_encrypt {
+        return Ok(None);
+    }
+
+    // Resolve key
+    let key: [u8; 32] = if let Some(path) = cli_key_file {
+        factory::read_key_file(path)?
+    } else if let Some(source) = cli_key_source {
+        key_source::resolve(source).await.map_err(|e| anyhow::anyhow!("{}", e))?
+    } else if let Some(ref path_str) = per_store.key_file {
+        let path = config::expand_tilde(std::path::Path::new(path_str));
+        factory::read_key_file(&path)?
+    } else if let Some(ref source) = per_store.key_source {
+        key_source::resolve(source).await.map_err(|e| anyhow::anyhow!("{}", e))?
+    } else if let Some(ref path) = global_cfg.key_file {
+        factory::read_key_file(&config::expand_tilde(path))?
+    } else if let Some(ref source) = global_cfg.key_source {
+        key_source::resolve(source).await.map_err(|e| anyhow::anyhow!("{}", e))?
+    } else {
+        let default_dir = factory::key_dir();
+        bail!(
+            "--key-file or --key-source is required when encryption is enabled \
+             (or set key_file/key_source in store config or store.key_file/store.key_source in tome.toml; \
+              default key dir: {:?})",
+            default_dir
+        );
+    };
+
+    // Resolve cipher
+    let cipher_str = cli_cipher.or(per_store.cipher.as_deref()).unwrap_or("aes256gcm");
+    let cipher_algo: CipherAlgorithm = cipher_str.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+
+    Ok(Some((key, cipher_algo)))
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
@@ -45,6 +123,18 @@ pub struct StoreAddArgs {
     pub name: String,
     /// Store URL (file:///path, ssh://user@host/path, s3://bucket/prefix)
     pub url: String,
+    /// Enable encryption for this store
+    #[arg(long)]
+    pub encrypt: bool,
+    /// Path to 32-byte binary key file for encryption
+    #[arg(long)]
+    pub key_file: Option<String>,
+    /// External secret manager URI for the encryption key
+    #[arg(long)]
+    pub key_source: Option<String>,
+    /// Cipher algorithm: aes256gcm or chacha20-poly1305
+    #[arg(long)]
+    pub cipher: Option<String>,
 }
 
 #[derive(Args)]
@@ -54,6 +144,21 @@ pub struct StoreSetArgs {
     /// New URL for the store
     #[arg(long)]
     pub url: Option<String>,
+    /// Enable encryption for this store
+    #[arg(long)]
+    pub encrypt: bool,
+    /// Disable encryption for this store (clears all encryption fields)
+    #[arg(long, conflicts_with = "encrypt")]
+    pub no_encrypt: bool,
+    /// Path to 32-byte binary key file for encryption
+    #[arg(long)]
+    pub key_file: Option<String>,
+    /// External secret manager URI for the encryption key
+    #[arg(long)]
+    pub key_source: Option<String>,
+    /// Cipher algorithm: aes256gcm or chacha20-poly1305
+    #[arg(long)]
+    pub cipher: Option<String>,
 }
 
 #[derive(Args)]
@@ -92,8 +197,8 @@ pub struct StoreCopyArgs {
     #[arg(long)]
     pub key_source: Option<String>,
     /// Cipher algorithm for encryption: aes256gcm (default) or chacha20-poly1305
-    #[arg(long, default_value = "aes256gcm")]
-    pub cipher: String,
+    #[arg(long)]
+    pub cipher: Option<String>,
 }
 
 #[derive(Args)]
@@ -126,7 +231,9 @@ pub async fn run(db: &DatabaseConnection, args: StoreArgs, cfg: &StoreConfig) ->
 // ──────────────────────────────────────────────────────────────────────────────
 
 async fn store_add(db: &DatabaseConnection, args: StoreAddArgs) -> Result<()> {
-    let store = ops::get_or_create_store(db, &args.name, &args.url, serde_json::json!({})).await?;
+    let enc_cfg = build_encrypt_config(args.encrypt, args.key_source, args.key_file, args.cipher);
+    let config = serde_json::to_value(&enc_cfg)?;
+    let store = ops::get_or_create_store(db, &args.name, &args.url, config).await?;
     println!("store registered: {} (id={}, url={})", store.name, store.id, store.url);
     Ok(())
 }
@@ -140,11 +247,40 @@ async fn store_set(db: &DatabaseConnection, args: StoreSetArgs) -> Result<()> {
         .await?
         .ok_or_else(|| anyhow::anyhow!("store {:?} not found", args.name))?;
 
-    if args.url.is_none() {
-        bail!("nothing to update (specify --url)");
+    let has_encrypt_change = args.encrypt
+        || args.no_encrypt
+        || args.key_file.is_some()
+        || args.key_source.is_some()
+        || args.cipher.is_some();
+
+    if args.url.is_none() && !has_encrypt_change {
+        bail!("nothing to update (specify --url or encryption flags)");
     }
 
-    let updated = ops::update_store(db, store.id, args.url.as_deref(), None).await?;
+    let new_config = if has_encrypt_change {
+        let mut cfg = parse_store_config(&store.config);
+        if args.no_encrypt {
+            cfg = PerStoreEncryptConfig::default();
+        } else {
+            if args.encrypt {
+                cfg.encrypt = true;
+            }
+            if args.key_file.is_some() {
+                cfg.key_file = args.key_file;
+            }
+            if args.key_source.is_some() {
+                cfg.key_source = args.key_source;
+            }
+            if args.cipher.is_some() {
+                cfg.cipher = args.cipher;
+            }
+        }
+        Some(serde_json::to_value(&cfg)?)
+    } else {
+        None
+    };
+
+    let updated = ops::update_store(db, store.id, args.url.as_deref(), new_config).await?;
     println!("store updated: {} (id={}, url={})", updated.name, updated.id, updated.url);
     Ok(())
 }
@@ -185,10 +321,12 @@ async fn store_list(db: &DatabaseConnection) -> Result<()> {
         println!("no stores registered");
         return Ok(());
     }
-    println!("{:<20} {:<8} url", "name", "id");
-    println!("{}", "-".repeat(60));
+    println!("{:<20} {:<8} {:<10} url", "name", "id", "encrypt");
+    println!("{}", "-".repeat(70));
     for s in stores {
-        println!("{:<20} {:<8} {}", s.name, s.id, s.url);
+        let enc = parse_store_config(&s.config);
+        let enc_label = if enc.encrypt { "yes" } else { "-" };
+        println!("{:<20} {:<8} {:<10} {}", s.name, s.id, enc_label, s.url);
     }
     Ok(())
 }
@@ -210,7 +348,18 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
     // Determine scan root: CLI arg > snapshot metadata > error
     let scan_root = super::helpers::resolve_scan_root(db, repo.id, args.path).await?;
 
-    let storage = factory::open_storage(&store.url).await?;
+    // Resolve per-store encryption (no CLI overrides for push).
+    let per_store = parse_store_config(&store.config);
+    let encryption = resolve_encryption_for_store(None, None, None, None, &per_store, cfg).await?;
+    let is_encrypted = encryption.is_some();
+
+    let storage: Box<dyn Storage> = if let Some((key, cipher_algo)) = encryption {
+        let inner = factory::open_storage(&store.url).await?;
+        Box::new(EncryptedStorage::with_algorithm(inner, key, cipher_algo))
+    } else {
+        factory::open_storage(&store.url).await?
+    };
+
     let entries = ops::present_cache_entries(db, repo.id).await?;
 
     if entries.is_empty() {
@@ -248,7 +397,7 @@ async fn store_push(db: &DatabaseConnection, args: StorePushArgs, cfg: &StoreCon
         let remote_path = blob_path(&digest_hex);
         match storage.upload(&remote_path, &local_file).await {
             Ok(()) => {
-                ops::insert_replica(db, blob_id, store.id, &remote_path, false).await?;
+                ops::insert_replica(db, blob_id, store.id, &remote_path, is_encrypted).await?;
                 info!("pushed: {}", cache.path);
                 pushed += 1;
             }
@@ -271,24 +420,19 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
     let src_store = resolve_store(db, &args.src).await?;
     let dst_store = resolve_store(db, &args.dst).await?;
 
-    // Resolve encryption key if needed.
-    // Priority: --key-file > --key-source > store.key_file > store.key_source (all from CLI then config).
-    let key: Option<[u8; 32]> = if args.encrypt {
-        if let Some(key_path) = args.key_file.or_else(|| cfg.key_file.as_ref().map(|p| config::expand_tilde(p))) {
-            Some(factory::read_key_file(&key_path)?)
-        } else if let Some(source) = args.key_source.or_else(|| cfg.key_source.clone()) {
-            Some(key_source::resolve(&source).await.map_err(|e| anyhow::anyhow!("{}", e))?)
-        } else {
-            let default_dir = factory::key_dir();
-            anyhow::bail!(
-                "--key-file or --key-source is required when --encrypt is set \
-                 (or set store.key_file / store.key_source in tome.toml; default key dir: {:?})",
-                default_dir
-            )
-        }
-    } else {
-        None
-    };
+    // Resolve encryption: CLI flags override per-store config on the destination store.
+    let dst_per_store = parse_store_config(&dst_store.config);
+    let cli_encrypt = if args.encrypt { Some(true) } else { None };
+    let encryption = resolve_encryption_for_store(
+        cli_encrypt,
+        args.key_file.as_deref(),
+        args.key_source.as_deref(),
+        args.cipher.as_deref(),
+        &dst_per_store,
+        cfg,
+    )
+    .await?;
+    let is_encrypted = encryption.is_some();
 
     // Open source storage.
     let src_storage = factory::open_storage(&src_store.url).await?;
@@ -306,8 +450,7 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
         ops::replicas_in_store(db, src_store.id).await?.into_iter().map(|r| (r.blob_id, r)).collect();
 
     // Open destination storage once (upload takes &self, so it can be reused).
-    let dst_storage: Box<dyn Storage> = if let Some(key) = key {
-        let cipher_algo: CipherAlgorithm = args.cipher.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+    let dst_storage: Box<dyn Storage> = if let Some((key, cipher_algo)) = encryption {
         let dst_inner = factory::open_storage(&dst_store.url).await?;
         Box::new(EncryptedStorage::with_algorithm(dst_inner, key, cipher_algo))
     } else {
@@ -357,7 +500,7 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
         }
 
         // Record replica in DB.
-        ops::insert_replica(db, blob.id, dst_store.id, &dst_path, args.encrypt).await?;
+        ops::insert_replica(db, blob.id, dst_store.id, &dst_path, is_encrypted).await?;
         info!("copied: {}", digest_hex);
         copied += 1;
     }

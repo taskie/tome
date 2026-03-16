@@ -22,6 +22,10 @@ async fn store_add_registers_in_db() {
             command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
                 name: "backup".to_string(),
                 url: store_url,
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
             }),
         },
         &tome_cli::config::StoreConfig::default(),
@@ -197,6 +201,10 @@ async fn store_rm_removes_empty_store() {
             command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
                 name: "empty".to_string(),
                 url: store_url,
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
             }),
         },
         &tome_cli::config::StoreConfig::default(),
@@ -238,4 +246,215 @@ async fn store_rm_force_removes_with_replicas() {
 
     let stores = ops::list_stores(&env.db).await.unwrap();
     assert!(stores.is_empty());
+}
+
+// ── Per-store encryption config ──────────────────────────────────────────────
+
+/// `tome store add --encrypt` saves encryption config in the store's config JSON.
+#[tokio::test]
+async fn store_add_with_encrypt_saves_config() {
+    let env = Env::new().await;
+    let store_url = format!("file://{}", env.store_dir().display());
+
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "encrypted".to_string(),
+                url: store_url,
+                encrypt: true,
+                key_file: None,
+                key_source: Some("env://TOME_TEST_KEY".to_string()),
+                cipher: Some("chacha20-poly1305".to_string()),
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    let store = ops::find_store_by_name(&env.db, "encrypted").await.unwrap().unwrap();
+    assert_eq!(store.config["encrypt"], serde_json::json!(true));
+    assert_eq!(store.config["key_source"], serde_json::json!("env://TOME_TEST_KEY"));
+    assert_eq!(store.config["cipher"], serde_json::json!("chacha20-poly1305"));
+}
+
+/// `tome store set --encrypt` and `--no-encrypt` toggle encryption config.
+#[tokio::test]
+async fn store_set_encrypt_and_no_encrypt() {
+    let env = Env::new().await;
+    let store_url = format!("file://{}", env.store_dir().display());
+
+    // Create a plain store.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "toggle".to_string(),
+                url: store_url,
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Enable encryption.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Set(tome_cli::commands::store::StoreSetArgs {
+                name: "toggle".to_string(),
+                url: None,
+                encrypt: true,
+                no_encrypt: false,
+                key_file: None,
+                key_source: Some("env://MY_KEY".to_string()),
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    let store = ops::find_store_by_name(&env.db, "toggle").await.unwrap().unwrap();
+    assert_eq!(store.config["encrypt"], serde_json::json!(true));
+    assert_eq!(store.config["key_source"], serde_json::json!("env://MY_KEY"));
+
+    // Disable encryption with --no-encrypt.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Set(tome_cli::commands::store::StoreSetArgs {
+                name: "toggle".to_string(),
+                url: None,
+                encrypt: false,
+                no_encrypt: true,
+                key_file: None,
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    let store = ops::find_store_by_name(&env.db, "toggle").await.unwrap().unwrap();
+    assert_eq!(store.config["encrypt"], serde_json::json!(false));
+    assert!(store.config.get("key_source").is_none() || store.config["key_source"].is_null());
+}
+
+/// `tome store push` auto-encrypts when the store has encryption config.
+#[tokio::test]
+async fn store_push_auto_encrypts() {
+    let env = Env::new().await;
+    let store_url = format!("file://{}", env.store_dir().display());
+
+    // Write a 32-byte key file.
+    let key_dir = env.root.path().join("keys");
+    std::fs::create_dir_all(&key_dir).unwrap();
+    let key_path = key_dir.join("test.key");
+    std::fs::write(&key_path, &[0xABu8; 32]).unwrap();
+
+    // Register store with encryption config.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "enc-store".to_string(),
+                url: store_url,
+                encrypt: true,
+                key_file: Some(key_path.to_str().unwrap().to_string()),
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Scan and push.
+    env.write("secret.txt", b"top secret data");
+    env.scan().await.unwrap();
+
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Push(tome_cli::commands::store::StorePushArgs {
+                repo: "default".to_string(),
+                store: Some("enc-store".to_string()),
+                path: Some(env.files_dir()),
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Replica should be marked as encrypted.
+    let store = ops::find_store_by_name(&env.db, "enc-store").await.unwrap().unwrap();
+    let replicas = ops::replicas_in_store(&env.db, store.id).await.unwrap();
+    assert_eq!(replicas.len(), 1);
+    assert!(replicas[0].encrypted, "replica should be marked as encrypted");
+
+    // The blob on disk should NOT match the original plaintext (it's encrypted).
+    let blob_file = env.store_dir().join(&replicas[0].path);
+    let stored_bytes = std::fs::read(&blob_file).unwrap();
+    assert_ne!(stored_bytes.as_slice(), b"top secret data", "stored blob should be encrypted, not plaintext");
+}
+
+/// `tome store list` shows "yes" for stores with encryption enabled.
+#[tokio::test]
+async fn store_list_shows_encrypt_status() {
+    let env = Env::new().await;
+
+    // Add a plain store.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "plain".to_string(),
+                url: "file:///tmp/plain".to_string(),
+                encrypt: false,
+                key_file: None,
+                key_source: None,
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Add an encrypted store.
+    tome_cli::commands::store::run(
+        &env.db,
+        tome_cli::commands::store::StoreArgs {
+            command: tome_cli::commands::store::StoreCommands::Add(tome_cli::commands::store::StoreAddArgs {
+                name: "secure".to_string(),
+                url: "file:///tmp/secure".to_string(),
+                encrypt: true,
+                key_file: None,
+                key_source: Some("env://KEY".to_string()),
+                cipher: None,
+            }),
+        },
+        &tome_cli::config::StoreConfig::default(),
+    )
+    .await
+    .unwrap();
+
+    // Verify store configs directly (store list prints to stdout, hard to capture in test).
+    let plain = ops::find_store_by_name(&env.db, "plain").await.unwrap().unwrap();
+    let secure = ops::find_store_by_name(&env.db, "secure").await.unwrap().unwrap();
+
+    assert_eq!(plain.config["encrypt"], serde_json::json!(false));
+    assert_eq!(secure.config["encrypt"], serde_json::json!(true));
 }
