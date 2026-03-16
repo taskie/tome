@@ -15,12 +15,13 @@ CREATE TABLE repositories (
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. blobs
-CREATE TABLE blobs (
+-- 2. objects (blobs + trees)
+CREATE TABLE objects (
     id          BIGINT      NOT NULL PRIMARY KEY,
-    digest      BYTEA       NOT NULL UNIQUE,
-    size        BIGINT      NOT NULL,
-    fast_digest BIGINT      NOT NULL,
+    object_type SMALLINT    NOT NULL,            -- 0 = blob, 1 = tree
+    digest      BYTEA       NOT NULL UNIQUE,     -- content hash (blob) or Merkle tree hash (tree)
+    size        BIGINT      NULL,                -- file size (blob only)
+    fast_digest BIGINT      NULL,                -- xxHash64 (blob only)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -33,7 +34,8 @@ CREATE TABLE snapshots (
     metadata           JSON        NOT NULL DEFAULT '{}',
     created_at         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     source_machine_id  SMALLINT    NULL,
-    source_snapshot_id BIGINT      NULL
+    source_snapshot_id BIGINT      NULL,
+    root_object_id     BIGINT      NULL     REFERENCES objects (id)
 );
 
 CREATE INDEX ix_snapshots_repo_created ON snapshots (repository_id, created_at);
@@ -44,14 +46,14 @@ CREATE TABLE entries (
     snapshot_id BIGINT      NOT NULL REFERENCES snapshots (id),
     path        VARCHAR     NOT NULL,
     status      SMALLINT    NOT NULL,
-    blob_id     BIGINT      NULL     REFERENCES blobs (id),
+    object_id   BIGINT      NULL     REFERENCES objects (id),
     mode        INTEGER     NULL,
     mtime       TIMESTAMPTZ NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_entries_snapshot_path UNIQUE (snapshot_id, path)
 );
 
-CREATE INDEX ix_entries_blob            ON entries (blob_id);
+CREATE INDEX ix_entries_object          ON entries (object_id);
 CREATE INDEX ix_entries_snapshot_status  ON entries (snapshot_id, status);
 
 -- 5. entry_cache
@@ -61,7 +63,7 @@ CREATE TABLE entry_cache (
     snapshot_id   BIGINT      NOT NULL REFERENCES snapshots (id),
     entry_id      BIGINT      NOT NULL REFERENCES entries (id),
     status        SMALLINT    NOT NULL,
-    blob_id       BIGINT      NULL     REFERENCES blobs (id),
+    object_id     BIGINT      NULL     REFERENCES objects (id),
     mtime         TIMESTAMPTZ NULL,
     digest        BYTEA       NULL,
     size          BIGINT      NULL,
@@ -83,13 +85,13 @@ CREATE TABLE stores (
 -- 7. replicas
 CREATE TABLE replicas (
     id          BIGINT      NOT NULL PRIMARY KEY,
-    blob_id     BIGINT      NOT NULL REFERENCES blobs (id),
+    object_id   BIGINT      NOT NULL REFERENCES objects (id),
     store_id    BIGINT      NOT NULL REFERENCES stores (id),
     path        VARCHAR     NOT NULL,
     encrypted   BOOLEAN     NOT NULL DEFAULT FALSE,
     verified_at TIMESTAMPTZ NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_replicas_blob_store UNIQUE (blob_id, store_id)
+    CONSTRAINT uq_replicas_object_store UNIQUE (object_id, store_id)
 );
 
 CREATE INDEX ix_replicas_store_id ON replicas (store_id);
@@ -97,11 +99,11 @@ CREATE INDEX ix_replicas_store_id ON replicas (store_id);
 -- 8. tags
 CREATE TABLE tags (
     id         BIGINT      NOT NULL PRIMARY KEY,
-    blob_id    BIGINT      NOT NULL REFERENCES blobs (id),
+    object_id  BIGINT      NOT NULL REFERENCES objects (id),
     key        VARCHAR     NOT NULL,
     value      VARCHAR     NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_tags_blob_key UNIQUE (blob_id, key)
+    CONSTRAINT uq_tags_object_key UNIQUE (object_id, key)
 );
 
 CREATE INDEX ix_tags_key_value ON tags (key, value);

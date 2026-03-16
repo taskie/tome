@@ -16,8 +16,8 @@ GET /repositories/{name}/diff         ?snapshot1= &snapshot2= &prefix=
 GET /repositories/{name}/history      ?path=
 GET /diff                              ?repo1= &prefix1= &repo2= &prefix2=
 GET /snapshots/{id}/entries           ?prefix=
-GET /blobs/{digest}
-GET /blobs/{digest}/entries
+GET /objects/{digest}
+GET /objects/{digest}/entries
 GET /machines
 POST /machines                         register a new machine (returns allocated machine_id)
 PUT /machines/{id}                     update machine (name, description)
@@ -41,13 +41,13 @@ POST /sync/push                    ?repo=           (push snapshots, entries, re
 {
   "repo1": { ... },
   "repo2": { ... },
-  "blobs": { "<blob_id>": { ... } },
+  "objects": { "<object_id>": { ... } },
   "entries": { "1:<path>": { ... }, "2:<path>": { ... } },
-  // blob_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
-  "diff": { "<blob_id>": [["1:<path>"], ["2:<path>"]] },
-  // Entry keys for deleted paths (status=0, blob_id=null)
+  // object_id → ([entry_keys_in_repo1], [entry_keys_in_repo2])
+  "diff": { "<object_id>": [["1:<path>"], ["2:<path>"]] },
+  // Entry keys for deleted paths (status=0, object_id=null)
   "deleted": ["1:<path>", ...]
 }
 ```
 
-Deleted entries (status=0) are returned in the `deleted` list and also present in `entries`. They are excluded from `diff` (which is keyed by `blob_id`) to keep the two concerns separate.
+Deleted entries (status=0) are returned in the `deleted` list and also present in `entries`. They are excluded from `diff` (which is keyed by `object_id`) to keep the two concerns separate.

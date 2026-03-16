@@ -1,6 +1,6 @@
 # Central Sync
 
-Multiple machines maintain individual SQLite databases and synchronize to a shared backend (metadata) and S3-compatible store (blob content).
+Multiple machines maintain individual SQLite databases and synchronize to a shared backend (metadata) and S3-compatible store (object content).
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Multiple machines maintain individual SQLite databases and synchronize to a shar
 graph TB
     subgraph AWS["AWS Central"]
         DDB["DynamoDB<br/><small>metadata</small>"]
-        S3["S3 Bucket<br/><small>encrypted blobs</small>"]
+        S3["S3 Bucket<br/><small>encrypted objects</small>"]
     end
 
     subgraph A["Machine A"]
@@ -24,10 +24,10 @@ graph TB
     A_DB -- "sync push/pull<br/>(metadata)" --> DDB
     B_DB -- "sync push/pull<br/>(metadata)" --> DDB
 
-    A_ST -- "store push<br/>(blobs)" --> S3
-    B_ST -- "store push<br/>(blobs)" --> S3
-    S3 -- "store copy<br/>(blobs)" --> A_ST
-    S3 -- "store copy<br/>(blobs)" --> B_ST
+    A_ST -- "store push<br/>(objects)" --> S3
+    B_ST -- "store push<br/>(objects)" --> S3
+    S3 -- "store copy<br/>(objects)" --> A_ST
+    S3 -- "store copy<br/>(objects)" --> B_ST
 
     style DDB fill:#e3f2fd,stroke:#1565c0
     style S3 fill:#fff3e0,stroke:#ef6c00
@@ -41,8 +41,8 @@ graph TB
 
 | Layer | Commands | Content | Destination |
 |-------|----------|---------|-------------|
-| Metadata | `sync push` / `sync pull` | snapshots, entries, blobs (rows), replicas | DynamoDB (or PostgreSQL) |
-| Blob content | `store push` / `store copy` | encrypted file blobs | S3 |
+| Metadata | `sync push` / `sync pull` | snapshots, entries, objects (rows), replicas | DynamoDB (or PostgreSQL) |
+| Object content | `store push` / `store copy` | encrypted file objects | S3 |
 
 ## Sync Modes
 

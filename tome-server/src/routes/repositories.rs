@@ -106,7 +106,10 @@ pub async fn path_history(
     Ok(Json(
         history
             .into_iter()
-            .map(|(e, b, s)| SnapshotEntry { snapshot: s.into(), entry: EntryResponse::from_with_blob(e, b.as_ref()) })
+            .map(|(e, b, s)| SnapshotEntry {
+                snapshot: s.into(),
+                entry: EntryResponse::from_with_object(e, b.as_ref()),
+            })
             .collect(),
     ))
 }
@@ -184,24 +187,29 @@ pub async fn diff_snapshots(
     let entries1 = db.entries_by_prefix(snap_id1, &q.prefix).await?;
     let entries2 = db.entries_by_prefix(snap_id2, &q.prefix).await?;
 
-    let blob_ids: Vec<i64> =
-        entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
+    let blob_ids: Vec<i64> = entries1
+        .iter()
+        .chain(entries2.iter())
+        .filter_map(|e| e.object_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
 
     let blobs: HashMap<String, BlobResponse> =
-        db.blobs_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
+        db.objects_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, EntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
 
     for e in &entries1 {
         let eid = e.id.to_string();
-        let key = e.blob_id.map(|id| id.to_string()).unwrap_or_default();
+        let key = e.object_id.map(|id| id.to_string()).unwrap_or_default();
         diff.entry(key).or_default().0.push(eid.clone());
         entries.insert(eid, e.clone().into());
     }
     for e in &entries2 {
         let eid = e.id.to_string();
-        let key = e.blob_id.map(|id| id.to_string()).unwrap_or_default();
+        let key = e.object_id.map(|id| id.to_string()).unwrap_or_default();
         diff.entry(key).or_default().1.push(eid.clone());
         entries.insert(eid, e.clone().into());
     }
@@ -345,11 +353,16 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
         return Err(AppError::bad_request(format!("too many entries (limit {}), narrow the prefix", MAX_ENTRIES)));
     }
 
-    let blob_ids: Vec<i64> =
-        entries1.iter().chain(entries2.iter()).filter_map(|e| e.blob_id).collect::<HashSet<_>>().into_iter().collect();
+    let blob_ids: Vec<i64> = entries1
+        .iter()
+        .chain(entries2.iter())
+        .filter_map(|e| e.object_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
 
     let blobs: HashMap<String, BlobResponse> =
-        db.blobs_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
+        db.objects_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, CacheEntryResponse> = HashMap::new();
     let mut diff: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
@@ -357,7 +370,7 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
 
     for e in &entries1 {
         let key = format!("1:{}", e.path);
-        match e.blob_id {
+        match e.object_id {
             Some(blob_id) => diff.entry(blob_id.to_string()).or_default().0.push(key.clone()),
             None => deleted.push(key.clone()),
         }
@@ -365,7 +378,7 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
     }
     for e in &entries2 {
         let key = format!("2:{}", e.path);
-        match e.blob_id {
+        match e.object_id {
             Some(blob_id) => diff.entry(blob_id.to_string()).or_default().1.push(key.clone()),
             None => deleted.push(key.clone()),
         }

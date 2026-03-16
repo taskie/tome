@@ -18,7 +18,7 @@ use crate::error::{AppError, AppResult};
 pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<BlobResponse>> {
     let digest = hex::decode(&digest_hex).map_err(|_| AppError::bad_request("invalid digest hex"))?;
     let blob = db
-        .find_blob_by_digest(&digest)
+        .find_object_by_digest(&digest)
         .await?
         .ok_or_else(|| AppError::not_found(format!("blob {:?} not found", digest_hex)))?;
     Ok(Json(blob.into()))
@@ -38,9 +38,9 @@ pub async fn get_blob(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<
 pub async fn list_blob_entries(db: Db, Path(digest_hex): Path<String>) -> AppResult<Json<Vec<SnapshotEntry>>> {
     let digest = hex::decode(&digest_hex).map_err(|_| AppError::bad_request("invalid digest hex"))?;
     let blob = db
-        .find_blob_by_digest(&digest)
+        .find_object_by_digest(&digest)
         .await?
         .ok_or_else(|| AppError::not_found(format!("blob {:?} not found", digest_hex)))?;
-    let entries = db.entries_for_blob(blob.id).await?;
+    let entries = db.entries_for_object(blob.id).await?;
     Ok(Json(entries.into_iter().map(|(e, s)| SnapshotEntry { snapshot: s.into(), entry: e.into() }).collect()))
 }

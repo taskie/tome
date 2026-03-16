@@ -10,7 +10,7 @@ pub struct Model {
     pub snapshot_id: i64,
     pub entry_id: i64,
     pub status: i16,
-    pub blob_id: Option<i64>,
+    pub object_id: Option<i64>,
     pub mtime: Option<DateTimeWithTimeZone>,
     /// Denormalized from blobs.digest for fast lookup
     pub digest: Option<Vec<u8>>,

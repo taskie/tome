@@ -10,10 +10,10 @@ erDiagram
     repositories ||--o{ entry_cache : caches
     snapshots ||--o{ entries : contains
     snapshots }o--o| snapshots : "parent_id"
-    entries }o--|| blobs : references
-    entry_cache }o--|| blobs : references
-    blobs ||--o{ replicas : "stored in"
-    blobs ||--o{ tags : "tagged with"
+    entries }o--|| objects : references
+    entry_cache }o--|| objects : references
+    objects ||--o{ replicas : "stored in"
+    objects ||--o{ tags : "tagged with"
     stores ||--o{ replicas : provides
     machines ||--o{ snapshots : "source_machine_id"
 
@@ -21,7 +21,7 @@ erDiagram
         i64 id PK
         string name UK
     }
-    blobs {
+    objects {
         i64 id PK
         bytes digest UK
         i64 fast_digest
@@ -37,14 +37,14 @@ erDiagram
     entries {
         i64 id PK
         i64 snapshot_id FK
-        i64 blob_id FK
+        i64 object_id FK
         string path
         i16 status
     }
     entry_cache {
         i64 repository_id PK
         string path PK
-        i64 blob_id FK
+        i64 object_id FK
         i16 status
     }
     stores {
@@ -55,12 +55,12 @@ erDiagram
     replicas {
         i64 id PK
         i64 store_id FK
-        i64 blob_id FK
+        i64 object_id FK
         string state
     }
     tags {
         i64 id PK
-        i64 blob_id FK
+        i64 object_id FK
         string key
         string value
     }
@@ -82,13 +82,13 @@ erDiagram
 | Table | Description |
 |-------|-------------|
 | `repositories` | Named scan namespaces (e.g. `default`) |
-| `blobs` | Content-addressable file fingerprints (`digest`=SHA-256 or BLAKE3, `fast_digest`=xxHash64) |
+| `objects` | Content-addressable file fingerprints (`digest`=SHA-256 or BLAKE3, `fast_digest`=xxHash64) |
 | `snapshots` | Scan execution events (analogous to Git commits, chained via `parent_id`). `source_machine_id` / `source_snapshot_id` track sync provenance |
 | `entries` | Per-file state within a snapshot (`status`: 0=deleted, 1=present) |
 | `entry_cache` | Latest state cache per path, PK=(repository\_id, path) |
 | `stores` | Storage backend definitions (`url`: `file:///`, `ssh://`, `s3://`) |
-| `replicas` | Tracks which store holds which blob |
-| `tags` | Key-value attributes on blobs |
+| `replicas` | Tracks which store holds which object |
+| `tags` | Key-value attributes on objects |
 | `sync_peers` | Sync peer definitions (`url` + `last_snapshot_id`) |
 | `machines` | Registered machines for central sync (`machine_id` as PK, `name`, `last_seen_at`) |
 

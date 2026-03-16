@@ -2,7 +2,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use tome_core::hash::hex_encode;
-use tome_db::entities::{blob, entry, repository, snapshot};
+use tome_db::entities::{entry, object, repository, snapshot};
 
 /// Error response body returned for 4xx/5xx responses.
 #[derive(Serialize, ToSchema)]
@@ -60,7 +60,7 @@ pub struct EntryResponse {
     pub snapshot_id: String,
     pub path: String,
     pub status: i16,
-    pub blob_id: Option<String>,
+    pub object_id: Option<String>,
     pub digest: Option<String>,
     pub mode: Option<i32>,
     pub mtime: Option<String>,
@@ -68,14 +68,14 @@ pub struct EntryResponse {
 }
 
 impl EntryResponse {
-    pub fn from_with_blob(e: entry::Model, blob: Option<&blob::Model>) -> Self {
+    pub fn from_with_object(e: entry::Model, obj: Option<&object::Model>) -> Self {
         Self {
             id: e.id.to_string(),
             snapshot_id: e.snapshot_id.to_string(),
             path: e.path,
             status: e.status,
-            blob_id: e.blob_id.map(|id| id.to_string()),
-            digest: blob.map(|b| hex_encode(&b.digest)),
+            object_id: e.object_id.map(|id| id.to_string()),
+            digest: obj.map(|b| hex_encode(&b.digest)),
             mode: e.mode,
             mtime: e.mtime.map(|t| t.to_rfc3339()),
             created_at: e.created_at.to_rfc3339(),
@@ -85,7 +85,7 @@ impl EntryResponse {
 
 impl From<entry::Model> for EntryResponse {
     fn from(m: entry::Model) -> Self {
-        Self::from_with_blob(m, None)
+        Self::from_with_object(m, None)
     }
 }
 
@@ -98,13 +98,13 @@ pub struct BlobResponse {
     pub created_at: String,
 }
 
-impl From<blob::Model> for BlobResponse {
-    fn from(m: blob::Model) -> Self {
+impl From<object::Model> for BlobResponse {
+    fn from(m: object::Model) -> Self {
         Self {
             id: m.id.to_string(),
             digest: hex_encode(&m.digest),
-            size: m.size,
-            fast_digest: format!("{:016x}", m.fast_digest as u64),
+            size: m.size.unwrap_or(0),
+            fast_digest: format!("{:016x}", m.fast_digest.unwrap_or(0) as u64),
             created_at: m.created_at.to_rfc3339(),
         }
     }
@@ -186,7 +186,7 @@ impl From<tome_db::entities::store::Model> for StoreResponse {
 #[derive(Serialize, ToSchema)]
 pub struct TagResponse {
     pub id: String,
-    pub blob_id: String,
+    pub object_id: String,
     pub key: String,
     pub value: Option<String>,
     pub created_at: String,
@@ -196,7 +196,7 @@ impl From<tome_db::entities::tag::Model> for TagResponse {
     fn from(m: tome_db::entities::tag::Model) -> Self {
         Self {
             id: m.id.to_string(),
-            blob_id: m.blob_id.to_string(),
+            object_id: m.object_id.to_string(),
             key: m.key,
             value: m.value,
             created_at: m.created_at.to_rfc3339(),

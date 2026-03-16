@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use tome_core::hash::FileHash;
 
-use crate::entities::{blob, entry, entry_cache, machine, replica, repository, snapshot, store, sync_peer, tag};
+use crate::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
 use crate::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
 
 /// Backend-agnostic metadata store trait.
@@ -57,13 +57,13 @@ pub trait MetadataStore: Send + Sync {
 
     async fn update_snapshot_metadata(&self, snapshot_id: i64, metadata: Value) -> anyhow::Result<()>;
 
-    // ── Blob ────────────────────────────────────────────────────────────
+    // ── Object ───────────────────────────────────────────────────────────
 
-    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<blob::Model>;
+    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<object::Model>;
 
-    async fn find_blob_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<blob::Model>>;
+    async fn find_object_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<object::Model>>;
 
-    async fn blobs_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<blob::Model>>;
+    async fn objects_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<object::Model>>;
 
     // ── Entry ───────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ pub trait MetadataStore: Send + Sync {
         &self,
         snapshot_id: i64,
         path: &str,
-        blob_id: i64,
+        object_id: i64,
         mode: Option<i32>,
         mtime: Option<DateTime<FixedOffset>>,
     ) -> anyhow::Result<entry::Model>;
@@ -82,17 +82,17 @@ pub trait MetadataStore: Send + Sync {
         &self,
         snapshot_id: i64,
         prefix: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>)>>;
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>)>>;
 
     async fn entries_by_prefix(&self, snapshot_id: i64, prefix: &str) -> anyhow::Result<Vec<entry::Model>>;
 
-    async fn entries_for_blob(&self, blob_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>>;
+    async fn entries_for_object(&self, object_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>>;
 
     async fn path_history(
         &self,
         repository_id: i64,
         path: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>, snapshot::Model)>>;
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>, snapshot::Model)>>;
 
     // ── Entry Cache ─────────────────────────────────────────────────────
 
@@ -126,17 +126,17 @@ pub trait MetadataStore: Send + Sync {
 
     // ── Replica ─────────────────────────────────────────────────────────
 
-    async fn replica_exists(&self, blob_id: i64, store_id: i64) -> anyhow::Result<bool>;
+    async fn replica_exists(&self, object_id: i64, store_id: i64) -> anyhow::Result<bool>;
 
     async fn insert_replica(
         &self,
-        blob_id: i64,
+        object_id: i64,
         store_id: i64,
         path: &str,
         encrypted: bool,
     ) -> anyhow::Result<replica::Model>;
 
-    async fn replicas_for_blobs(&self, blob_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>>;
+    async fn replicas_for_objects(&self, object_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>>;
 
     // ── Tag ─────────────────────────────────────────────────────────────
 

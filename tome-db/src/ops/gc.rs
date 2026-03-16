@@ -2,18 +2,18 @@ use std::collections::HashSet;
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 
-use crate::entities::{blob, entry, snapshot};
+use crate::entities::{entry, object, snapshot};
 
-/// Return the set of blob IDs referenced by any entry in the given snapshots.
-pub async fn blob_ids_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<HashSet<i64>> {
+/// Return the set of object IDs referenced by any entry in the given snapshots.
+pub async fn object_ids_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]) -> anyhow::Result<HashSet<i64>> {
     if snapshot_ids.is_empty() {
         return Ok(HashSet::new());
     }
     let ids: Vec<i64> = entry::Entity::find()
         .filter(entry::Column::SnapshotId.is_in(snapshot_ids.iter().copied()))
-        .filter(entry::Column::BlobId.is_not_null())
+        .filter(entry::Column::ObjectId.is_not_null())
         .select_only()
-        .column(entry::Column::BlobId)
+        .column(entry::Column::ObjectId)
         .into_tuple::<Option<i64>>()
         .all(db)
         .await?
@@ -23,12 +23,12 @@ pub async fn blob_ids_in_snapshots(db: &DatabaseConnection, snapshot_ids: &[i64]
     Ok(ids.into_iter().collect())
 }
 
-/// Return blobs that are not referenced by any entry (truly orphaned).
-pub async fn unreferenced_blobs(db: &DatabaseConnection) -> anyhow::Result<Vec<blob::Model>> {
+/// Return objects that are not referenced by any entry (truly orphaned).
+pub async fn unreferenced_objects(db: &DatabaseConnection) -> anyhow::Result<Vec<object::Model>> {
     let referenced: HashSet<i64> = entry::Entity::find()
-        .filter(entry::Column::BlobId.is_not_null())
+        .filter(entry::Column::ObjectId.is_not_null())
         .select_only()
-        .column(entry::Column::BlobId)
+        .column(entry::Column::ObjectId)
         .into_tuple::<Option<i64>>()
         .all(db)
         .await?
@@ -36,16 +36,16 @@ pub async fn unreferenced_blobs(db: &DatabaseConnection) -> anyhow::Result<Vec<b
         .flatten()
         .collect();
 
-    let all = blob::Entity::find().all(db).await?;
+    let all = object::Entity::find().all(db).await?;
     Ok(all.into_iter().filter(|b| !referenced.contains(&b.id)).collect())
 }
 
-/// Delete blob records by IDs; returns the count deleted.
-pub async fn delete_blob_records(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<u64> {
+/// Delete object records by IDs; returns the count deleted.
+pub async fn delete_object_records(db: &DatabaseConnection, ids: &[i64]) -> anyhow::Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
-    let res = blob::Entity::delete_many().filter(blob::Column::Id.is_in(ids.iter().copied())).exec(db).await?;
+    let res = object::Entity::delete_many().filter(object::Column::Id.is_in(ids.iter().copied())).exec(db).await?;
     Ok(res.rows_affected)
 }
 

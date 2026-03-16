@@ -1,7 +1,7 @@
-pub mod blob;
 pub mod entry;
 pub mod entry_cache;
 pub mod machine;
+pub mod object;
 pub mod replica;
 pub mod repository;
 pub mod snapshot;
@@ -9,10 +9,10 @@ pub mod store;
 pub mod sync_peer;
 pub mod tag;
 
-pub use blob::Entity as Blob;
 pub use entry::Entity as Entry;
 pub use entry_cache::Entity as EntryCache;
 pub use machine::Entity as Machine;
+pub use object::Entity as Object;
 pub use replica::Entity as Replica;
 pub use repository::Entity as Repository;
 pub use snapshot::Entity as Snapshot;

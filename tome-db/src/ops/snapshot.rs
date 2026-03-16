@@ -26,6 +26,7 @@ pub async fn create_snapshot(
         metadata: Set(serde_json::json!({})),
         source_machine_id: Set(None),
         source_snapshot_id: Set(None),
+        root_object_id: Set(None),
         created_at: Set(now),
     };
     Ok(am.insert(db).await?)
@@ -49,6 +50,7 @@ pub async fn create_snapshot_with_source(
         metadata: Set(serde_json::json!({})),
         source_machine_id: Set(Some(source_machine_id)),
         source_snapshot_id: Set(Some(source_snapshot_id)),
+        root_object_id: Set(None),
         created_at: Set(now),
     };
     Ok(am.insert(db).await?)
@@ -81,6 +83,23 @@ pub async fn update_snapshot_metadata(
 
     let mut am: snapshot::ActiveModel = snap.into();
     am.metadata = Set(metadata);
+    am.update(db).await?;
+    Ok(())
+}
+
+/// Update the root_object_id of a snapshot (set after tree object creation).
+pub async fn update_snapshot_root_object(
+    db: &DatabaseConnection,
+    snapshot_id: i64,
+    root_object_id: i64,
+) -> anyhow::Result<()> {
+    use sea_orm::ActiveValue::Set;
+    let mut am: snapshot::ActiveModel = snapshot::Entity::find_by_id(snapshot_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("snapshot {} not found", snapshot_id))?
+        .into();
+    am.root_object_id = Set(Some(root_object_id));
     am.update(db).await?;
     Ok(())
 }

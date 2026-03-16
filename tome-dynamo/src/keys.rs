@@ -13,8 +13,8 @@ pub fn snap_pk(snap_id: i64) -> String {
     format!("SNAP#{}", pad_id(snap_id))
 }
 
-pub fn blob_pk(digest_hex: &str) -> String {
-    format!("BLOB#{digest_hex}")
+pub fn obj_pk(digest_hex: &str) -> String {
+    format!("OBJ#{digest_hex}")
 }
 
 pub fn store_pk(name: &str) -> String {

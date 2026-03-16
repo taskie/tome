@@ -20,10 +20,10 @@ tome-web/
       repositories/[name]/diff/page.tsx       per-snapshot diff
       repositories/[name]/history/page.tsx    per-path history
       snapshots/[id]/page.tsx                 snapshot entry list
-      blobs/[digest]/page.tsx                 blob detail
+      objects/[digest]/page.tsx               object detail
       stores/page.tsx                         registered stores
       machines/page.tsx                       registered machines
-      tags/page.tsx                           blob tags
+      tags/page.tsx                           object tags
       sync-peers/page.tsx                     sync peer list
       globals.css                             Tailwind v4 (@import "tailwindcss")
   eslint.config.mjs    ESLint flat config (eslint-config-next 16)
@@ -42,7 +42,7 @@ graph TD
     DIFF_REPO["/repositories/.../diff<br/><small>Snapshot diff</small>"]
     HISTORY["/repositories/.../history<br/><small>File history</small>"]
     SNAP["/snapshots/[id]<br/><small>Snapshot entries</small>"]
-    BLOB["/blobs/[digest]<br/><small>Blob detail</small>"]
+    OBJ["/objects/[digest]<br/><small>Object detail</small>"]
     DIFF_X["/diff<br/><small>Cross-repo diff</small>"]
     STORES["/stores"]
     MACHINES["/machines"]
@@ -61,13 +61,13 @@ graph TD
     FILES --> HISTORY
     DIFF_REPO --> HISTORY
     DIFF_X --> HISTORY
-    HISTORY --> BLOB
+    HISTORY --> OBJ
     HISTORY --> SNAP
-    TAGS --> BLOB
+    TAGS --> OBJ
 
     style HOME fill:#fce4ec
     style REPO fill:#e3f2fd
-    style BLOB fill:#e8f5e9
+    style OBJ fill:#e8f5e9
 ```
 
 ## Key Implementation Notes

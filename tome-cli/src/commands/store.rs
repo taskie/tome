@@ -582,9 +582,7 @@ async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<
             }
         };
 
-        if file_hash.digest.as_slice() == blob.digest.as_slice()
-            && Some(file_hash.size as i64) == blob.size
-        {
+        if file_hash.digest.as_slice() == blob.digest.as_slice() && Some(file_hash.size as i64) == blob.size {
             ops::update_replica_verified_at(db, replica.id, now).await?;
             info!("ok: {}", digest_hex);
             ok += 1;

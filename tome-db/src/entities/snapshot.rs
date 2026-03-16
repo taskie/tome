@@ -11,6 +11,7 @@ pub struct Model {
     pub metadata: Json,
     pub source_machine_id: Option<i16>,
     pub source_snapshot_id: Option<i64>,
+    pub root_object_id: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
 }
 

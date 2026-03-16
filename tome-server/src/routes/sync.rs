@@ -86,7 +86,7 @@ pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResp
 
         // batch-fetch replicas for all blobs in this snapshot
         let blob_ids: Vec<i64> = pairs.iter().filter_map(|(_, b)| b.as_ref().map(|b| b.id)).collect();
-        let all_replicas = db.replicas_for_blobs(&blob_ids).await?;
+        let all_replicas = db.replicas_for_objects(&blob_ids).await?;
 
         // build a digest → [SyncReplica] map
         let blob_digest_map: HashMap<i64, String> =
@@ -94,8 +94,8 @@ pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResp
 
         let mut replica_map: HashMap<i64, Vec<SyncReplica>> = HashMap::new();
         for (replica, store) in all_replicas {
-            if let Some(digest) = blob_digest_map.get(&replica.blob_id) {
-                replica_map.entry(replica.blob_id).or_default().push(SyncReplica {
+            if let Some(digest) = blob_digest_map.get(&replica.object_id) {
+                replica_map.entry(replica.object_id).or_default().push(SyncReplica {
                     blob_digest: digest.clone(),
                     store_name: store.name,
                     store_url: store.url,
@@ -113,8 +113,8 @@ pub async fn pull(db: Db, Query(q): Query<PullQuery>) -> AppResult<Json<PullResp
                 path: entry.path,
                 status: entry.status,
                 blob_digest: blob.as_ref().map(|b| hex_encode(&b.digest)),
-                blob_size: blob.as_ref().map(|b| b.size),
-                blob_fast_digest: blob.as_ref().map(|b| b.fast_digest),
+                blob_size: blob.as_ref().and_then(|b| b.size),
+                blob_fast_digest: blob.as_ref().and_then(|b| b.fast_digest),
                 mode: entry.mode,
                 mtime: entry.mtime.map(|t| t.to_rfc3339()),
             });
@@ -230,11 +230,11 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
                     path: e.path.clone(),
                     snapshot_id: snap.id,
                     entry_id: entry.id,
-                    blob_id: blob.id,
+                    object_id: blob.id,
                     mtime,
                     digest: Some(blob.digest.clone()),
-                    size: Some(blob.size),
-                    fast_digest: Some(blob.fast_digest),
+                    size: blob.size,
+                    fast_digest: blob.fast_digest,
                 })
                 .await?;
             }
@@ -248,7 +248,7 @@ pub async fn push(db: Db, Query(q): Query<PushQuery>, Json(body): Json<PushReque
     for r in &body.replicas {
         let store = db.get_or_create_store(&r.store_name, &r.store_url, serde_json::json!({})).await?;
         let digest_bytes = hex::decode(&r.blob_digest)?;
-        if let Some(blob) = db.find_blob_by_digest(&digest_bytes).await? {
+        if let Some(blob) = db.find_object_by_digest(&digest_bytes).await? {
             if !db.replica_exists(blob.id, store.id).await? {
                 db.insert_replica(blob.id, store.id, &r.path, r.encrypted).await?;
             }

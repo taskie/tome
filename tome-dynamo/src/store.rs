@@ -669,7 +669,7 @@ impl MetadataStore for DynamoStore {
                     Some(cached.clone())
                 } else {
                     // Look up object by denormalized digest if available, else by ID scan
-                    let obj_digest = get_bytes_opt(item, "blob_digest");
+                    let obj_digest = get_bytes_opt(item, "object_digest");
                     let found = if let Some(digest) = obj_digest {
                         self.find_object_by_digest(&digest).await?
                     } else {

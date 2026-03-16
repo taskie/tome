@@ -1,14 +1,18 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "blobs")]
+#[sea_orm(table_name = "objects")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: i64,
+    /// 0 = blob, 1 = tree
+    pub object_type: i16,
     #[sea_orm(column_type = "VarBinary(StringLen::None)", unique)]
     pub digest: Vec<u8>,
-    pub size: i64,
-    pub fast_digest: i64,
+    /// File size (blob only; NULL for tree)
+    pub size: Option<i64>,
+    /// xxHash64 (blob only; NULL for tree)
+    pub fast_digest: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
 }
 

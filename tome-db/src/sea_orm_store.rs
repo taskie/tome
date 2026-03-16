@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use tome_core::hash::FileHash;
 
-use crate::entities::{blob, entry, entry_cache, machine, replica, repository, snapshot, store, sync_peer, tag};
+use crate::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
 use crate::ops;
 use crate::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
 use crate::store_trait::MetadataStore;
@@ -101,18 +101,18 @@ impl MetadataStore for SeaOrmStore {
         ops::update_snapshot_metadata(&self.db, snapshot_id, metadata).await
     }
 
-    // ── Blob ────────────────────────────────────────────────────────────
+    // ── Object ───────────────────────────────────────────────────────────
 
-    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<blob::Model> {
+    async fn get_or_create_blob(&self, file_hash: &FileHash) -> anyhow::Result<object::Model> {
         ops::get_or_create_blob(&self.db, file_hash).await
     }
 
-    async fn find_blob_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<blob::Model>> {
-        ops::find_blob_by_digest(&self.db, digest).await
+    async fn find_object_by_digest(&self, digest: &[u8]) -> anyhow::Result<Option<object::Model>> {
+        ops::find_object_by_digest(&self.db, digest).await
     }
 
-    async fn blobs_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<blob::Model>> {
-        ops::blobs_by_ids(&self.db, ids).await
+    async fn objects_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<object::Model>> {
+        ops::objects_by_ids(&self.db, ids).await
     }
 
     // ── Entry ───────────────────────────────────────────────────────────
@@ -121,11 +121,11 @@ impl MetadataStore for SeaOrmStore {
         &self,
         snapshot_id: i64,
         path: &str,
-        blob_id: i64,
+        object_id: i64,
         mode: Option<i32>,
         mtime: Option<DateTime<FixedOffset>>,
     ) -> anyhow::Result<entry::Model> {
-        ops::insert_entry_present(&self.db, snapshot_id, path, blob_id, mode, mtime).await
+        ops::insert_entry_present(&self.db, snapshot_id, path, object_id, mode, mtime).await
     }
 
     async fn insert_entry_deleted(&self, snapshot_id: i64, path: &str) -> anyhow::Result<entry::Model> {
@@ -136,7 +136,7 @@ impl MetadataStore for SeaOrmStore {
         &self,
         snapshot_id: i64,
         prefix: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>)>> {
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>)>> {
         ops::entries_with_digest(&self.db, snapshot_id, prefix).await
     }
 
@@ -144,15 +144,15 @@ impl MetadataStore for SeaOrmStore {
         ops::entries_by_prefix(&self.db, snapshot_id, prefix).await
     }
 
-    async fn entries_for_blob(&self, blob_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
-        ops::entries_for_blob(&self.db, blob_id).await
+    async fn entries_for_object(&self, object_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
+        ops::entries_for_object(&self.db, object_id).await
     }
 
     async fn path_history(
         &self,
         repository_id: i64,
         path: &str,
-    ) -> anyhow::Result<Vec<(entry::Model, Option<blob::Model>, snapshot::Model)>> {
+    ) -> anyhow::Result<Vec<(entry::Model, Option<object::Model>, snapshot::Model)>> {
         ops::path_history(&self.db, repository_id, path).await
     }
 
@@ -200,22 +200,22 @@ impl MetadataStore for SeaOrmStore {
 
     // ── Replica ─────────────────────────────────────────────────────────
 
-    async fn replica_exists(&self, blob_id: i64, store_id: i64) -> anyhow::Result<bool> {
-        ops::replica_exists(&self.db, blob_id, store_id).await
+    async fn replica_exists(&self, object_id: i64, store_id: i64) -> anyhow::Result<bool> {
+        ops::replica_exists(&self.db, object_id, store_id).await
     }
 
     async fn insert_replica(
         &self,
-        blob_id: i64,
+        object_id: i64,
         store_id: i64,
         path: &str,
         encrypted: bool,
     ) -> anyhow::Result<replica::Model> {
-        ops::insert_replica(&self.db, blob_id, store_id, path, encrypted).await
+        ops::insert_replica(&self.db, object_id, store_id, path, encrypted).await
     }
 
-    async fn replicas_for_blobs(&self, blob_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
-        ops::replicas_for_blobs(&self.db, blob_ids).await
+    async fn replicas_for_objects(&self, object_ids: &[i64]) -> anyhow::Result<Vec<(replica::Model, store::Model)>> {
+        ops::replicas_for_objects(&self.db, object_ids).await
     }
 
     // ── Tag ─────────────────────────────────────────────────────────────

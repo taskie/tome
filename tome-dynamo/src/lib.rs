@@ -8,8 +8,8 @@
 //! | REPO#\<name\>   | SNAP#\<snap_id\>            | Snapshot   |
 //! | REPO#\<name\>   | CACHE#\<path\>              | EntryCache |
 //! | SNAP#\<snap_id\> | ENTRY#\<path\>             | Entry      |
-//! | BLOB#\<digest\>  | #META                      | Blob       |
-//! | BLOB#\<digest\>  | REPLICA#\<store_name\>     | Replica    |
+//! | OBJ#\<digest\>   | #META                      | Object     |
+//! | OBJ#\<digest\>   | REPLICA#\<store_name\>     | Replica    |
 //! | STORE#\<name\>   | #META                      | Store      |
 //! | MACHINE#\<id\>   | #META                      | Machine    |
 //!

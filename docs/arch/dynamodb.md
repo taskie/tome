@@ -36,11 +36,11 @@ and does not support ad-hoc JOINs or complex queries.
 | P2 | Idempotency check | `SELECT … WHERE repo_id = ? AND source_machine_id = ? AND source_snapshot_id = ?` | 1× per push |
 | P3 | Get latest snapshot (for parent_id) | `SELECT … WHERE repository_id = ? ORDER BY created_at DESC LIMIT 1` | 1× per push |
 | P4 | Create snapshot | `INSERT INTO snapshots` | 1× per push |
-| P5 | Get or create blob (by digest) | `SELECT … WHERE digest = ?` / `INSERT` | N× per entry |
+| P5 | Get or create object (by digest) | `SELECT … WHERE digest = ?` / `INSERT` | N× per entry |
 | P6 | Insert entry | `INSERT INTO entries` | N× per entry |
 | P7 | Upsert entry_cache | `INSERT … ON CONFLICT (repo_id, path) DO UPDATE` | N× per entry |
 | P8 | Get or create store (by name) | `SELECT … WHERE name = ?` / `INSERT` | M× per replica |
-| P9 | Check replica exists | `SELECT … WHERE blob_id = ? AND store_id = ?` | M× per replica |
+| P9 | Check replica exists | `SELECT … WHERE object_id = ? AND store_id = ?` | M× per replica |
 | P10 | Insert replica | `INSERT INTO replicas` | M× per replica |
 
 ### Sync Pull (read-heavy)
@@ -49,8 +49,8 @@ and does not support ad-hoc JOINs or complex queries.
 |---|-----------|-------------|-----------|
 | L1 | Find repository by name | `SELECT … WHERE name = ?` | 1× per pull |
 | L2 | List snapshots after ID | `SELECT … WHERE repo_id = ? AND id > ? ORDER BY created_at` | 1× per pull |
-| L3 | List entries for snapshot (with blob) | `SELECT e.*, b.* FROM entries e LEFT JOIN blobs b …` | K× per snapshot |
-| L4 | List replicas for blob IDs | `SELECT r.*, s.* FROM replicas r JOIN stores s … WHERE blob_id IN (?)` | K× per snapshot |
+| L3 | List entries for snapshot (with object) | `SELECT e.*, o.* FROM entries e LEFT JOIN objects o …` | K× per snapshot |
+| L4 | List replicas for object IDs | `SELECT r.*, s.* FROM replicas r JOIN stores s … WHERE object_id IN (?)` | K× per snapshot |
 
 ### Web UI (read-only, lower priority)
 
@@ -60,7 +60,7 @@ and does not support ad-hoc JOINs or complex queries.
 | W2 | List snapshots for repo | Paginated, ordered by created_at DESC |
 | W3 | List entries for snapshot | Filtered by prefix, paginated |
 | W4 | List entry_cache (current files) | Filtered by prefix, paginated |
-| W5 | Get blob by digest | Single-item lookup |
+| W5 | Get object by digest | Single-item lookup |
 | W6 | Path history | Entries across snapshots for a given (repo, path) |
 | W7 | Cross-repo diff (entry_cache) | Two repo scans + compare |
 | W8 | List stores, machines, tags, sync_peers | Small collections |
@@ -91,9 +91,9 @@ REPO#<name>                     #META                       Repository
 REPO#<name>                     SNAP#<snap_id>              Snapshot
 REPO#<name>                     CACHE#<path>                EntryCache
 SNAP#<snap_id>                  ENTRY#<path>                Entry
-BLOB#<digest_hex>               #META                       Blob
-BLOB#<digest_hex>               REPLICA#<store_name>        Replica
-BLOB#<digest_hex>               TAG#<key>                   Tag
+OBJ#<digest_hex>               #META                       Object
+OBJ#<digest_hex>               REPLICA#<store_name>        Replica
+OBJ#<digest_hex>               TAG#<key>                   Tag
 STORE#<name>                    #META                       Store
 MACHINE#<machine_id>            #META                       Machine
 ```
@@ -106,15 +106,15 @@ MACHINE#<machine_id>            #META                       Machine
 | P2: Idempotency check | `Query(GSI1, PK=REPO#name#SRC#mid, SK=src_snap_id)` | GSI1 |
 | P3: Latest snapshot | `Query(PK=REPO#name, SK begins_with SNAP#, ScanIndexForward=false, Limit=1)` | Main table, reverse |
 | P4: Create snapshot | `PutItem(PK=REPO#name, SK=SNAP#snap_id)` | Direct write |
-| P5: Get blob by digest | `GetItem(PK=BLOB#digest, SK=#META)` | Direct lookup |
+| P5: Get object by digest | `GetItem(PK=OBJ#digest, SK=#META)` | Direct lookup |
 | P6: Insert entry | `PutItem(PK=SNAP#snap_id, SK=ENTRY#path)` | Direct write |
 | P7: Upsert cache | `PutItem(PK=REPO#name, SK=CACHE#path)` | Overwrites existing |
 | P8: Get store by name | `GetItem(PK=STORE#name, SK=#META)` | Direct lookup |
-| P9: Check replica | `GetItem(PK=BLOB#digest, SK=REPLICA#store_name)` | Direct lookup |
-| P10: Insert replica | `PutItem(PK=BLOB#digest, SK=REPLICA#store_name)` | Direct write |
+| P9: Check replica | `GetItem(PK=OBJ#digest, SK=REPLICA#store_name)` | Direct lookup |
+| P10: Insert replica | `PutItem(PK=OBJ#digest, SK=REPLICA#store_name)` | Direct write |
 | L2: Snapshots after | `Query(PK=REPO#name, SK > SNAP#after_id)` | Range query (Sonyflake IDs are time-ordered) |
 | L3: Entries for snapshot | `Query(PK=SNAP#snap_id, SK begins_with ENTRY#)` | Collection query |
-| L4: Replicas for blob | `Query(PK=BLOB#digest, SK begins_with REPLICA#)` | Collection query |
+| L4: Replicas for object | `Query(PK=OBJ#digest, SK begins_with REPLICA#)` | Collection query |
 | W4: Entry cache by prefix | `Query(PK=REPO#name, SK between CACHE#prefix… and CACHE#prefix~)` | Prefix range |
 | W6: Path history | `Query(GSI2, PK=REPO#name#PATH#path)` | GSI2 |
 
@@ -205,9 +205,9 @@ Written on all `#META` items. Low cardinality, suitable for small admin collecti
   "SK": "ENTRY#src/main.rs",
   "id": 4567890,
   "status": 1,
-  "blob_digest": "abcdef0123456789…",  // Hex string (denormalized from blob)
-  "blob_size": 2048,
-  "blob_fast_digest": 1234567890,
+  "object_digest": "abcdef0123456789…",  // Hex string (denormalized from object)
+  "object_size": 2048,
+  "object_fast_digest": 1234567890,
   "mode": 33188,
   "mtime": "2025-01-15T11:30:00Z",
   "created_at": "2025-01-15T12:00:00Z",
@@ -219,8 +219,8 @@ Written on all `#META` items. Low cardinality, suitable for small admin collecti
 }
 ```
 
-> **Denormalized blob fields**: `blob_digest`, `blob_size`, `blob_fast_digest` are copied
-> from the Blob item into each Entry. This eliminates the need for JOINs during sync pull
+> **Denormalized object fields**: `object_digest`, `object_size`, `object_fast_digest` are copied
+> from the Object item into each Entry. This eliminates the need for JOINs during sync pull
 > (the current PostgreSQL `entries_with_digest` LEFT JOIN becomes a single Query).
 
 ### EntryCache (`REPO#<name>`, `CACHE#<path>`)
@@ -232,19 +232,19 @@ Written on all `#META` items. Low cardinality, suitable for small admin collecti
   "snapshot_id": 3456789,
   "entry_id": 4567890,
   "status": 1,
-  "blob_digest": "abcdef0123456789…",
-  "blob_size": 2048,
-  "blob_fast_digest": 1234567890,
+  "object_digest": "abcdef0123456789…",
+  "object_size": 2048,
+  "object_fast_digest": 1234567890,
   "mtime": "2025-01-15T11:30:00Z",
   "updated_at": "2025-01-15T12:00:00Z"
 }
 ```
 
-### Blob (`BLOB#<digest_hex>`, `#META`)
+### Object (`OBJ#<digest_hex>`, `#META`)
 
 ```jsonc
 {
-  "PK": "BLOB#abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "PK": "OBJ#abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "SK": "#META",
   "id": 5678901,
   "size": 2048,
@@ -253,11 +253,11 @@ Written on all `#META` items. Low cardinality, suitable for small admin collecti
 }
 ```
 
-### Replica (`BLOB#<digest_hex>`, `REPLICA#<store_name>`)
+### Replica (`OBJ#<digest_hex>`, `REPLICA#<store_name>`)
 
 ```jsonc
 {
-  "PK": "BLOB#abcdef01…",
+  "PK": "OBJ#abcdef01…",
   "SK": "REPLICA#my-s3-store",
   "id": 6789012,
   "store_name": "my-s3-store",
@@ -333,14 +333,14 @@ POST /sync/push?repo=default
                                     4. PutItem(REPO#default, SNAP#<new_id>)
 
                                     5. For each entry:
-                                       a. GetItem(BLOB#<digest>, #META)
+                                       a. GetItem(OBJ#<digest>, #META)
                                           → create if not exists (PutItem, condition)
                                        b. PutItem(SNAP#<new_id>, ENTRY#<path>)
-                                          (with denormalized blob fields + GSI2 attrs)
+                                          (with denormalized object fields + GSI2 attrs)
                                        c. PutItem(REPO#default, CACHE#<path>)
 
                                     6. For each replica:
-                                       a. PutItem(BLOB#<digest>, REPLICA#<store>)
+                                       a. PutItem(OBJ#<digest>, REPLICA#<store>)
                                           (conditional: attribute_not_exists)
                                        b. PutItem(STORE#<store>, #META)
                                           (conditional: attribute_not_exists)
@@ -365,10 +365,10 @@ GET /sync/pull?repo=default
 
                                     3. For each snapshot:
                                        a. Query(SNAP#<id>, SK begins_with ENTRY#)
-                                          → entries with denormalized blob fields
+                                          → entries with denormalized object fields
                                        b. Collect unique digests
                                        c. For each digest:
-                                          Query(BLOB#<digest>, SK begins_with REPLICA#)
+                                          Query(OBJ#<digest>, SK begins_with REPLICA#)
                                           → replicas (with denormalized store info)
 
                                     → { snapshots: [...] }
@@ -389,7 +389,7 @@ DynamoDB conditional expressions replace SQL `INSERT … ON CONFLICT`:
 
 | Pattern | DynamoDB |
 |---------|----------|
-| Get-or-create blob | `PutItem` with `attribute_not_exists(PK)` — succeeds if new, ConditionalCheckFailed if exists |
+| Get-or-create object | `PutItem` with `attribute_not_exists(PK)` — succeeds if new, ConditionalCheckFailed if exists |
 | Upsert entry_cache | `PutItem` — unconditional overwrite (same as `ON CONFLICT DO UPDATE`) |
 | Idempotent replica | `PutItem` with `attribute_not_exists(PK)` |
 | Idempotent store | `PutItem` with `attribute_not_exists(PK)` |
@@ -433,7 +433,7 @@ For pushes exceeding 100 entries, a two-phase approach:
 
 ### Per-Push Cost Estimate
 
-Assumptions: 1 push = 500 changed files, 200 unique blobs, 100 replicas.
+Assumptions: 1 push = 500 changed files, 200 unique objects, 100 replicas.
 
 | Operation | Count | WCU | RCU |
 |-----------|-------|-----|-----|
@@ -441,7 +441,7 @@ Assumptions: 1 push = 500 changed files, 200 unique blobs, 100 replicas.
 | Idempotency check (GSI, EC) | 1 | — | 0.5 |
 | Latest snapshot (consistent) | 1 | — | 1 |
 | Create snapshot | 1 | 1 | — |
-| Get-or-create blobs | 200 | 200 | 200 |
+| Get-or-create objects | 200 | 200 | 200 |
 | Insert entries | 500 | 500 | — |
 | Upsert cache | 500 | 500 | — |
 | Check+insert replicas | 100 | 100 | 100 |
@@ -484,7 +484,7 @@ tome-dynamo/
       repository.rs
       snapshot.rs
       entry.rs
-      blob.rs
+      object.rs
       replica.rs
       store.rs
       machine.rs
@@ -509,23 +509,23 @@ pub trait MetadataStore: Send + Sync {
     async fn latest_snapshot(&self, repo_id: i64) -> Result<Option<Snapshot>>;
     async fn find_snapshot_by_source(&self, repo_id: i64, mid: i16, sid: i64) -> Result<Option<Snapshot>>;
 
-    // Blob
-    async fn get_or_create_blob(&self, hash: &FileHash) -> Result<Blob>;
-    async fn find_blob_by_digest(&self, digest: &[u8]) -> Result<Option<Blob>>;
+    // Object
+    async fn get_or_create_object(&self, hash: &FileHash) -> Result<Object>;
+    async fn find_object_by_digest(&self, digest: &[u8]) -> Result<Option<Object>>;
 
     // Entry
-    async fn insert_entry_present(&self, snap_id: i64, path: &str, blob_id: i64, mode: Option<i32>, mtime: Option<DateTimeFixedOffset>) -> Result<Entry>;
+    async fn insert_entry_present(&self, snap_id: i64, path: &str, object_id: i64, mode: Option<i32>, mtime: Option<DateTimeFixedOffset>) -> Result<Entry>;
     async fn insert_entry_deleted(&self, snap_id: i64, path: &str) -> Result<Entry>;
-    async fn entries_with_digest(&self, snap_id: i64, prefix: &str) -> Result<Vec<(Entry, Option<Blob>)>>;
+    async fn entries_with_digest(&self, snap_id: i64, prefix: &str) -> Result<Vec<(Entry, Option<Object>)>>;
 
     // EntryCache
     async fn upsert_cache_present(&self, params: UpsertCachePresentParams) -> Result<()>;
     async fn upsert_cache_deleted(&self, repo_id: i64, path: &str, snap_id: i64, entry_id: i64) -> Result<()>;
 
     // Replica
-    async fn replicas_for_blobs(&self, blob_ids: &[i64]) -> Result<Vec<(Replica, Store)>>;
-    async fn replica_exists(&self, blob_id: i64, store_id: i64) -> Result<bool>;
-    async fn insert_replica(&self, blob_id: i64, store_id: i64, path: &str, encrypted: bool) -> Result<()>;
+    async fn replicas_for_objects(&self, object_ids: &[i64]) -> Result<Vec<(Replica, Store)>>;
+    async fn replica_exists(&self, object_id: i64, store_id: i64) -> Result<bool>;
+    async fn insert_replica(&self, object_id: i64, store_id: i64, path: &str, encrypted: bool) -> Result<()>;
 
     // Store
     async fn get_or_create_store(&self, name: &str, url: &str, config: Value) -> Result<Store>;
@@ -668,7 +668,7 @@ resource "aws_dynamodb_table" "tome" {
 | **Large snapshots (>100K entries)** | BatchWriteItem (25 items/batch), parallel batches |
 | **Hot partition (single repo)** | Sonyflake IDs distribute well; DynamoDB adaptive capacity handles bursts |
 | **GSI eventual consistency** | Use `ConsistentRead` on main table for critical reads; GSI only for non-critical |
-| **Entry denormalization drift** | Blob fields are write-once (content-addressed); no drift possible |
+| **Entry denormalization drift** | Object fields are write-once (content-addressed); no drift possible |
 | **Future query requirements** | Export to S3 + Athena for analytics; keep PostgreSQL path as fallback |
 
 ---

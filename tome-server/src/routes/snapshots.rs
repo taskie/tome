@@ -36,5 +36,5 @@ pub async fn list_entries(
 ) -> AppResult<Json<Vec<EntryResponse>>> {
     let snapshot_id: i64 = id.parse().map_err(|_| AppError::bad_request("invalid snapshot id"))?;
     let pairs = db.entries_with_digest(snapshot_id, &q.prefix).await?;
-    Ok(Json(pairs.into_iter().map(|(e, b)| EntryResponse::from_with_blob(e, b.as_ref())).collect()))
+    Ok(Json(pairs.into_iter().map(|(e, b)| EntryResponse::from_with_object(e, b.as_ref())).collect()))
 }
