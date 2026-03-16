@@ -7,7 +7,7 @@ use tome_core::hash::FileHash;
 
 use crate::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
 use crate::ops;
-use crate::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
+use crate::ops::{ListCacheEntriesParams, ListDirEntriesParams, UpsertCachePresentParams};
 use crate::store_trait::MetadataStore;
 
 /// SeaORM-backed [`MetadataStore`] implementation (PostgreSQL / SQLite).
@@ -186,6 +186,10 @@ impl MetadataStore for SeaOrmStore {
         params: &ListCacheEntriesParams,
     ) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
         ops::list_cache_entries(&self.db, params).await
+    }
+
+    async fn list_dir_entries(&self, params: &ListDirEntriesParams) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
+        ops::list_dir_entries(&self.db, params).await
     }
 
     // ── Store ───────────────────────────────────────────────────────────

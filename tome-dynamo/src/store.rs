@@ -11,7 +11,7 @@ use serde_json::Value;
 use tome_core::hash::{FileHash, hex_encode};
 use tome_core::id::next_id;
 use tome_db::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
-use tome_db::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
+use tome_db::ops::{ListCacheEntriesParams, ListDirEntriesParams, UpsertCachePresentParams};
 use tome_db::store_trait::MetadataStore;
 
 use crate::keys;
@@ -236,6 +236,7 @@ fn item_to_entry(item: &Item) -> anyhow::Result<entry::Model> {
         status: get_n_i16(item, "status")?,
         object_id: get_n_i64_opt(item, "object_id"),
         mode: get_n_i32_opt(item, "mode"),
+        depth: get_n_i16(item, "depth").unwrap_or(0),
         mtime: get_datetime_opt(item, "mtime"),
         created_at: get_datetime(item, "created_at")?,
     })
@@ -253,6 +254,8 @@ fn item_to_entry_cache(item: &Item) -> anyhow::Result<entry_cache::Model> {
         digest: get_bytes_opt(item, "digest"),
         size: get_n_i64_opt(item, "size"),
         fast_digest: get_n_i64_opt(item, "fast_digest"),
+        depth: get_n_i16(item, "depth").unwrap_or(0),
+        mode: get_n_i32_opt(item, "mode"),
         updated_at: get_datetime(item, "updated_at")?,
     })
 }
@@ -565,8 +568,7 @@ impl MetadataStore for DynamoStore {
     ) -> anyhow::Result<entry::Model> {
         let id = next_id()?;
         let now = now_iso();
-
-        // Denormalize: look up snapshot for repo name
+        let depth = path.bytes().filter(|&b| b == b'/').count() as i16;
         let snap = self
             .find_snapshot_by_id(snapshot_id)
             .await?
@@ -587,6 +589,7 @@ impl MetadataStore for DynamoStore {
         item.insert("path".into(), s(path));
         item.insert("status".into(), n_i16(1)); // present
         item.insert("object_id".into(), n_i64(object_id));
+        item.insert("depth".into(), n_i16(depth));
         if let Some(m) = mode {
             item.insert("mode".into(), n_i32(m));
         }
@@ -604,6 +607,7 @@ impl MetadataStore for DynamoStore {
             status: 1,
             object_id: Some(object_id),
             mode,
+            depth,
             mtime,
             created_at: now.parse()?,
         })
@@ -612,6 +616,7 @@ impl MetadataStore for DynamoStore {
     async fn insert_entry_deleted(&self, snapshot_id: i64, path: &str) -> anyhow::Result<entry::Model> {
         let id = next_id()?;
         let now = now_iso();
+        let depth = path.bytes().filter(|&b| b == b'/').count() as i16;
 
         let snap = self
             .find_snapshot_by_id(snapshot_id)
@@ -631,6 +636,7 @@ impl MetadataStore for DynamoStore {
         item.insert("snapshot_id".into(), n_i64(snapshot_id));
         item.insert("path".into(), s(path));
         item.insert("status".into(), n_i16(2)); // deleted
+        item.insert("depth".into(), n_i16(depth));
         item.insert("created_at".into(), s(&now));
 
         self.put_item(item).await?;
@@ -642,6 +648,7 @@ impl MetadataStore for DynamoStore {
             status: 2,
             object_id: None,
             mode: None,
+            depth,
             mtime: None,
             created_at: now.parse()?,
         })
@@ -738,6 +745,7 @@ impl MetadataStore for DynamoStore {
         let pk = keys::repo_pk(&repo_name);
         let sk = keys::cache_sk(&params.path);
         let now = now_iso();
+        let depth = params.path.bytes().filter(|&b| b == b'/').count() as i16;
 
         let mut item = HashMap::new();
         item.insert("PK".into(), s(&pk));
@@ -748,6 +756,10 @@ impl MetadataStore for DynamoStore {
         item.insert("entry_id".into(), n_i64(params.entry_id));
         item.insert("status".into(), n_i16(1));
         item.insert("object_id".into(), n_i64(params.object_id));
+        item.insert("depth".into(), n_i16(depth));
+        if let Some(m) = params.mode {
+            item.insert("mode".into(), n_i32(m));
+        }
         if let Some(mt) = &params.mtime {
             item.insert("mtime".into(), s(&datetime_iso(mt)));
         }
@@ -776,6 +788,7 @@ impl MetadataStore for DynamoStore {
         let pk = keys::repo_pk(&repo_name);
         let sk = keys::cache_sk(path);
         let now = now_iso();
+        let depth = path.bytes().filter(|&b| b == b'/').count() as i16;
 
         let mut item = HashMap::new();
         item.insert("PK".into(), s(&pk));
@@ -785,6 +798,7 @@ impl MetadataStore for DynamoStore {
         item.insert("snapshot_id".into(), n_i64(snapshot_id));
         item.insert("entry_id".into(), n_i64(entry_id));
         item.insert("status".into(), n_i16(2));
+        item.insert("depth".into(), n_i16(depth));
         item.insert("updated_at".into(), s(&now));
 
         self.put_item(item).await
@@ -820,6 +834,15 @@ impl MetadataStore for DynamoStore {
         let total = all.len() as u64;
         let start = ((params.page - 1) * params.per_page) as usize;
         let page: Vec<_> = all.into_iter().skip(start).take(params.per_page as usize).collect();
+        Ok((page, total))
+    }
+
+    async fn list_dir_entries(&self, params: &ListDirEntriesParams) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
+        let all = self.cache_entries_by_prefix(params.repository_id, &params.dir, params.include_deleted).await?;
+        let filtered: Vec<_> = all.into_iter().filter(|e| e.depth == params.depth).collect();
+        let total = filtered.len() as u64;
+        let start = ((params.page - 1) * params.per_page) as usize;
+        let page: Vec<_> = filtered.into_iter().skip(start).take(params.per_page as usize).collect();
         Ok((page, total))
     }
 

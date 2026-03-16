@@ -5,6 +5,7 @@ use sea_orm::{
 };
 
 use crate::entities::entry_cache;
+use crate::ops::entry::path_depth;
 
 /// Read the entry cache for a repository. Returns a map of path → cached entry.
 pub async fn load_entry_cache(
@@ -26,11 +27,13 @@ pub struct UpsertCachePresentParams {
     pub digest: Option<Vec<u8>>,
     pub size: Option<i64>,
     pub fast_digest: Option<i64>,
+    pub mode: Option<i32>,
 }
 
 /// Upsert (insert or replace) a cache row for a present file.
 pub async fn upsert_cache_present<C: ConnectionTrait>(conn: &C, p: UpsertCachePresentParams) -> anyhow::Result<()> {
     let now = Utc::now().fixed_offset();
+    let depth = path_depth(&p.path);
     let am = entry_cache::ActiveModel {
         repository_id: Set(p.repository_id),
         path: Set(p.path),
@@ -42,6 +45,8 @@ pub async fn upsert_cache_present<C: ConnectionTrait>(conn: &C, p: UpsertCachePr
         digest: Set(p.digest),
         size: Set(p.size),
         fast_digest: Set(p.fast_digest),
+        depth: Set(depth),
+        mode: Set(p.mode),
         updated_at: Set(now),
     };
     entry_cache::Entity::insert(am)
@@ -56,6 +61,8 @@ pub async fn upsert_cache_present<C: ConnectionTrait>(conn: &C, p: UpsertCachePr
                     entry_cache::Column::Digest,
                     entry_cache::Column::Size,
                     entry_cache::Column::FastDigest,
+                    entry_cache::Column::Depth,
+                    entry_cache::Column::Mode,
                     entry_cache::Column::UpdatedAt,
                 ])
                 .to_owned(),
@@ -74,6 +81,7 @@ pub async fn upsert_cache_deleted<C: ConnectionTrait>(
     entry_id: i64,
 ) -> anyhow::Result<()> {
     let now = Utc::now().fixed_offset();
+    let depth = path_depth(path);
     let am = entry_cache::ActiveModel {
         repository_id: Set(repository_id),
         path: Set(path.to_owned()),
@@ -85,6 +93,8 @@ pub async fn upsert_cache_deleted<C: ConnectionTrait>(
         digest: Set(None),
         size: Set(None),
         fast_digest: Set(None),
+        depth: Set(depth),
+        mode: Set(None),
         updated_at: Set(now),
     };
     entry_cache::Entity::insert(am)
@@ -99,6 +109,8 @@ pub async fn upsert_cache_deleted<C: ConnectionTrait>(
                     entry_cache::Column::Digest,
                     entry_cache::Column::Size,
                     entry_cache::Column::FastDigest,
+                    entry_cache::Column::Depth,
+                    entry_cache::Column::Mode,
                     entry_cache::Column::UpdatedAt,
                 ])
                 .to_owned(),
@@ -159,6 +171,41 @@ pub async fn list_cache_entries(
     }
     if !p.prefix.is_empty() {
         q = q.filter(entry_cache::Column::Path.like(format!("{}%", p.prefix)));
+    }
+
+    let total = q.clone().count(db).await?;
+    let offset = p.page.saturating_sub(1) * p.per_page;
+    let rows = q.order_by_asc(entry_cache::Column::Path).offset(offset).limit(p.per_page).all(db).await?;
+    Ok((rows, total))
+}
+
+pub struct ListDirEntriesParams {
+    pub repository_id: i64,
+    pub include_deleted: bool,
+    /// Normalized directory prefix (e.g., "src/" or "" for root).
+    pub dir: String,
+    /// Target depth (number of '/' in the dir prefix).
+    pub depth: i16,
+    /// 1-based page number.
+    pub page: u64,
+    pub per_page: u64,
+}
+
+/// List direct children of a directory from entry_cache.
+/// Uses the (repository_id, depth, path) index for efficient lookup.
+/// Returns `(items, total_count)`.
+pub async fn list_dir_entries(
+    db: &DatabaseConnection,
+    p: &ListDirEntriesParams,
+) -> anyhow::Result<(Vec<entry_cache::Model>, u64)> {
+    let mut q = entry_cache::Entity::find()
+        .filter(entry_cache::Column::RepositoryId.eq(p.repository_id))
+        .filter(entry_cache::Column::Depth.eq(p.depth));
+    if !p.include_deleted {
+        q = q.filter(entry_cache::Column::Status.eq(1i16));
+    }
+    if !p.dir.is_empty() {
+        q = q.filter(entry_cache::Column::Path.like(format!("{}%", p.dir)));
     }
 
     let total = q.clone().count(db).await?;

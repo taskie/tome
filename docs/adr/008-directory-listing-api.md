@@ -1,6 +1,6 @@
 # ADR-008: Directory Listing API for Web UI
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-03
 
 ## Context

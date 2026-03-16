@@ -10,6 +10,11 @@ use tome_core::id::next_id;
 
 use crate::entities::{entry, object, snapshot};
 
+/// Compute path depth (number of '/' separators).
+pub fn path_depth(path: &str) -> i16 {
+    path.bytes().filter(|&b| b == b'/').count() as i16
+}
+
 /// Insert a new entry (present file).
 pub async fn insert_entry_present<C: ConnectionTrait>(
     conn: &C,
@@ -27,6 +32,7 @@ pub async fn insert_entry_present<C: ConnectionTrait>(
         status: Set(1), // present
         object_id: Set(Some(object_id)),
         mode: Set(mode),
+        depth: Set(path_depth(path)),
         mtime: Set(mtime),
         created_at: Set(now),
     };
@@ -47,6 +53,7 @@ pub async fn insert_entry_deleted<C: ConnectionTrait>(
         status: Set(0), // deleted
         object_id: Set(None),
         mode: Set(None),
+        depth: Set(path_depth(path)),
         mtime: Set(None),
         created_at: Set(now),
     };

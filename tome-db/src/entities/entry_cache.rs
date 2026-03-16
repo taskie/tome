@@ -18,6 +18,10 @@ pub struct Model {
     pub size: Option<i64>,
     /// Denormalized from blobs.fast_digest
     pub fast_digest: Option<i64>,
+    /// Number of '/' separators in path (for directory listing queries).
+    pub depth: i16,
+    /// File mode (denormalized from entries.mode). 16384 = directory.
+    pub mode: Option<i32>,
     pub updated_at: DateTimeWithTimeZone,
 }
 

@@ -47,13 +47,15 @@ CREATE TABLE entries (
     status      SMALLINT    NOT NULL,
     object_id   BIGINT      NULL     REFERENCES objects (id),
     mode        INTEGER     NULL,
+    depth       SMALLINT    NOT NULL DEFAULT 0,  -- number of '/' in path
     mtime       TIMESTAMPTZ NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_entries_snapshot_path UNIQUE (snapshot_id, path)
 );
 
-CREATE INDEX ix_entries_object          ON entries (object_id);
-CREATE INDEX ix_entries_snapshot_status  ON entries (snapshot_id, status);
+CREATE INDEX ix_entries_object              ON entries (object_id);
+CREATE INDEX ix_entries_snapshot_status      ON entries (snapshot_id, status);
+CREATE INDEX idx_entries_snapshot_depth_path ON entries (snapshot_id, depth, path);
 
 -- 5. entry_cache
 CREATE TABLE entry_cache (
@@ -67,9 +69,13 @@ CREATE TABLE entry_cache (
     digest        BYTEA       NULL,
     size          BIGINT      NULL,
     fast_digest   BIGINT      NULL,
+    depth         SMALLINT    NOT NULL DEFAULT 0,  -- number of '/' in path
+    mode          INTEGER     NULL,                -- file mode (16384 = directory)
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (repository_id, path)
 );
+
+CREATE INDEX idx_entry_cache_repo_depth_path ON entry_cache (repository_id, depth, path);
 
 -- 6. stores
 CREATE TABLE stores (

@@ -14,6 +14,7 @@ mod m20230901_000010_create_machines;
 mod m20230901_000011_add_snapshot_source;
 mod m20230901_000012_add_replicas_store_idx;
 mod m20230901_000013_blobs_to_objects;
+mod m20230901_000014_add_depth_and_mode;
 
 pub struct Migrator;
 
@@ -34,6 +35,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230901_000011_add_snapshot_source::Migration),
             Box::new(m20230901_000012_add_replicas_store_idx::Migration),
             Box::new(m20230901_000013_blobs_to_objects::Migration),
+            Box::new(m20230901_000014_add_depth_and_mode::Migration),
         ]
     }
 }

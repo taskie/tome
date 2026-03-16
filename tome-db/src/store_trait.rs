@@ -6,7 +6,7 @@ use serde_json::Value;
 use tome_core::hash::FileHash;
 
 use crate::entities::{entry, entry_cache, machine, object, replica, repository, snapshot, store, sync_peer, tag};
-use crate::ops::{ListCacheEntriesParams, UpsertCachePresentParams};
+use crate::ops::{ListCacheEntriesParams, ListDirEntriesParams, UpsertCachePresentParams};
 
 /// Backend-agnostic metadata store trait.
 ///
@@ -117,6 +117,8 @@ pub trait MetadataStore: Send + Sync {
         &self,
         params: &ListCacheEntriesParams,
     ) -> anyhow::Result<(Vec<entry_cache::Model>, u64)>;
+
+    async fn list_dir_entries(&self, params: &ListDirEntriesParams) -> anyhow::Result<(Vec<entry_cache::Model>, u64)>;
 
     // ── Store ───────────────────────────────────────────────────────────
 

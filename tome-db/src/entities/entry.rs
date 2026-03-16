@@ -11,6 +11,8 @@ pub struct Model {
     pub status: i16,
     pub object_id: Option<i64>,
     pub mode: Option<i32>,
+    /// Number of '/' separators in path (for directory listing queries).
+    pub depth: i16,
     pub mtime: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
 }
