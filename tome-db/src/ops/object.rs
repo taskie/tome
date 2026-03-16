@@ -28,7 +28,12 @@ pub async fn get_or_create_blob<C: ConnectionTrait>(conn: &C, file_hash: &FileHa
 }
 
 /// Find or create a tree object by digest.
-pub async fn get_or_create_tree<C: ConnectionTrait>(conn: &C, digest: &[u8]) -> anyhow::Result<object::Model> {
+pub async fn get_or_create_tree<C: ConnectionTrait>(
+    conn: &C,
+    digest: &[u8],
+    size: i64,
+    fast_digest: i64,
+) -> anyhow::Result<object::Model> {
     if let Some(t) = object::Entity::find().filter(object::Column::Digest.eq(digest)).one(conn).await? {
         return Ok(t);
     }
@@ -38,8 +43,8 @@ pub async fn get_or_create_tree<C: ConnectionTrait>(conn: &C, digest: &[u8]) -> 
         id: Set(next_id()?),
         object_type: Set(ObjectType::Tree.as_i16()),
         digest: Set(digest.to_vec()),
-        size: Set(None),
-        fast_digest: Set(None),
+        size: Set(Some(size)),
+        fast_digest: Set(Some(fast_digest)),
         created_at: Set(now),
     };
     Ok(am.insert(conn).await?)

@@ -472,9 +472,9 @@ async fn compute_tree_objects(db: &DatabaseConnection, snapshot_id: i64, algo: D
         // Compute tree hash
         let children_refs: Vec<(u8, &str, &[u8])> =
             children.iter().map(|(k, n, d)| (*k, n.as_str(), d.as_slice())).collect();
-        let digest = treblo::native::tree::compute_tree_hash(&children_refs, hash_algo);
+        let result = treblo::native::tree::compute_tree_hash(&children_refs, hash_algo);
 
-        let tree_obj = ops::get_or_create_tree(&txn, &digest).await?;
+        let tree_obj = ops::get_or_create_tree(&txn, &result.digest, result.size as i64, result.fast_digest).await?;
 
         // Insert directory entry (skip root — root is referenced via snapshot.root_object_id)
         if !dir.is_empty() {
@@ -483,11 +483,11 @@ async fn compute_tree_objects(db: &DatabaseConnection, snapshot_id: i64, algo: D
 
         debug!(
             "tree       {}  {}",
-            tome_core::hash::hex_encode(&digest)[..12].to_owned(),
+            tome_core::hash::hex_encode(&result.digest)[..12].to_owned(),
             if dir.is_empty() { "(root)" } else { dir },
         );
 
-        tree_digest.insert(dir.clone(), (tree_obj.id, digest));
+        tree_digest.insert(dir.clone(), (tree_obj.id, result.digest));
     }
 
     txn.commit().await?;

@@ -20,8 +20,8 @@ CREATE TABLE objects (
     id          BIGINT      NOT NULL PRIMARY KEY,
     object_type SMALLINT    NOT NULL,            -- 0 = blob, 1 = tree
     digest      BYTEA       NOT NULL UNIQUE,     -- content hash (blob) or Merkle tree hash (tree)
-    size        BIGINT      NULL,                -- file size (blob only)
-    fast_digest BIGINT      NULL,                -- xxHash64 (blob only)
+    size        BIGINT      NOT NULL,            -- file size (blob) or serialized tree size (tree)
+    fast_digest BIGINT      NOT NULL,            -- xxHash64 of content
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -9,9 +9,9 @@ pub struct Model {
     pub object_type: i16,
     #[sea_orm(column_type = "VarBinary(StringLen::None)", unique)]
     pub digest: Vec<u8>,
-    /// File size (blob only; NULL for tree)
+    /// File size (blob) or serialized tree content size (tree).
     pub size: Option<i64>,
-    /// xxHash64 (blob only; NULL for tree)
+    /// xxHash64 of content.
     pub fast_digest: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
 }

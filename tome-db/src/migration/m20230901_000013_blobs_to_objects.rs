@@ -24,8 +24,8 @@ impl MigrationTrait for Migration {
                 id              BIGINT NOT NULL PRIMARY KEY,
                 object_type     SMALLINT NOT NULL DEFAULT 0,
                 digest          BLOB NOT NULL UNIQUE,
-                size            BIGINT,
-                fast_digest     BIGINT,
+                size            BIGINT NOT NULL,
+                fast_digest     BIGINT NOT NULL,
                 created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
             )",
         )

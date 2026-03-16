@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub mod tree;
-pub use tree::{compute_tree_hash, empty_tree_hash, hash_bytes, hash_file_content};
+pub use tree::{TreeHashResult, compute_tree_hash, empty_tree_hash, hash_bytes, hash_file_content};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // EntryKind
@@ -151,7 +151,7 @@ pub fn compute_root_hash(root: &Path, config: &HashConfig, options: &WalkOptions
         }
 
         let refs: Vec<(u8, &str, &[u8])> = children.iter().map(|(k, n, h)| (*k, n.as_str(), h.as_slice())).collect();
-        let tree_hash = compute_tree_hash(&refs, algorithm);
+        let tree_hash = compute_tree_hash(&refs, algorithm).digest;
 
         // Relative path from root ("" for root itself).
         let rel_path = dir_path.strip_prefix(&root).unwrap_or(dir_path).to_string_lossy().to_string();
@@ -208,7 +208,7 @@ pub fn compute_tree_from_entries(entries: &[TreeEntry], config: &HashConfig) -> 
 
     let refs: Vec<(u8, &str, &[u8])> =
         entries.iter().map(|e| (e.kind.kind_byte(), e.name.as_str(), e.hash.as_slice())).collect();
-    Ok(compute_tree_hash(&refs, config.algorithm))
+    Ok(compute_tree_hash(&refs, config.algorithm).digest)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

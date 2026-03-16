@@ -99,6 +99,16 @@ pub fn hash_file_content(path: &Path, algorithm: HashAlgorithm) -> io::Result<Ve
     }
 }
 
+/// Result of tree hash computation, including metadata for storage.
+pub struct TreeHashResult {
+    /// The tree digest (SHA-256 or BLAKE3).
+    pub digest: Vec<u8>,
+    /// Size of the serialized tree content (before hashing).
+    pub size: u64,
+    /// xxHash64 fast digest of the serialized tree content.
+    pub fast_digest: i64,
+}
+
 /// Compute a Native-mode tree hash from `(kind_byte, name, hash)` tuples.
 ///
 /// Entry encoding:
@@ -109,9 +119,25 @@ pub fn hash_file_content(path: &Path, algorithm: HashAlgorithm) -> io::Result<Ve
 /// Entries are sorted lexicographically by their full byte encoding.
 /// Because `b'D' < b'F'`, directories always appear before files with the same name.
 /// Empty children list returns `H(b"")` (empty-tree hash).
-pub fn compute_tree_hash(children: &[(u8, &str, &[u8])], algorithm: HashAlgorithm) -> Vec<u8> {
+pub fn compute_tree_hash(children: &[(u8, &str, &[u8])], algorithm: HashAlgorithm) -> TreeHashResult {
+    let data = serialize_tree_entries(children);
+
+    let digest = hash_bytes(&data, algorithm);
+    let size = data.len() as u64;
+    let fast_digest = {
+        use std::hash::Hasher as _;
+        let mut h = twox_hash::XxHash64::with_seed(0);
+        h.write(&data);
+        h.finish() as i64
+    };
+
+    TreeHashResult { digest, size, fast_digest }
+}
+
+/// Serialize tree children into the canonical sorted byte representation.
+fn serialize_tree_entries(children: &[(u8, &str, &[u8])]) -> Vec<u8> {
     if children.is_empty() {
-        return hash_bytes(b"", algorithm);
+        return b"".to_vec();
     }
 
     let mut entry_bytes: Vec<Vec<u8>> = children
@@ -134,7 +160,7 @@ pub fn compute_tree_hash(children: &[(u8, &str, &[u8])], algorithm: HashAlgorith
         data.extend_from_slice(eb);
     }
 
-    hash_bytes(&data, algorithm)
+    data
 }
 
 /// Hash of an empty tree: `H(b"")`.
@@ -184,7 +210,7 @@ mod tests {
         entry.extend_from_slice(&hash);
         let expected = blake3::hash(&entry).as_bytes().to_vec();
 
-        assert_eq!(result, expected);
+        assert_eq!(result.digest, expected);
     }
 
     #[test]
@@ -210,13 +236,13 @@ mod tests {
         data.extend_from_slice(&file_entry);
         let expected = blake3::hash(&data).as_bytes().to_vec();
 
-        assert_eq!(result, expected);
+        assert_eq!(result.digest, expected);
     }
 
     #[test]
     fn test_compute_tree_hash_empty_is_empty_hash() {
         let result = compute_tree_hash(&[], HashAlgorithm::Blake3);
-        assert_eq!(result, empty_tree_hash(HashAlgorithm::Blake3));
+        assert_eq!(result.digest, empty_tree_hash(HashAlgorithm::Blake3));
     }
 
     #[test]
@@ -232,7 +258,7 @@ mod tests {
 
         use digest::Digest;
         let expected: Vec<u8> = sha2::Sha256::digest(&entry).to_vec();
-        assert_eq!(result, expected);
+        assert_eq!(result.digest, expected);
     }
 
     #[test]

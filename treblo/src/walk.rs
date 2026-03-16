@@ -202,7 +202,7 @@ impl TrebloWalk {
                         (kind, e.name.as_str(), e.digest.as_slice())
                     })
                     .collect();
-                compute_tree_hash(&refs, self.config.algorithm)
+                compute_tree_hash(&refs, self.config.algorithm).digest
             }
         };
 
