@@ -19,9 +19,9 @@ use utoipa::OpenApi;
         crate::routes::repositories::diff_repos,
         // snapshots
         crate::routes::snapshots::list_entries,
-        // blobs
-        crate::routes::blobs::get_blob,
-        crate::routes::blobs::list_blob_entries,
+        // objects
+        crate::routes::objects::get_object,
+        crate::routes::objects::list_object_entries,
         // machines
         crate::routes::machines::list_machines,
         crate::routes::machines::register_machine,
@@ -40,7 +40,7 @@ use utoipa::OpenApi;
         crate::routes::responses::RepositoryResponse,
         crate::routes::responses::SnapshotResponse,
         crate::routes::responses::EntryResponse,
-        crate::routes::responses::BlobResponse,
+        crate::routes::responses::ObjectResponse,
         crate::routes::responses::SnapshotEntry,
         crate::routes::responses::CacheEntryResponse,
         crate::routes::responses::MachineResponse,
@@ -64,7 +64,7 @@ use utoipa::OpenApi;
     tags(
         (name = "repositories", description = "Repository and snapshot management"),
         (name = "snapshots",    description = "Snapshot entry queries"),
-        (name = "blobs",        description = "Blob (file content) queries"),
+        (name = "objects",       description = "Object (blob / tree content) queries"),
         (name = "machines",     description = "Machine registration for sync"),
         (name = "admin",        description = "Stores, tags, and sync peers"),
         (name = "sync",         description = "Incremental sync protocol"),

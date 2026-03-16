@@ -27,7 +27,7 @@ function fmtLabel(s: Snapshot): string {
 }
 
 type DiffRow = {
-  blobId: string;
+  objectId: string;
   digest: string;
   size: number;
   paths1: string[];
@@ -35,10 +35,10 @@ type DiffRow = {
 };
 
 function buildRows(data: DiffResponse): DiffRow[] {
-  const rows: DiffRow[] = Object.entries(data.diff).map(([blobId, [eids1, eids2]]) => ({
-    blobId,
-    digest: data.blobs[blobId]?.digest ?? "",
-    size: data.blobs[blobId]?.size ?? 0,
+  const rows: DiffRow[] = Object.entries(data.diff).map(([objectId, [eids1, eids2]]) => ({
+    objectId,
+    digest: data.objects[objectId]?.digest ?? "",
+    size: data.objects[objectId]?.size ?? 0,
     paths1: eids1.map((id) => data.entries[id]?.path ?? ""),
     paths2: eids2.map((id) => data.entries[id]?.path ?? ""),
   }));
@@ -225,7 +225,7 @@ export default async function DiffPage({ params, searchParams }: Props) {
 
                   return (
                     <tr
-                      key={row.blobId || `no-blob-${row.paths1[0]}`}
+                      key={row.objectId || `no-object-${row.paths1[0]}`}
                       className={`border-b border-gray-100 hover:bg-gray-50 ${rowBg}`}
                     >
                       <td className="px-3 py-1.5">{badge}</td>

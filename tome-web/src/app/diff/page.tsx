@@ -17,7 +17,7 @@ function sp1(sp: { [key: string]: string | string[] | undefined }, key: string):
 }
 
 type DiffRow = {
-  blobId: string;
+  objectId: string;
   digest: string;
   size: number;
   paths1: string[];
@@ -26,10 +26,10 @@ type DiffRow = {
 };
 
 function buildRows(data: RepoDiffResponse): DiffRow[] {
-  const rows: DiffRow[] = Object.entries(data.diff).map(([blobId, [keys1, keys2]]) => ({
-    blobId,
-    digest: data.blobs[blobId]?.digest ?? "",
-    size: data.blobs[blobId]?.size ?? 0,
+  const rows: DiffRow[] = Object.entries(data.diff).map(([objectId, [keys1, keys2]]) => ({
+    objectId,
+    digest: data.objects[objectId]?.digest ?? "",
+    size: data.objects[objectId]?.size ?? 0,
     paths1: keys1.map((k) => data.entries[k]?.path ?? ""),
     paths2: keys2.map((k) => data.entries[k]?.path ?? ""),
     isDeleted: false,
@@ -40,7 +40,7 @@ function buildRows(data: RepoDiffResponse): DiffRow[] {
     if (!entry) continue;
     const isRepo1 = key.startsWith("1:");
     rows.push({
-      blobId: "",
+      objectId: "",
       digest: "",
       size: 0,
       paths1: isRepo1 ? [entry.path] : [],
@@ -222,7 +222,7 @@ export default async function RepoDiffPage({ searchParams }: Props) {
 
                   return (
                     <tr
-                      key={row.blobId || `deleted-${row.paths1[0] ?? row.paths2[0]}`}
+                      key={row.objectId || `deleted-${row.paths1[0] ?? row.paths2[0]}`}
                       className={`border-b border-gray-100 hover:bg-gray-50 ${rowBg}`}
                     >
                       <td className="px-3 py-1.5">{badge}</td>
@@ -271,7 +271,7 @@ export default async function RepoDiffPage({ searchParams }: Props) {
                       </td>
                       <td className="px-3 py-1.5 text-gray-400 font-mono">
                         {row.digest ? (
-                          <Link href={`/blobs/${row.digest}`} className="hover:underline text-blue-500">
+                          <Link href={`/objects/${row.digest}`} className="hover:underline text-blue-500">
                             {row.digest.slice(0, 12)}
                           </Link>
                         ) : (

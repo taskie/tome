@@ -9,22 +9,40 @@ type Props = { params: Promise<{ digest: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { digest } = await params;
-  return { title: `Blob ${digest.slice(0, 12)}` };
+  return { title: `Object ${digest.slice(0, 12)}` };
 }
 
-export default async function BlobPage({ params }: Props) {
+function objectTypeBadge(objectType: number) {
+  if (objectType === 1) {
+    return (
+      <span className="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-semibold">
+        Tree
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-semibold">Blob</span>
+  );
+}
+
+export default async function ObjectPage({ params }: Props) {
   const { digest } = await params;
 
-  let blob;
+  let obj;
   let entries;
   let repositories;
   try {
-    [blob, entries, repositories] = await Promise.all([api.blob(digest), api.blobEntries(digest), api.repositories()]);
+    [obj, entries, repositories] = await Promise.all([
+      api.object(digest),
+      api.objectEntries(digest),
+      api.repositories(),
+    ]);
   } catch {
     notFound();
   }
 
   const repoById = new Map(repositories.map((r) => [r.id, r.name]));
+  const isTree = obj.object_type === 1;
 
   return (
     <>
@@ -32,34 +50,42 @@ export default async function BlobPage({ params }: Props) {
         <Link href="/" className="hover:underline">
           Repositories
         </Link>
-        {" / blob / "}
+        {" / object / "}
         <code className="text-gray-600">{digest.slice(0, 12)}</code>
       </nav>
 
       <h1 className="text-base font-semibold mb-4">
-        Blob <code className="text-blue-700 font-mono text-sm">{digest.slice(0, 20)}…</code>
+        {objectTypeBadge(obj.object_type)}{" "}
+        <code className="text-blue-700 font-mono text-sm">{digest.slice(0, 20)}…</code>
       </h1>
 
-      {/* Blob metadata */}
+      {/* Object metadata */}
       <table className="text-xs mb-6 border-collapse bg-white shadow-sm rounded overflow-hidden w-auto">
         <tbody>
           <tr className="border-b border-gray-100">
-            <td className="px-3 py-1.5 text-gray-500 w-28">Digest</td>
+            <td className="px-3 py-1.5 text-gray-500 w-28">Type</td>
+            <td className="px-3 py-1.5">{isTree ? "Tree (directory)" : "Blob (file content)"}</td>
+          </tr>
+          <tr className="border-b border-gray-100">
+            <td className="px-3 py-1.5 text-gray-500">Digest</td>
             <td className="px-3 py-1.5 font-mono break-all">{digest}</td>
           </tr>
           <tr className="border-b border-gray-100">
             <td className="px-3 py-1.5 text-gray-500">Size</td>
-            <td className="px-3 py-1.5">{blob.size.toLocaleString()} bytes</td>
+            <td className="px-3 py-1.5">
+              {obj.size.toLocaleString()} bytes{isTree ? " (serialized tree)" : ""}
+            </td>
           </tr>
           <tr>
             <td className="px-3 py-1.5 text-gray-500">Fast digest</td>
-            <td className="px-3 py-1.5 font-mono">{blob.fast_digest}</td>
+            <td className="px-3 py-1.5 font-mono">{obj.fast_digest}</td>
           </tr>
         </tbody>
       </table>
 
       <h2 className="text-sm font-semibold mb-2">
-        Files with this content <span className="text-gray-400 font-normal">({entries.length})</span>
+        {isTree ? "Entries referencing this tree" : "Files with this content"}{" "}
+        <span className="text-gray-400 font-normal">({entries.length})</span>
       </h2>
 
       {entries.length === 0 ? (

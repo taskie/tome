@@ -23,7 +23,7 @@ export default async function TagsPage() {
             <tr className="bg-gray-100 text-left">
               <th className="px-3 py-2 border-b-2 border-gray-200">Key</th>
               <th className="px-3 py-2 border-b-2 border-gray-200">Value</th>
-              <th className="px-3 py-2 border-b-2 border-gray-200">Blob</th>
+              <th className="px-3 py-2 border-b-2 border-gray-200">Object</th>
               <th className="px-3 py-2 border-b-2 border-gray-200">Created</th>
             </tr>
           </thead>
@@ -33,8 +33,8 @@ export default async function TagsPage() {
                 <td className="px-3 py-2 font-mono text-blue-700">{t.key}</td>
                 <td className="px-3 py-2 text-gray-500">{t.value ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">
-                  <Link href={`/blobs/${t.blob_id}`} className="text-blue-600 hover:underline">
-                    {t.blob_id.slice(0, 10)}
+                  <Link href={`/objects/${t.object_id}`} className="text-blue-600 hover:underline">
+                    {t.object_id.slice(0, 10)}
                   </Link>
                 </td>
                 <td className="px-3 py-2 text-gray-400">{new Date(t.created_at).toLocaleString()}</td>

@@ -1,5 +1,4 @@
 import type {
-  Blob,
   DiffResponse,
   Entry,
   FilesResponse,
@@ -11,6 +10,7 @@ import type {
   Store,
   SyncPeer,
   Tag,
+  TomeObject,
 } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
@@ -33,9 +33,9 @@ export const api = {
   entries: (id: string, prefix = ""): Promise<Entry[]> =>
     get(`/snapshots/${encodeURIComponent(id)}/entries` + (prefix ? `?prefix=${encodeURIComponent(prefix)}` : "")),
 
-  blob: (digest: string): Promise<Blob> => get(`/blobs/${encodeURIComponent(digest)}`),
+  object: (digest: string): Promise<TomeObject> => get(`/objects/${encodeURIComponent(digest)}`),
 
-  blobEntries: (digest: string): Promise<SnapshotEntry[]> => get(`/blobs/${encodeURIComponent(digest)}/entries`),
+  objectEntries: (digest: string): Promise<SnapshotEntry[]> => get(`/objects/${encodeURIComponent(digest)}/entries`),
 
   history: (name: string, path: string): Promise<SnapshotEntry[]> =>
     get(`/repositories/${encodeURIComponent(name)}/history?path=${encodeURIComponent(path)}`),

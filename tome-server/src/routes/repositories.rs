@@ -137,9 +137,9 @@ pub struct DiffQuery {
 pub struct DiffResponse {
     pub snapshot1: SnapshotResponse,
     pub snapshot2: SnapshotResponse,
-    pub blobs: HashMap<String, BlobResponse>,
+    pub objects: HashMap<String, ObjectResponse>,
     pub entries: HashMap<String, EntryResponse>,
-    /// blob_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2]
+    /// object_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2]
     #[schema(value_type = HashMap<String, Vec<Vec<String>>>)]
     pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
 }
@@ -195,7 +195,7 @@ pub async fn diff_snapshots(
         .into_iter()
         .collect();
 
-    let blobs: HashMap<String, BlobResponse> =
+    let objects: HashMap<String, ObjectResponse> =
         db.objects_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, EntryResponse> = HashMap::new();
@@ -214,7 +214,7 @@ pub async fn diff_snapshots(
         entries.insert(eid, e.clone().into());
     }
 
-    Ok(Json(DiffResponse { snapshot1: snap1.into(), snapshot2: snap2.into(), blobs, entries, diff }))
+    Ok(Json(DiffResponse { snapshot1: snap1.into(), snapshot2: snap2.into(), objects, entries, diff }))
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────
@@ -320,13 +320,13 @@ pub struct RepoDiffQuery {
 pub struct RepoDiffResponse {
     pub repo1: RepositoryResponse,
     pub repo2: RepositoryResponse,
-    pub blobs: HashMap<String, BlobResponse>,
+    pub objects: HashMap<String, ObjectResponse>,
     /// `"1:{path}"` or `"2:{path}"` → CacheEntryResponse
     pub entries: HashMap<String, CacheEntryResponse>,
-    /// blob_id → [entry_keys_in_repo1, entry_keys_in_repo2]
+    /// object_id → [entry_keys_in_repo1, entry_keys_in_repo2]
     #[schema(value_type = HashMap<String, Vec<Vec<String>>>)]
     pub diff: HashMap<String, (Vec<String>, Vec<String>)>,
-    /// Entry keys for deleted paths (status=0, blob_id=NULL)
+    /// Entry keys for deleted paths (status=0, object_id=NULL)
     pub deleted: Vec<String>,
 }
 
@@ -361,7 +361,7 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
         .into_iter()
         .collect();
 
-    let blobs: HashMap<String, BlobResponse> =
+    let objects: HashMap<String, ObjectResponse> =
         db.objects_by_ids(&blob_ids).await?.into_iter().map(|b| (b.id.to_string(), b.into())).collect();
 
     let mut entries: HashMap<String, CacheEntryResponse> = HashMap::new();
@@ -385,5 +385,5 @@ pub async fn diff_repos(db: Db, Query(q): Query<RepoDiffQuery>) -> AppResult<Jso
         entries.insert(key, cache_entry_to_response(e));
     }
 
-    Ok(Json(RepoDiffResponse { repo1: repo1.into(), repo2: repo2.into(), blobs, entries, diff, deleted }))
+    Ok(Json(RepoDiffResponse { repo1: repo1.into(), repo2: repo2.into(), objects, entries, diff, deleted }))
 }

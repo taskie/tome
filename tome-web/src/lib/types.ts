@@ -23,6 +23,7 @@ export type Snapshot = {
   message: string;
   metadata: SnapshotMetadata;
   created_at: string;
+  root_object_id: string | null;
 };
 
 export type Entry = {
@@ -31,15 +32,19 @@ export type Entry = {
   path: string;
   /** 0 = deleted, 1 = present */
   status: number;
-  blob_id: string | null;
+  object_id: string | null;
   digest?: string;
   mode: number | null;
   mtime: string | null;
   created_at: string;
 };
 
-export type Blob = {
+/** 0 = blob (file content), 1 = tree (directory) */
+export type ObjectType = 0 | 1;
+
+export type TomeObject = {
   id: string;
+  object_type: ObjectType;
   digest: string;
   size: number;
   fast_digest: string;
@@ -73,21 +78,21 @@ export type FilesResponse = {
 export type DiffResponse = {
   snapshot1: Snapshot;
   snapshot2: Snapshot;
-  blobs: Record<string, Blob>;
+  objects: Record<string, TomeObject>;
   entries: Record<string, Entry>;
-  /** blob_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2] */
+  /** object_id → [entry_ids_in_snapshot1, entry_ids_in_snapshot2] */
   diff: Record<string, [string[], string[]]>;
 };
 
 export type RepoDiffResponse = {
   repo1: Repository;
   repo2: Repository;
-  blobs: Record<string, Blob>;
+  objects: Record<string, TomeObject>;
   /** "1:{path}" or "2:{path}" → CacheEntry */
   entries: Record<string, CacheEntry>;
-  /** blob_id → [entry_keys_in_repo1, entry_keys_in_repo2] */
+  /** object_id → [entry_keys_in_repo1, entry_keys_in_repo2] */
   diff: Record<string, [string[], string[]]>;
-  /** Entry keys for deleted paths (status=0, blob_id=null) */
+  /** Entry keys for deleted paths (status=0, object_id=null) */
   deleted: string[];
 };
 
@@ -109,7 +114,7 @@ export type Machine = {
 
 export type Tag = {
   id: string;
-  blob_id: string;
+  object_id: string;
   key: string;
   value: string | null;
   created_at: string;

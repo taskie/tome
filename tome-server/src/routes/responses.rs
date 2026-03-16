@@ -39,6 +39,7 @@ pub struct SnapshotResponse {
     pub message: String,
     pub metadata: serde_json::Value,
     pub created_at: String,
+    pub root_object_id: Option<String>,
 }
 
 impl From<snapshot::Model> for SnapshotResponse {
@@ -50,6 +51,7 @@ impl From<snapshot::Model> for SnapshotResponse {
             message: m.message,
             metadata: m.metadata,
             created_at: m.created_at.to_rfc3339(),
+            root_object_id: m.root_object_id.map(|id| id.to_string()),
         }
     }
 }
@@ -90,18 +92,21 @@ impl From<entry::Model> for EntryResponse {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct BlobResponse {
+pub struct ObjectResponse {
     pub id: String,
+    /// 0 = blob, 1 = tree
+    pub object_type: i16,
     pub digest: String,
     pub size: i64,
     pub fast_digest: String,
     pub created_at: String,
 }
 
-impl From<object::Model> for BlobResponse {
+impl From<object::Model> for ObjectResponse {
     fn from(m: object::Model) -> Self {
         Self {
             id: m.id.to_string(),
+            object_type: m.object_type,
             digest: hex_encode(&m.digest),
             size: m.size.unwrap_or(0),
             fast_digest: format!("{:016x}", m.fast_digest.unwrap_or(0) as u64),

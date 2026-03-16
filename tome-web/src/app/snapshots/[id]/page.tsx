@@ -121,10 +121,14 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
                   <td className={`px-3 py-1.5 ${isPresent ? "" : "line-through text-gray-300"}`}>
                     {historyHref && isPresent ? (
                       <Link href={historyHref} className="hover:underline text-blue-600">
+                        {e.mode === 16384 ? "📁 " : ""}
                         {e.path}
                       </Link>
                     ) : (
-                      e.path
+                      <>
+                        {e.mode === 16384 ? "📁 " : ""}
+                        {e.path}
+                      </>
                     )}
                   </td>
                   <td className="px-3 py-1.5">
@@ -137,7 +141,7 @@ export default async function SnapshotPage({ params, searchParams }: Props) {
                   <td className="px-3 py-1.5 text-gray-400">{e.mtime ? new Date(e.mtime).toLocaleString() : ""}</td>
                   <td className="px-3 py-1.5 font-mono text-gray-400">
                     {e.digest ? (
-                      <Link href={`/blobs/${e.digest}`} className="hover:underline text-blue-500">
+                      <Link href={`/objects/${e.digest}`} className="hover:underline text-blue-500">
                         {e.digest.slice(0, 12)}
                       </Link>
                     ) : (
