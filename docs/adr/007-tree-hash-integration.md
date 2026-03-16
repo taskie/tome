@@ -1,6 +1,6 @@
 # ADR-007: Tree Hash Integration for Efficient Diff and Sync
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-03
 
 ## Context
@@ -37,13 +37,12 @@ This means `blob.digest` values serve directly as leaf nodes in the Merkle tree,
 | Column | Type | Constraint | Description |
 |--------|------|------------|-------------|
 | `id` | `BIGINT` | PK (Sonyflake) | Object ID |
-| `object_type` | `SMALLINT` | NOT NULL | 0 = blob, 1 = tree |
 | `digest` | `BYTEA(32)` | UNIQUE | Content hash (blob) or Merkle tree hash (tree) |
-| `size` | `BIGINT` | nullable | File size (blob only) |
-| `fast_digest` | `BIGINT` | nullable | xxHash64 (blob only) |
+| `size` | `BIGINT` | NOT NULL | File size (blob) or serialized tree content size (tree) |
+| `fast_digest` | `BIGINT` | NOT NULL | xxHash64 of content |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | Creation timestamp |
 
-Content-addressable and deduplicated by `digest`. Identical file contents share a blob object; identical directory structures share a tree object.
+Content-addressable and deduplicated by `digest`. Identical file contents share a blob object; identical directory structures share a tree object. The object type (blob vs tree) is not stored in this table — it is inferred from `entries.mode` (`0o040000` = directory/tree, otherwise file/blob). This avoids conflicts when the same digest could theoretically represent both types.
 
 #### `entries` table — column rename
 
@@ -78,10 +77,10 @@ The existing `entries.mode` column (`i32`, maps to `FileMode`) already distingui
 
 No new type column is needed on entries. An entry is a directory when `mode = 0o040000`. The invariant is:
 
-- **File entry** (`mode ≠ 0o040000`): `object_id` references an object with `object_type = 0` (blob).
-- **Directory entry** (`mode = 0o040000`): `object_id` references an object with `object_type = 1` (tree).
+- **File entry** (`mode ≠ 0o040000`): `object_id` references a blob object (file content hash).
+- **Directory entry** (`mode = 0o040000`): `object_id` references a tree object (Merkle tree hash).
 
-Both use the same `object_id` FK. The entry's `mode` and the referenced object's `object_type` must be consistent.
+Both use the same `object_id` FK. The entry's `mode` determines how the referenced object is interpreted.
 
 ### 4. How tree objects are created
 
@@ -91,13 +90,13 @@ After `tome scan` computes all file blob digests, tree objects are built bottom-
 1. For each leaf directory (contains only files):
    children = [(b'F', filename, blob.digest), ...]
    tree_digest = H(sort(children))
-   → INSERT INTO objects (object_type=1, digest) or find existing
+   → INSERT INTO objects (digest) or find existing
 
 2. For each parent directory:
    children = [(b'F', filename, blob.digest), ...]
              + [(b'D', dirname, child_tree.digest), ...]
    tree_digest = H(sort(children))
-   → INSERT INTO objects (object_type=1, digest) or find existing
+   → INSERT INTO objects (digest) or find existing
 
 3. Root tree object is referenced from snapshot.root_object_id
 ```
@@ -142,8 +141,8 @@ Blobs and trees share the same fundamental structure — content-addressable obj
 | `id` | Sonyflake PK | Sonyflake PK |
 | `digest` | UNIQUE, content hash | UNIQUE, Merkle hash |
 | `created_at` | timestamp | timestamp |
-| `size` | file size (i64) | — |
-| `fast_digest` | xxHash64 (i64) | — |
+| `size` | file size (i64) | serialized tree size |
+| `fast_digest` | xxHash64 (i64) | xxHash64 of tree content |
 
 Three approaches were considered:
 
@@ -162,10 +161,9 @@ Introduce an `objects` table as the common base:
 ```sql
 CREATE TABLE objects (
     id          BIGINT PRIMARY KEY,
-    object_type SMALLINT NOT NULL,   -- 0 = blob, 1 = tree
     digest      BYTEA NOT NULL UNIQUE,
-    size        BIGINT,              -- file size (blob only, NULL for tree)
-    fast_digest BIGINT,              -- xxHash64 (blob only, NULL for tree)
+    size        BIGINT NOT NULL,         -- file size (blob) or serialized tree size (tree)
+    fast_digest BIGINT NOT NULL,         -- xxHash64 of content
     created_at  TIMESTAMPTZ NOT NULL
 );
 ```
@@ -173,27 +171,24 @@ CREATE TABLE objects (
 Entries reference a single FK:
 
 ```
-objects:  id, object_type, digest, size?, fast_digest?, created_at
+objects:  id, digest, size, fast_digest, created_at
 entries:  ..., object_id (FK → objects.id), mode
 ```
 
-The entry's `mode` (`0o040000` = directory, else file) and the object's `object_type` are consistent by construction. `entries.object_id` replaces both `blob_id` and `tree_id`.
+The entry's `mode` (`0o040000` = directory, else file) determines whether the referenced object is a tree or blob. `entries.object_id` replaces both `blob_id` and `tree_id`. The `objects` table itself does not store a type discriminator — this avoids potential conflicts when a file's content hash coincidentally matches a tree hash.
 
 **Why Option C is preferred:**
 
 - **Single FK** on entries instead of two nullable FKs — cleaner invariant (every present entry has exactly one object).
-- **Uniform code paths** — GC, sync, deduplication logic operates on "objects" regardless of type. The Rust code defines a shared `Object` model with type discrimination via an enum:
-  ```rust
-  #[derive(Clone, Copy, PartialEq, Eq)]
-  pub enum ObjectType { Blob = 0, Tree = 1 }
-  ```
+- **Uniform code paths** — GC, sync, deduplication logic operates on "objects" regardless of type.
+- **No type discriminator in objects** — the entry's `mode` field determines interpretation. This avoids conflicts when hash collisions between blob and tree content could produce inconsistent `object_type` values.
 - **Mirrors Git's object store** — Git uses a single object database for blobs, trees, commits, and tags. tome adopts the same principle (without commits/tags as objects, for now).
-- **Extensible** — future object types (e.g., manifest, chunk) require no schema change to entries; only a new `object_type` value.
-- **`size` / `fast_digest` as nullable** — minor trade-off. These are only meaningful for blobs; tree rows leave them NULL. This avoids a separate extension table while keeping the schema flat. Queries that need blob-specific fields simply add `WHERE object_type = 0`.
+- **Extensible** — future object types (e.g., manifest, chunk) can be distinguished by entry mode or context.
+- **`size` / `fast_digest` always populated** — both blobs and trees store size and fast_digest. For blobs, these are file content metrics; for trees, they represent the serialized tree content.
 
 #### Migration path from `blobs`
 
-The existing `blobs` table is renamed/migrated to `objects` with `object_type = 0` for all existing rows. `entries.blob_id` is renamed to `entries.object_id`. This is a one-time schema migration; existing blob IDs and digests are preserved.
+The existing `blobs` table is renamed/migrated to `objects`. All existing rows are preserved as-is. `entries.blob_id` is renamed to `entries.object_id`. Existing blob IDs and digests are preserved.
 
 ### 7. Why treblo native format over Git format
 
@@ -208,7 +203,7 @@ The existing `blobs` table is renamed/migrated to `objects` with `object_type = 
 
 | Phase | Scope |
 |-------|-------|
-| Phase 1 | `blobs` → `objects` migration + `object_type` + tree object creation during `tome scan` |
+| Phase 1 | `blobs` → `objects` migration + tree object creation during `tome scan` |
 | Phase 2 | `tome diff`: recursive tree diff via `object_id` comparison |
 | Phase 3 | `sync pull/push`: tree-based skip and selective entry transfer |
 | Phase 4 | Web UI: directory-level change indicators and lazy subtree expansion |
@@ -228,12 +223,12 @@ The `objects` table grows much more slowly than entries due to deduplication —
 
 - `tome scan` gains a bottom-up tree hash computation pass. Since it reuses blob digests already in memory/DB, no additional file I/O is needed.
 - The `entries` table grows by ~5% (one row per directory per snapshot). Tree objects in `objects` are compact due to deduplication.
-- The `blobs` → `objects` migration renames the table and adds `object_type` (backfilled as 0 for all existing rows) and renames `entries.blob_id` → `object_id`. Existing data is preserved.
+- The `blobs` → `objects` migration renames the table and renames `entries.blob_id` → `object_id`. Existing data is preserved.
 - Existing snapshots without `root_object_id` remain valid; the nullable column means no forced migration. Backfill of tree objects is possible via `compute_tree_from_entries()` on historical entry data.
 - `entry_cache` must be extended to track directory entries, affecting cache rebuild logic.
 - `tome diff` can be rewritten as a recursive tree comparison, providing orders-of-magnitude speedup for large repositories with localized changes.
 - Sync operations gain the ability to skip unchanged snapshots and, in future, transfer only changed subtrees.
 - After scan, every directory on every tracked path must have a corresponding entry with `mode = 0o040000` and a valid `object_id` pointing to a tree object. The scan logic must ensure this invariant.
 - GC operates uniformly on `objects`: an object (blob or tree) can only be deleted when no entries or snapshots reference it.
-- The unified `objects` table simplifies Rust code — a single `Object` entity with `ObjectType` enum replaces the separate `Blob` entity. Existing code that references `blob_id` is updated to `object_id`; blob-specific queries add `WHERE object_type = 0`.
+- The unified `objects` table simplifies Rust code — a single `Object` entity replaces the separate `Blob` entity. The entry's `mode` determines whether the object is a blob or tree. Existing code that references `blob_id` is updated to `object_id`.
 - The `replicas` table continues to reference objects via `blob_id` → `object_id`. Replicas are only meaningful for blob objects (file content stored on external storage); tree objects exist only in the metadata DB.

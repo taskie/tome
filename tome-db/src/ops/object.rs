@@ -3,7 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use tome_core::{hash::FileHash, id::next_id, models::ObjectType};
+use tome_core::{hash::FileHash, id::next_id};
 
 use crate::entities::object;
 
@@ -18,7 +18,6 @@ pub async fn get_or_create_blob<C: ConnectionTrait>(conn: &C, file_hash: &FileHa
     let now = Utc::now().fixed_offset();
     let am = object::ActiveModel {
         id: Set(next_id()?),
-        object_type: Set(ObjectType::Blob.as_i16()),
         digest: Set(file_hash.digest.to_vec()),
         size: Set(Some(file_hash.size as i64)),
         fast_digest: Set(Some(file_hash.fast_digest)),
@@ -41,7 +40,6 @@ pub async fn get_or_create_tree<C: ConnectionTrait>(
     let now = Utc::now().fixed_offset();
     let am = object::ActiveModel {
         id: Set(next_id()?),
-        object_type: Set(ObjectType::Tree.as_i16()),
         digest: Set(digest.to_vec()),
         size: Set(Some(size)),
         fast_digest: Set(Some(fast_digest)),

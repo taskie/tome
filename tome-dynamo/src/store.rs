@@ -221,7 +221,6 @@ fn item_to_snapshot(item: &Item) -> anyhow::Result<snapshot::Model> {
 fn item_to_object(item: &Item) -> anyhow::Result<object::Model> {
     Ok(object::Model {
         id: get_n_i64(item, "id")?,
-        object_type: get_n_i16(item, "object_type").unwrap_or(0),
         digest: get_bytes(item, "digest")?,
         size: get_n_i64_opt(item, "size"),
         fast_digest: get_n_i64_opt(item, "fast_digest"),
@@ -509,7 +508,6 @@ impl MetadataStore for DynamoStore {
         item.insert("GSI3PK".into(), s(&keys::gsi3pk_type("OBJ")));
         item.insert("GSI3SK".into(), s(&digest_hex));
         item.insert("id".into(), n_i64(id));
-        item.insert("object_type".into(), n_i16(0));
         item.insert("digest".into(), b(&file_hash.digest));
         item.insert("size".into(), n_i64(file_hash.size as i64));
         item.insert("fast_digest".into(), n_i64(file_hash.fast_digest));

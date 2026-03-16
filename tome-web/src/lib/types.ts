@@ -39,12 +39,8 @@ export type Entry = {
   created_at: string;
 };
 
-/** 0 = blob (file content), 1 = tree (directory) */
-export type ObjectType = 0 | 1;
-
 export type TomeObject = {
   id: string;
-  object_type: ObjectType;
   digest: string;
   size: number;
   fast_digest: string;

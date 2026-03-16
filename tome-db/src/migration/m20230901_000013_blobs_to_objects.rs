@@ -18,11 +18,10 @@ impl MigrationTrait for Migration {
         // with correct FK references to the new `objects` table.
         db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
-        // 1. Create `objects` from `blobs` (nullable size/fast_digest, new object_type).
+        // 1. Create `objects` from `blobs`.
         db.execute_unprepared(
             "CREATE TABLE objects (
                 id              BIGINT NOT NULL PRIMARY KEY,
-                object_type     SMALLINT NOT NULL DEFAULT 0,
                 digest          BLOB NOT NULL UNIQUE,
                 size            BIGINT NOT NULL,
                 fast_digest     BIGINT NOT NULL,
@@ -31,8 +30,8 @@ impl MigrationTrait for Migration {
         )
         .await?;
         db.execute_unprepared(
-            "INSERT INTO objects (id, object_type, digest, size, fast_digest, created_at)
-             SELECT id, 0, digest, size, fast_digest, created_at FROM blobs",
+            "INSERT INTO objects (id, digest, size, fast_digest, created_at)
+             SELECT id, digest, size, fast_digest, created_at FROM blobs",
         )
         .await?;
         db.execute_unprepared("DROP TABLE blobs").await?;
@@ -153,7 +152,7 @@ impl MigrationTrait for Migration {
         db.execute_unprepared(
             "INSERT INTO blobs (id, digest, size, fast_digest, created_at)
              SELECT id, digest, COALESCE(size, 0), COALESCE(fast_digest, 0), created_at
-             FROM objects WHERE object_type = 0",
+             FROM objects",
         )
         .await?;
         db.execute_unprepared("DROP TABLE objects").await?;

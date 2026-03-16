@@ -5,8 +5,6 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: i64,
-    /// 0 = blob, 1 = tree
-    pub object_type: i16,
     #[sea_orm(column_type = "VarBinary(StringLen::None)", unique)]
     pub digest: Vec<u8>,
     /// File size (blob) or serialized tree content size (tree).

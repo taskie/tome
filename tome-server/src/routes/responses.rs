@@ -94,8 +94,6 @@ impl From<entry::Model> for EntryResponse {
 #[derive(Serialize, ToSchema)]
 pub struct ObjectResponse {
     pub id: String,
-    /// 0 = blob, 1 = tree
-    pub object_type: i16,
     pub digest: String,
     pub size: i64,
     pub fast_digest: String,
@@ -106,7 +104,6 @@ impl From<object::Model> for ObjectResponse {
     fn from(m: object::Model) -> Self {
         Self {
             id: m.id.to_string(),
-            object_type: m.object_type,
             digest: hex_encode(&m.digest),
             size: m.size.unwrap_or(0),
             fast_digest: format!("{:016x}", m.fast_digest.unwrap_or(0) as u64),

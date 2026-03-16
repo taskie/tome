@@ -18,7 +18,6 @@ CREATE TABLE repositories (
 -- 2. objects (blobs + trees)
 CREATE TABLE objects (
     id          BIGINT      NOT NULL PRIMARY KEY,
-    object_type SMALLINT    NOT NULL,            -- 0 = blob, 1 = tree
     digest      BYTEA       NOT NULL UNIQUE,     -- content hash (blob) or Merkle tree hash (tree)
     size        BIGINT      NOT NULL,            -- file size (blob) or serialized tree size (tree)
     fast_digest BIGINT      NOT NULL,            -- xxHash64 of content
