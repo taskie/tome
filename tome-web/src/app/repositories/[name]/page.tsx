@@ -82,7 +82,8 @@ export default async function RepositoryPage({ params }: Props) {
           <tbody>
             {sorted.map((s) => {
               const idShort = s.id.slice(0, 10);
-              const hasErrors = (s.metadata.errors ?? 0) > 0;
+              const meta = s.metadata ?? {};
+              const hasErrors = (meta.errors ?? 0) > 0;
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-3 py-2">
@@ -94,16 +95,16 @@ export default async function RepositoryPage({ params }: Props) {
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-gray-400">{new Date(s.created_at).toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right text-gray-700">{s.metadata.scanned ?? "—"}</td>
+                  <td className="px-3 py-2 text-right text-gray-700">{meta.scanned ?? "—"}</td>
                   <td className="px-3 py-2 text-gray-500">
-                    {fmtChanges(s.metadata)}
+                    {fmtChanges(meta)}
                     {hasErrors && (
                       <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600">
-                        ×{s.metadata.errors}
+                        ×{meta.errors}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-gray-400 text-xs truncate max-w-48">{s.metadata.scan_root ?? ""}</td>
+                  <td className="px-3 py-2 text-gray-400 text-xs truncate max-w-48">{meta.scan_root ?? ""}</td>
                 </tr>
               );
             })}

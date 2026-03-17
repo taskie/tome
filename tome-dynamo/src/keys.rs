@@ -65,3 +65,12 @@ pub fn gsi2sk_snap(snap_id: i64) -> String {
 pub fn gsi3pk_type(type_name: &str) -> String {
     format!("_TYPE#{type_name}")
 }
+
+// GSI4: object → entries (reverse lookup)
+pub fn gsi4pk_object(object_id: i64) -> String {
+    format!("OBJ#{}", pad_id(object_id))
+}
+
+pub fn gsi4sk_snap(snap_id: i64) -> String {
+    pad_id(snap_id)
+}

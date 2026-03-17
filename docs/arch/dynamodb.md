@@ -64,6 +64,7 @@ and does not support ad-hoc JOINs or complex queries.
 | W6 | Path history | Entries across snapshots for a given (repo, path) |
 | W7 | Cross-repo diff (entry_cache) | Two repo scans + compare |
 | W8 | List stores, machines, tags, sync_peers | Small collections |
+| W9 | Entries referencing an object | Reverse lookup by object_id (GSI4) |
 
 ### Machine Management
 
@@ -117,6 +118,7 @@ MACHINE#<machine_id>            #META                       Machine
 | L4: Replicas for object | `Query(PK=OBJ#digest, SK begins_with REPLICA#)` | Collection query |
 | W4: Entry cache by prefix | `Query(PK=REPO#name, SK between CACHE#prefix… and CACHE#prefix~)` | Prefix range |
 | W6: Path history | `Query(GSI2, PK=REPO#name#PATH#path)` | GSI2 |
+| W9: Entries for object | `Query(GSI4, PK=OBJ#object_id)` | GSI4 |
 
 ### GSI Design
 
@@ -152,6 +154,18 @@ GSI3SK:  <name or id>
 ```
 
 Written on all `#META` items. Low cardinality, suitable for small admin collections.
+
+#### GSI4 — Object → Entries (reverse lookup)
+
+Used for W5+: find all entries referencing a given object across all snapshots.
+
+```
+GSI4PK:  OBJ#<object_id>      (zero-padded, e.g., OBJ#0000000005678901)
+GSI4SK:  <snap_id>             (zero-padded)
+```
+
+Written on Entry items that have an `object_id` (sparse — deleted entries without
+`object_id` are excluded). Projection: `ALL` (full entry attributes needed).
 
 ---
 
@@ -214,6 +228,9 @@ Written on all `#META` items. Low cardinality, suitable for small admin collecti
   // GSI2 (path history)
   "GSI2PK": "REPO#default#PATH#src/main.rs",
   "GSI2SK": "0003456789",
+  // GSI4 (object → entries reverse lookup; sparse — only for entries with object_id)
+  "GSI4PK": "OBJ#0000000009999999",
+  "GSI4SK": "0003456789",
   // Repo name stored for GSI2 (entry doesn't natively know its repo)
   "repo_name": "default"
 }
@@ -603,6 +620,14 @@ resource "aws_dynamodb_table" "tome" {
     name = "GSI3SK"
     type = "S"
   }
+  attribute {
+    name = "GSI4PK"
+    type = "S"
+  }
+  attribute {
+    name = "GSI4SK"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "GSI1"
@@ -623,6 +648,13 @@ resource "aws_dynamodb_table" "tome" {
     hash_key        = "GSI3PK"
     range_key       = "GSI3SK"
     projection_type = "KEYS_ONLY"
+  }
+
+  global_secondary_index {
+    name            = "GSI4"
+    hash_key        = "GSI4PK"
+    range_key       = "GSI4SK"
+    projection_type = "ALL"
   }
 
   point_in_time_recovery {

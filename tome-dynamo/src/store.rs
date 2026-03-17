@@ -1,6 +1,6 @@
 //! DynamoStore — MetadataStore implementation backed by Amazon DynamoDB.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, bail};
 use async_trait::async_trait;
@@ -589,6 +589,9 @@ impl MetadataStore for DynamoStore {
         item.insert("path".into(), s(path));
         item.insert("status".into(), n_i16(1)); // present
         item.insert("object_id".into(), n_i64(object_id));
+        // GSI4 for object → entries reverse lookup
+        item.insert("GSI4PK".into(), s(&keys::gsi4pk_object(object_id)));
+        item.insert("GSI4SK".into(), s(&keys::gsi4sk_snap(snapshot_id)));
         item.insert("depth".into(), n_i16(depth));
         if let Some(m) = mode {
             item.insert("mode".into(), n_i32(m));
@@ -704,11 +707,28 @@ impl MetadataStore for DynamoStore {
     }
 
     async fn entries_for_object(&self, object_id: i64) -> anyhow::Result<Vec<(entry::Model, snapshot::Model)>> {
-        // No direct index on object_id for entries. Scan GSI3 for all snapshots,
-        // then query each. This is expensive but rarely used in the server hot path.
-        // TODO: consider adding a GSI or denormalized item for object → entries
-        let _ = object_id;
-        bail!("entries_for_object is not efficiently supported on DynamoDB; use SQL backend for object analysis")
+        let gsi4pk = keys::gsi4pk_object(object_id);
+        let items = self.query_gsi("GSI4", "GSI4PK", &gsi4pk, None, None).await?;
+
+        if items.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let entries: Vec<entry::Model> = items.iter().map(item_to_entry).collect::<anyhow::Result<_>>()?;
+
+        // Collect unique snapshot IDs and fetch snapshots
+        let snap_ids: Vec<i64> = entries.iter().map(|e| e.snapshot_id).collect::<HashSet<_>>().into_iter().collect();
+        let mut snapshots = HashMap::new();
+        for sid in snap_ids {
+            if let Some(snap) = self.find_snapshot_by_id(sid).await? {
+                snapshots.insert(snap.id, snap);
+            }
+        }
+
+        let mut result: Vec<(entry::Model, snapshot::Model)> =
+            entries.into_iter().filter_map(|e| snapshots.get(&e.snapshot_id).map(|s| (e, s.clone()))).collect();
+        result.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
+        Ok(result)
     }
 
     async fn path_history(

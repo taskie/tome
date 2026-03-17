@@ -48,6 +48,8 @@ async function get<T>(path: string): Promise<T> {
     res = await fetch(url, { next: { revalidate: 10 } });
   }
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`API ${path} → ${res.status} ${res.statusText}`, { url, body });
     throw new Error(`API ${path} → ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
