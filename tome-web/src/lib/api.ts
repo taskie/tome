@@ -14,9 +14,39 @@ import type {
 } from "./types";
 
 const API_BASE = process.env.TOME_API_URL ?? "http://localhost:8080";
+const TOME_AUTH = process.env.TOME_AUTH; // "aws-iam" to enable SigV4 signing
+const TOME_AWS_REGION = process.env.TOME_AWS_REGION ?? process.env.AWS_REGION ?? "us-east-1";
+const TOME_AWS_SERVICE = process.env.TOME_AWS_SERVICE ?? "lambda";
+
+let awsClientPromise: Promise<import("aws4fetch").AwsClient> | undefined;
+
+async function getAwsClient(): Promise<import("aws4fetch").AwsClient> {
+  if (!awsClientPromise) {
+    awsClientPromise = (async () => {
+      const { fromNodeProviderChain } = await import("@aws-sdk/credential-providers");
+      const { AwsClient } = await import("aws4fetch");
+      const credentials = await fromNodeProviderChain()();
+      return new AwsClient({
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken,
+        region: TOME_AWS_REGION,
+        service: TOME_AWS_SERVICE,
+      });
+    })();
+  }
+  return awsClientPromise;
+}
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 10 } });
+  const url = `${API_BASE}${path}`;
+  let res: Response;
+  if (TOME_AUTH === "aws-iam") {
+    const client = await getAwsClient();
+    res = await client.fetch(url);
+  } else {
+    res = await fetch(url, { next: { revalidate: 10 } });
+  }
   if (!res.ok) {
     throw new Error(`API ${path} → ${res.status} ${res.statusText}`);
   }
