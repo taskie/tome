@@ -3,6 +3,9 @@
 Served by `tome serve` (default: `http://127.0.0.1:8080`).
 Router defined in `tome-server/src/server.rs`.
 
+The full OpenAPI 3.0 spec is available at [`docs/schema/openapi.json`](../schema/openapi.json)
+(auto-generated via `cargo run -p tome-server --example generate_openapi`).
+
 ## Endpoints
 
 ```

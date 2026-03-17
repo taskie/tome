@@ -8,6 +8,7 @@
 - 詳細設計は **[docs/arch/](docs/arch/)** 下の各ドキュメントを参照。
 - 設計判断の記録は **[docs/adr/](docs/adr/)** 下の ADR を参照。
 - 残タスク・改善計画は **[TODO.md](TODO.md)** を参照。
+- 自動生成スキーマ・API 定義は **[docs/schema/](docs/schema/)** を参照（`openapi.json`, `tome-db.sql`）。
 - CLAUDE.md （当ファイル）には開発上の規約を記載する。
 
 ---

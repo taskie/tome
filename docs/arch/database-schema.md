@@ -98,12 +98,18 @@ erDiagram
 
 ## Declarative Schema Management
 
-A canonical DDL file (`tome-db/schema.sql`) is maintained for use with declarative
-migration tools such as [psqldef](https://github.com/sqldef/sqldef). This DDL
-represents the full target schema and can be applied directly:
+A canonical DDL file (`docs/schema/tome-db.sql`) is auto-generated from the SeaORM
+migrations by running:
 
 ```bash
-psqldef -U <user> -h <host> <database> < tome-db/schema.sql
+cargo run -p tome-db --example generate_schema 2>/dev/null > docs/schema/tome-db.sql
+```
+
+For PostgreSQL deployments, a hand-maintained PostgreSQL DDL can be derived from
+this output and applied with [psqldef](https://github.com/sqldef/sqldef):
+
+```bash
+psqldef -U <user> -h <host> <database> < schema.sql
 ```
 
 SeaORM migrations (`tome-db/src/migration/`) are still used by `connection::open()`
