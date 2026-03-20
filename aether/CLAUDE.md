@@ -135,4 +135,5 @@ All phases are complete:
 5. ~~**Password mode migration**~~ — Argon2id params stored in Key Block kdf_params
 6. ~~**XChaCha20-Poly1305**~~ — 24-byte nonce support via `[u8; 24]` fixed arrays, header payload reinterpretation
 7. ~~**Testing**~~ — v0 compat + v1 roundtrip (AES/ChaCha20/XChaCha20) + cross-algo decrypt + tampering + truncation
-7. **Documentation** — Update ARCHITECTURE.md aether section
+7. ~~**Documentation**~~ — Update ARCHITECTURE.md aether section
+8. ~~**Parallel encryption/decryption**~~ — crossbeam pipeline: Reader → N workers → Writer with BTreeMap reorder. `-j/--jobs` CLI flag. Early termination via `AtomicBool`.

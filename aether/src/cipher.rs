@@ -81,6 +81,16 @@ impl AeadInner {
 // Cipher
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Result of opening a v1 decryption envelope.
+struct V1Envelope {
+    dek: [u8; KEY_SIZE],
+    algorithm: CipherAlgorithm,
+    nonce_original: [u8; MAX_NONCE_SIZE],
+    nonce_size: usize,
+    chunk_kind: ChunkKind,
+    first_chunk_ad: Vec<u8>,
+}
+
 pub struct Cipher {
     aead: AeadInner,
     algorithm: CipherAlgorithm,
@@ -200,7 +210,7 @@ impl Cipher {
         self.decrypt_auto(r, w)
     }
 
-    /// Parallel v1 encryption. Falls back to serial for v0.
+    /// Parallel v1 encryption. Falls back to serial for v0 or when `num_workers` is 1.
     ///
     /// `num_workers` is the number of worker threads. 0 = auto-detect.
     pub fn encrypt_parallel<R: BufRead + Send, W: Write>(
@@ -209,6 +219,9 @@ impl Cipher {
         w: BufWriter<W>,
         num_workers: usize,
     ) -> Result<()> {
+        if num_workers == 1 {
+            return self.encrypt(r, w);
+        }
         match self.format_version {
             0 => self.encrypt_v0(r, w),
             1 => self.encrypt_v1_parallel(r, w, num_workers),
@@ -216,7 +229,7 @@ impl Cipher {
         }
     }
 
-    /// Parallel v1 decryption. Falls back to serial for v0.
+    /// Parallel v1 decryption. Falls back to serial for v0 or when `num_workers` is 1.
     ///
     /// `num_workers` is the number of worker threads. 0 = auto-detect.
     ///
@@ -229,6 +242,9 @@ impl Cipher {
         w: BufWriter<W>,
         num_workers: usize,
     ) -> Result<()> {
+        if num_workers == 1 {
+            return self.decrypt(r, w);
+        }
         self.decrypt_auto_parallel(r, w, num_workers)
     }
 
@@ -269,8 +285,9 @@ impl Cipher {
         Ok(())
     }
 
-    /// v1 encrypt: envelope encryption (KEK/DEK) + STREAM construction.
-    fn encrypt_v1<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<()> {
+    /// Prepare v1 encryption envelope: generate DEK, build header + KeyBlock, write them.
+    /// Returns (dek, data_iv, first_chunk_ad).
+    fn prepare_v1_envelope<W: Write>(&self, w: &mut W) -> Result<([u8; KEY_SIZE], [u8; MAX_NONCE_SIZE], Vec<u8>)> {
         let nonce_size = self.algorithm.nonce_size();
 
         // 1. Generate random DEK
@@ -300,10 +317,40 @@ impl Cipher {
         let key_block_bytes = key_block.to_bytes();
         w.write_all(&key_block_bytes)?;
 
-        // 4. STREAM encrypt with DEK
         let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
         first_chunk_ad.extend_from_slice(&header_bytes);
         first_chunk_ad.extend_from_slice(&key_block_bytes);
+
+        Ok((dek, data_iv, first_chunk_ad))
+    }
+
+    /// Open v1 decryption envelope: read KeyBlock, unwrap DEK.
+    /// Returns (dek, algo, nonce_original, nonce_size, chunk_kind, first_chunk_ad).
+    fn open_v1_envelope<R: BufRead>(&self, header: &Header, header_bytes: &[u8], r: &mut R) -> Result<V1Envelope> {
+        let algo = header.flags.algorithm;
+        let nonce_size = algo.nonce_size();
+        let chunk_kind = header.flags.chunk_kind;
+
+        let (key_block, key_block_bytes) = KeyBlock::from_reader(r, nonce_size)?;
+
+        let kek_aead = AeadInner::new(algo, &self.key);
+        let key_id = compute_key_id(&self.key);
+        let dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
+
+        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+        first_chunk_ad.extend_from_slice(header_bytes);
+        first_chunk_ad.extend_from_slice(&key_block_bytes);
+
+        let mut nonce_original = [0u8; MAX_NONCE_SIZE];
+        nonce_original[..nonce_size].copy_from_slice(header.nonce_bytes());
+
+        Ok(V1Envelope { dek, algorithm: algo, nonce_original, nonce_size, chunk_kind, first_chunk_ad })
+    }
+
+    /// v1 encrypt: envelope encryption (KEK/DEK) + STREAM construction.
+    fn encrypt_v1<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<()> {
+        let (mut dek, data_iv, first_chunk_ad) = self.prepare_v1_envelope(&mut w)?;
+        let nonce_size = self.algorithm.nonce_size();
 
         let dek_aead = AeadInner::new(self.algorithm, &dek);
         let countered_nonce = CounteredNonce::new(&data_iv[..nonce_size]);
@@ -373,28 +420,13 @@ impl Cipher {
         mut r: R,
         mut w: BufWriter<W>,
     ) -> Result<()> {
-        let algo = header.flags.algorithm;
-        let nonce_size = algo.nonce_size();
-        let chunk_kind = header.flags.chunk_kind;
+        let mut env = self.open_v1_envelope(header, header_bytes, &mut r)?;
 
-        // 1. Read Key Block
-        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r, nonce_size)?;
+        let dek_aead = AeadInner::new(env.algorithm, &env.dek);
+        let countered_nonce = CounteredNonce::new(&env.nonce_original[..env.nonce_size]);
+        self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, env.chunk_kind, &env.first_chunk_ad)?;
 
-        // 2. Find matching slot and unwrap DEK
-        let kek_aead = AeadInner::new(algo, &self.key);
-        let key_id = compute_key_id(&self.key);
-        let mut dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
-
-        // 3. STREAM decrypt with DEK
-        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
-        first_chunk_ad.extend_from_slice(header_bytes);
-        first_chunk_ad.extend_from_slice(&key_block_bytes);
-
-        let dek_aead = AeadInner::new(algo, &dek);
-        let countered_nonce = CounteredNonce::new(header.nonce_bytes());
-        self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad)?;
-
-        dek.zeroize();
+        env.dek.zeroize();
         Ok(())
     }
 
@@ -406,39 +438,7 @@ impl Cipher {
         mut w: BufWriter<W>,
         num_workers: usize,
     ) -> Result<()> {
-        let nonce_size = self.algorithm.nonce_size();
-
-        // 1. Generate random DEK
-        let mut dek = [0u8; KEY_SIZE];
-        OsRng.fill_bytes(&mut dek);
-
-        // 2. Build header
-        let flags = HeaderFlags::new(1, self.chunk_kind, self.algorithm);
-        let mut data_iv = [0u8; MAX_NONCE_SIZE];
-        OsRng.fill_bytes(&mut data_iv[..nonce_size]);
-        let header = Header::new_v1(&data_iv[..nonce_size], flags);
-        let header_bytes = header.to_bytes();
-        w.write_all(&header_bytes)?;
-
-        // 3. Build Key Block
-        let mut dek_nonce = [0u8; MAX_NONCE_SIZE];
-        OsRng.fill_bytes(&mut dek_nonce[..nonce_size]);
-        let kek_aead = AeadInner::new(self.algorithm, &self.key);
-        let mut encrypted_dek_buf = dek.to_vec();
-        kek_aead.encrypt_in_place(&dek_nonce, &mut encrypted_dek_buf, &header_bytes)?;
-        let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
-        encrypted_dek.copy_from_slice(&encrypted_dek_buf);
-
-        let key_id = compute_key_id(&self.key);
-        let kdf_params = self.kdf_params.clone().unwrap_or(KdfParams::None);
-        let key_block = KeyBlock { kdf_params, dek_nonce, nonce_size, slots: vec![KeySlot { key_id, encrypted_dek }] };
-        let key_block_bytes = key_block.to_bytes();
-        w.write_all(&key_block_bytes)?;
-
-        // 4. Parallel STREAM encrypt with DEK
-        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
-        first_chunk_ad.extend_from_slice(&header_bytes);
-        first_chunk_ad.extend_from_slice(&key_block_bytes);
+        let (mut dek, data_iv, first_chunk_ad) = self.prepare_v1_envelope(&mut w)?;
 
         crate::parallel::par_stream_encrypt(
             &mut r,
@@ -447,7 +447,7 @@ impl Cipher {
                 algorithm: self.algorithm,
                 key: &dek,
                 nonce_original: &data_iv,
-                nonce_size,
+                nonce_size: self.algorithm.nonce_size(),
                 chunk_kind: self.chunk_kind,
                 first_chunk_ad: &first_chunk_ad,
                 num_workers,
@@ -482,41 +482,23 @@ impl Cipher {
         mut w: BufWriter<W>,
         num_workers: usize,
     ) -> Result<()> {
-        let algo = header.flags.algorithm;
-        let nonce_size = algo.nonce_size();
-        let chunk_kind = header.flags.chunk_kind;
-
-        // 1. Read Key Block
-        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r, nonce_size)?;
-
-        // 2. Find matching slot and unwrap DEK
-        let kek_aead = AeadInner::new(algo, &self.key);
-        let key_id = compute_key_id(&self.key);
-        let mut dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
-
-        // 3. Parallel STREAM decrypt with DEK
-        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
-        first_chunk_ad.extend_from_slice(header_bytes);
-        first_chunk_ad.extend_from_slice(&key_block_bytes);
-
-        let mut nonce_original = [0u8; MAX_NONCE_SIZE];
-        nonce_original[..nonce_size].copy_from_slice(header.nonce_bytes());
+        let mut env = self.open_v1_envelope(header, header_bytes, &mut r)?;
 
         crate::parallel::par_stream_decrypt(
             &mut r,
             &mut w,
             &crate::parallel::ParStreamParams {
-                algorithm: algo,
-                key: &dek,
-                nonce_original: &nonce_original,
-                nonce_size,
-                chunk_kind,
-                first_chunk_ad: &first_chunk_ad,
+                algorithm: env.algorithm,
+                key: &env.dek,
+                nonce_original: &env.nonce_original,
+                nonce_size: env.nonce_size,
+                chunk_kind: env.chunk_kind,
+                first_chunk_ad: &env.first_chunk_ad,
                 num_workers,
             },
         )?;
 
-        dek.zeroize();
+        env.dek.zeroize();
         Ok(())
     }
 
@@ -1205,5 +1187,39 @@ mod tests {
         let mut dec = Cipher::with_algorithm(&key2, CipherAlgorithm::Aes256Gcm);
         let mut result = Vec::new();
         assert!(dec.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), 2).is_err());
+    }
+
+    /// Parallel password roundtrip with a fresh Cipher for decryption.
+    fn password_cross_cipher_roundtrip_parallel(algo: CipherAlgorithm) {
+        use crate::header::read_kdf_params;
+
+        let password = b"parallel-password-test";
+        let plaintext = b"The quick brown fox jumps over the lazy dog";
+
+        let mut enc_cipher = Cipher::with_password_algorithm(password, None, algo).unwrap();
+        let mut ciphertext = Vec::new();
+        enc_cipher.encrypt_parallel(&plaintext[..], BufWriter::new(&mut ciphertext), 2).unwrap();
+
+        let mut reader = &ciphertext[..];
+        let (header, kdf_params, consumed) = read_kdf_params(&mut reader).unwrap();
+        let salt = match (&header.flags.version, &kdf_params) {
+            (_, crate::header::KdfParams::Argon2id { salt, .. }) => *salt,
+            _ => panic!("expected Argon2id kdf_params"),
+        };
+        let mut dec_cipher = Cipher::with_password_algorithm(password, Some(salt), algo).unwrap();
+        let mut r = std::io::Read::chain(&consumed[..], reader);
+        let mut result = Vec::new();
+        dec_cipher.decrypt_parallel(&mut r, BufWriter::new(&mut result), 2).unwrap();
+        assert_eq!(plaintext.as_slice(), &result[..]);
+    }
+
+    #[test]
+    fn par_password_cross_cipher_aes() {
+        password_cross_cipher_roundtrip_parallel(CipherAlgorithm::Aes256Gcm);
+    }
+
+    #[test]
+    fn par_password_cross_cipher_xchacha() {
+        password_cross_cipher_roundtrip_parallel(CipherAlgorithm::XChaCha20Poly1305);
     }
 }

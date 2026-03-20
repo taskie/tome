@@ -133,11 +133,30 @@ fn execute_parallel<R: BufRead + Send, W: Write>(
     Ok(())
 }
 
-fn process<R: BufRead + Send, W: Write>(
+fn decrypt_with_password<R: BufRead + Send, W: Write>(
+    password: &[u8],
     mut r: R,
     w: BufWriter<W>,
     opt: &Opt,
+    algo: aether::CipherAlgorithm,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let (header, kdf_params, consumed) = aether::read_kdf_params(&mut r)?;
+    let salt = match (&header.flags.version, &kdf_params) {
+        (0, _) => header.integrity(),
+        (_, KdfParams::Argon2id { salt, .. }) => *salt,
+        _ => return Err("encrypted file has no KDF params for password-based decryption".into()),
+    };
+    let mut cipher = Cipher::with_password_algorithm(password, Some(salt), algo)?;
+    let mut r = consumed[..].chain(r);
+    if let Some(n) = opt.jobs {
+        execute_parallel(&mut cipher, &mut r, w, opt, n)?;
+    } else {
+        execute(&mut cipher, &mut r, w, opt)?;
+    }
+    Ok(())
+}
+
+fn process<R: BufRead + Send, W: Write>(r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn std::error::Error>> {
     let algo: aether::CipherAlgorithm =
         opt.cipher.parse().map_err(|e: String| -> Box<dyn std::error::Error> { e.into() })?;
     let chunk_kind = aether::ChunkKind::new(opt.chunk_kind)?;
@@ -153,23 +172,9 @@ fn process<R: BufRead + Send, W: Write>(
         Cipher::with_key_b64_algorithm(&key, algo)?
     } else if let Some(password) = opt.password_env.as_ref().and_then(|name| env::var(name).ok()) {
         if opt.decrypt {
-            let (header, kdf_params, consumed) = aether::read_kdf_params(&mut r)?;
-            let salt = match (&header.flags.version, &kdf_params) {
-                (0, _) => header.integrity(),
-                (_, KdfParams::Argon2id { salt, .. }) => *salt,
-                _ => return Err("encrypted file has no KDF params for password-based decryption".into()),
-            };
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
-            let mut r = consumed[..].chain(r);
-            if let Some(n) = opt.jobs {
-                execute_parallel(&mut cipher, &mut r, w, opt, n)?;
-            } else {
-                execute(&mut cipher, &mut r, w, opt)?;
-            }
-            return Ok(());
-        } else {
-            Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
+            return decrypt_with_password(password.as_bytes(), r, w, opt, algo);
         }
+        Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
     } else if opt.password_prompt {
         let password = rpassword::prompt_password("Password: ")?;
         if !opt.decrypt {
@@ -179,23 +184,9 @@ fn process<R: BufRead + Send, W: Write>(
             }
         }
         if opt.decrypt {
-            let (header, kdf_params, consumed) = aether::read_kdf_params(&mut r)?;
-            let salt = match (&header.flags.version, &kdf_params) {
-                (0, _) => header.integrity(),
-                (_, KdfParams::Argon2id { salt, .. }) => *salt,
-                _ => return Err("encrypted file has no KDF params for password-based decryption".into()),
-            };
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
-            let mut r = consumed[..].chain(r);
-            if let Some(n) = opt.jobs {
-                execute_parallel(&mut cipher, &mut r, w, opt, n)?;
-            } else {
-                execute(&mut cipher, &mut r, w, opt)?;
-            }
-            return Ok(());
-        } else {
-            Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
+            return decrypt_with_password(password.as_bytes(), r, w, opt, algo);
         }
+        Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
     } else {
         return Err("key is not specified".into());
     };
@@ -305,6 +296,9 @@ fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
         return Err("key and input are both stdin".into());
     }
 
+    // Use chunk-sized I/O buffers to reduce syscall overhead.
+    let io_buf_size = aether::ChunkKind::new(opt.chunk_kind).map(|ck| ck.ciphertext_size()).unwrap_or(8192);
+
     if opt.input.is_none() || opt.input_is_stdin() {
         // Read stdin into memory so the reader is Send (required for --jobs).
         let mut buf = Vec::new();
@@ -313,13 +307,13 @@ fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
         if opt.stdout || opt.output.is_none() {
             let w = std::io::stdout();
             let w = w.lock();
-            let w = BufWriter::new(w);
+            let w = BufWriter::with_capacity(io_buf_size, w);
             process(r, w, &opt)?;
         } else if let Some(output) = opt.output.as_ref() {
             let tempfile = NamedTempFile::new_in(output.parent().unwrap())?;
             {
                 let f = tempfile.reopen()?;
-                let w = BufWriter::new(f);
+                let w = BufWriter::with_capacity(io_buf_size, f);
                 process(r, w, &opt)?;
             }
             tempfile.persist(output)?;
@@ -329,11 +323,11 @@ fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
         }
     } else if let Some(input) = opt.input.as_ref() {
         let r = File::open(input)?;
-        let r = std::io::BufReader::new(r);
+        let r = std::io::BufReader::with_capacity(io_buf_size, r);
         if opt.stdout {
             let w = std::io::stdout();
             let w = w.lock();
-            let w = BufWriter::new(w);
+            let w = BufWriter::with_capacity(io_buf_size, w);
             process(r, w, &opt)?;
         } else {
             let output = opt.output.clone().unwrap_or_else(|| auto_ext(input, opt.decrypt));
@@ -343,7 +337,7 @@ fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
             let tempfile = NamedTempFile::new_in(output.parent().unwrap())?;
             {
                 let f = tempfile.reopen()?;
-                let w = BufWriter::new(f);
+                let w = BufWriter::with_capacity(io_buf_size, f);
                 process(r, w, &opt)?;
             }
             tempfile.persist(&output)?;

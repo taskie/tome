@@ -19,19 +19,20 @@ EOF
 }
 
 # Export so hyperfine subprocesses inherit them.
+export AETHER="${AETHER:-aether}"
 export AETHER_BENCH_DATA="${AETHER_BENCH_DATA:-data}"
 export AETHER_BENCH_KEY="${AETHER_BENCH_KEY:-key}"
 export AETHER_BENCH_PW="${AETHER_BENCH_PW:-test}"
 
 # Internal: single encryption run
 run() {
-    local cipher="$1" key_mode="$2" chunk_kind="${3:-7}"
+    local cipher="$1" key_mode="$2" chunk_kind="${3:-7}" jobs="${4:-1}"
     if [[ "$key_mode" = pw ]]; then
-        aether -P AETHER_BENCH_PW "$AETHER_BENCH_DATA" \
-            --cipher "$cipher" --chunk-kind "$chunk_kind"
+        "$AETHER" -P AETHER_BENCH_PW "$AETHER_BENCH_DATA" \
+            --cipher "$cipher" --chunk-kind "$chunk_kind" --jobs "$jobs"
     else
-        aether -k "$AETHER_BENCH_KEY" "$AETHER_BENCH_DATA" \
-            --cipher "$cipher" --chunk-kind "$chunk_kind"
+        "$AETHER" -k "$AETHER_BENCH_KEY" "$AETHER_BENCH_DATA" \
+            --cipher "$cipher" --chunk-kind "$chunk_kind" --jobs "$jobs"
     fi
 }
 
@@ -69,6 +70,18 @@ case "$mode" in
             --export-json "chunk-kind.${label}.json" \
             --export-markdown "chunk-kind.${label}.md" \
             "${SCRIPT} run xchacha20 key {chunk_kind}"
+        ;;
+
+    jobs)
+        label="${1:-default}"
+
+        hyperfine --warmup 2 --prepare sync \
+            --parameter-list jobs 1,2,4,6,8 \
+            --parameter-list chunk_kind 4,7,13 \
+            --command-name 'xchacha20 jobs={jobs} chunk_kind={chunk_kind}' \
+            --export-json "jobs.${label}.json" \
+            --export-markdown "jobs.${label}.md" \
+            "${SCRIPT} run xchacha20 key {chunk_kind} {jobs}"
         ;;
 
     *)
