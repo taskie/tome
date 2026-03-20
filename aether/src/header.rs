@@ -424,6 +424,36 @@ impl KeyBlock {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Public helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Read the header and, for v1 files, the Key Block from a reader.
+/// Returns `(header, kdf_params, all_consumed_bytes)`.
+///
+/// For v0 files, returns `KdfParams::None` and only the header bytes are consumed.
+/// For v1 files, the Key Block is also consumed to extract the KDF parameters.
+///
+/// The returned bytes can be chained back to the reader for full decryption.
+pub fn read_kdf_params<R: BufRead>(r: &mut R) -> Result<(Header, KdfParams, Vec<u8>)> {
+    let mut header_bytes = [0u8; HEADER_SIZE];
+    r.read_exact(&mut header_bytes)?;
+    let header = Header::from_bytes(&header_bytes)?;
+
+    if header.flags.version == 0 {
+        return Ok((header, KdfParams::None, header_bytes.to_vec()));
+    }
+
+    let nonce_size = header.flags.algorithm.nonce_size();
+    let (key_block, key_block_bytes) = KeyBlock::from_reader(r, nonce_size)?;
+
+    let mut consumed = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+    consumed.extend_from_slice(&header_bytes);
+    consumed.extend_from_slice(&key_block_bytes);
+
+    Ok((header, key_block.kdf_params, consumed))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Utility
 // ──────────────────────────────────────────────────────────────────────────────
 

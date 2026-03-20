@@ -873,6 +873,48 @@ mod tests {
         assert_eq!(plaintext.as_slice(), &result[..]);
     }
 
+    /// Simulate the CLI flow: encrypt with one Cipher, then create a fresh
+    /// Cipher for decryption using only the password + data from the file.
+    fn password_cross_cipher_roundtrip(algo: CipherAlgorithm) {
+        use crate::header::read_kdf_params;
+
+        let password = b"cross-cipher-test";
+        let plaintext = b"The quick brown fox jumps over the lazy dog";
+
+        // Encrypt
+        let mut enc_cipher = Cipher::with_password_algorithm(password, None, algo).unwrap();
+        let mut ciphertext = Vec::new();
+        enc_cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+
+        // Decrypt with a fresh Cipher (as the CLI would)
+        let mut reader = &ciphertext[..];
+        let (header, kdf_params, consumed) = read_kdf_params(&mut reader).unwrap();
+        let salt = match (&header.flags.version, &kdf_params) {
+            (_, crate::header::KdfParams::Argon2id { salt, .. }) => *salt,
+            _ => panic!("expected Argon2id kdf_params"),
+        };
+        let mut dec_cipher = Cipher::with_password_algorithm(password, Some(salt), algo).unwrap();
+        let mut r = std::io::Read::chain(&consumed[..], reader);
+        let mut result = Vec::new();
+        dec_cipher.decrypt(&mut r, BufWriter::new(&mut result)).unwrap();
+        assert_eq!(plaintext.as_slice(), &result[..]);
+    }
+
+    #[test]
+    fn password_cross_cipher_aes() {
+        password_cross_cipher_roundtrip(CipherAlgorithm::Aes256Gcm);
+    }
+
+    #[test]
+    fn password_cross_cipher_chacha() {
+        password_cross_cipher_roundtrip(CipherAlgorithm::ChaCha20Poly1305);
+    }
+
+    #[test]
+    fn password_cross_cipher_xchacha() {
+        password_cross_cipher_roundtrip(CipherAlgorithm::XChaCha20Poly1305);
+    }
+
     // ── error path tests ─────────────────────────────────────────────────
 
     #[test]

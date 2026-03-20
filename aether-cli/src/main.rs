@@ -130,11 +130,14 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
         Cipher::with_key_b64_algorithm(&key, algo)?
     } else if let Some(password) = opt.password_env.as_ref().and_then(|name| env::var(name).ok()) {
         if opt.decrypt {
-            let mut header_bytes = [0u8; aether::HEADER_SIZE];
-            r.read_exact(&mut header_bytes)?;
-            let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity()), algo)?;
-            let mut r = header_bytes[..].chain(r);
+            let (header, kdf_params, consumed) = aether::read_kdf_params(&mut r)?;
+            let salt = match (&header.flags.version, &kdf_params) {
+                (0, _) => header.integrity(),
+                (_, KdfParams::Argon2id { salt, .. }) => *salt,
+                _ => return Err("encrypted file has no KDF params for password-based decryption".into()),
+            };
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
+            let mut r = consumed[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());
         } else {
@@ -149,11 +152,14 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             }
         }
         if opt.decrypt {
-            let mut header_bytes = [0u8; aether::HEADER_SIZE];
-            r.read_exact(&mut header_bytes)?;
-            let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity()), algo)?;
-            let mut r = header_bytes[..].chain(r);
+            let (header, kdf_params, consumed) = aether::read_kdf_params(&mut r)?;
+            let salt = match (&header.flags.version, &kdf_params) {
+                (0, _) => header.integrity(),
+                (_, KdfParams::Argon2id { salt, .. }) => *salt,
+                _ => return Err("encrypted file has no KDF params for password-based decryption".into()),
+            };
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
+            let mut r = consumed[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());
         } else {
