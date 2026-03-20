@@ -18,7 +18,8 @@ use zeroize::Zeroize;
 use crate::algorithm::CipherAlgorithm;
 use crate::error::{AetherError, Result};
 use crate::header::{
-    ChunkKind, CounteredNonce, HEADER_SIZE, Header, HeaderFlags, INTEGRITY_SIZE, Integrity, KEY_SIZE, NONCE_SIZE,
+    ChunkKind, CounteredNonce, ENCRYPTED_DEK_SIZE, HEADER_SIZE, Header, HeaderFlags, INTEGRITY_SIZE, Integrity,
+    KEY_SIZE, KdfParams, KeyBlock, KeySlot, NONCE_SIZE, compute_key_id,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -95,6 +96,8 @@ pub struct Cipher {
     format_version: u8,
     /// Chunk kind for v1 encryption.
     chunk_kind: ChunkKind,
+    /// KDF parameters for v1 envelope encryption (password mode).
+    kdf_params: Option<KdfParams>,
 }
 
 impl Drop for Cipher {
@@ -110,18 +113,19 @@ impl Cipher {
         integrity: Option<Integrity>,
         format_version: u8,
         chunk_kind: ChunkKind,
+        kdf_params: Option<KdfParams>,
     ) -> Cipher {
         let aead = AeadInner::new(algorithm, key);
         let countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
-        Cipher { aead, algorithm, key: *key, countered_nonce, integrity, format_version, chunk_kind }
+        Cipher { aead, algorithm, key: *key, countered_nonce, integrity, format_version, chunk_kind, kdf_params }
     }
 
     pub fn new(key: &[u8; KEY_SIZE]) -> Cipher {
-        Cipher::new0(key, CipherAlgorithm::default(), None, 1, ChunkKind::DEFAULT)
+        Cipher::new0(key, CipherAlgorithm::default(), None, 1, ChunkKind::DEFAULT, None)
     }
 
     pub fn with_algorithm(key: &[u8; KEY_SIZE], algorithm: CipherAlgorithm) -> Cipher {
-        Cipher::new0(key, algorithm, None, 1, ChunkKind::DEFAULT)
+        Cipher::new0(key, algorithm, None, 1, ChunkKind::DEFAULT, None)
     }
 
     pub fn with_key_slice(key: &[u8]) -> Result<Cipher> {
@@ -160,17 +164,21 @@ impl Cipher {
             OsRng.fill_bytes(&mut salt);
             salt
         });
+        let m_cost = 19 * 1024;
+        let t_cost = 2u32;
+        let p_cost = 1u32;
         let argon2 = Argon2::new(
             argon2::Algorithm::Argon2id,
             argon2::Version::V0x13,
-            argon2::Params::new(19 * 1024, 2, 1, Some(32)).map_err(|e| AetherError::Kdf(e.to_string()))?,
+            argon2::Params::new(m_cost, t_cost, p_cost, Some(32)).map_err(|e| AetherError::Kdf(e.to_string()))?,
         );
         let mut key = [0u8; KEY_SIZE];
         argon2.hash_password_into(password, &salt, &mut key).map_err(|e| AetherError::Kdf(e.to_string()))?;
-        Ok(Cipher::new0(&key, algorithm, Some(salt), 1, ChunkKind::DEFAULT))
+        let kdf_params = KdfParams::Argon2id { salt, m_cost, t_cost, p_cost };
+        Ok(Cipher::new0(&key, algorithm, Some(salt), 1, ChunkKind::DEFAULT, Some(kdf_params)))
     }
 
-    /// Set the format version for encryption (0 = legacy, 1 = streaming AEAD).
+    /// Set the format version for encryption (0 = legacy, 1 = envelope + streaming AEAD).
     pub fn set_format_version(&mut self, version: u8) {
         self.format_version = version;
     }
@@ -191,7 +199,6 @@ impl Cipher {
     }
 
     pub fn decrypt<R: BufRead, W: Write>(&mut self, r: R, w: BufWriter<W>) -> Result<()> {
-        // Version is auto-detected from header
         self.decrypt_auto(r, w)
     }
 
@@ -224,46 +231,42 @@ impl Cipher {
         Ok(())
     }
 
-    /// v1 encrypt: STREAM construction with last-chunk flag and header AD.
-    fn encrypt_v1<R: BufRead, W: Write>(&mut self, mut r: R, mut w: BufWriter<W>) -> Result<()> {
+    /// v1 encrypt: envelope encryption (KEK/DEK) + STREAM construction.
+    fn encrypt_v1<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<()> {
+        // 1. Generate random DEK
+        let mut dek = [0u8; KEY_SIZE];
+        OsRng.fill_bytes(&mut dek);
+
+        // 2. Build header (version=1, reserved integrity = zeros)
         let flags = HeaderFlags::new(1, self.chunk_kind, self.algorithm);
-        let mut countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
-        let integrity = if let Some(integrity) = self.integrity {
-            integrity
-        } else {
-            let mut integrity = [0u8; INTEGRITY_SIZE];
-            OsRng.fill_bytes(&mut integrity);
-            integrity
-        };
-        let header = Header::new(&countered_nonce.peek(false), integrity, flags);
+        let data_iv = Aes256Gcm::generate_nonce(&mut OsRng);
+        let header = Header::new(&data_iv, [0u8; INTEGRITY_SIZE], flags);
         let header_bytes = header.to_bytes();
         w.write_all(&header_bytes)?;
 
-        let pt_size = self.chunk_kind.plaintext_size();
-        let mut buf = vec![0u8; pt_size];
-        let mut pending_pos = read_exact_or_eof(&mut r, &mut buf)?;
-        let mut is_first = true;
+        // 3. Build Key Block: wrap DEK with KEK
+        let dek_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let kek_aead = AeadInner::new(self.algorithm, &self.key);
+        let encrypted_dek_vec = kek_aead.encrypt_ad(&dek_nonce, &dek, &header_bytes)?;
+        let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
+        encrypted_dek.copy_from_slice(&encrypted_dek_vec);
 
-        loop {
-            let mut next_buf = vec![0u8; pt_size];
-            let next_pos = read_exact_or_eof(&mut r, &mut next_buf)?;
-            let is_last = next_pos == 0;
+        let key_id = compute_key_id(&self.key);
+        let kdf_params = self.kdf_params.clone().unwrap_or(KdfParams::None);
+        let key_block = KeyBlock { kdf_params, dek_nonce, slots: vec![KeySlot { key_id, encrypted_dek }] };
+        let key_block_bytes = key_block.to_bytes();
+        w.write_all(&key_block_bytes)?;
 
-            let nonce = if is_last { countered_nonce.next_last() } else { countered_nonce.next() };
-            let ciphertext = if is_first {
-                is_first = false;
-                self.aead.encrypt_ad(&nonce, &buf[..pending_pos], &header_bytes)?
-            } else {
-                self.aead.encrypt(&nonce, &buf[..pending_pos])?
-            };
-            w.write_all(&ciphertext)?;
+        // 4. STREAM encrypt with DEK
+        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+        first_chunk_ad.extend_from_slice(&header_bytes);
+        first_chunk_ad.extend_from_slice(&key_block_bytes);
 
-            if is_last {
-                break;
-            }
-            buf.copy_from_slice(&next_buf);
-            pending_pos = next_pos;
-        }
+        let dek_aead = AeadInner::new(self.algorithm, &dek);
+        let countered_nonce = CounteredNonce::new(data_iv);
+        self.stream_encrypt(r, &mut w, &dek_aead, countered_nonce, &first_chunk_ad)?;
+
+        dek.zeroize();
         Ok(())
     }
 
@@ -320,7 +323,7 @@ impl Cipher {
         Ok(())
     }
 
-    /// v1 decrypt: STREAM construction — last-chunk detected via nonce flag, header AD.
+    /// v1 decrypt: read Key Block, unwrap DEK, then STREAM decrypt.
     fn decrypt_v1<R: BufRead, W: Write>(
         &self,
         header: &Header,
@@ -330,15 +333,119 @@ impl Cipher {
     ) -> Result<()> {
         let algo = header.flags.algorithm;
         let chunk_kind = header.flags.chunk_kind;
+
+        // 1. Read Key Block
+        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r)?;
+
+        // 2. Derive KEK if password mode
+        let kek = &self.key;
+
+        // 3. Find matching slot and unwrap DEK
+        let kek_aead = AeadInner::new(algo, kek);
+        let key_id = compute_key_id(kek);
+        let mut dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
+
+        // 4. STREAM decrypt with DEK
+        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+        first_chunk_ad.extend_from_slice(header_bytes);
+        first_chunk_ad.extend_from_slice(&key_block_bytes);
+
+        let dek_aead = AeadInner::new(algo, &dek);
+        let countered_nonce = CounteredNonce::new(header.iv);
+        self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad)?;
+
+        dek.zeroize();
+        Ok(())
+    }
+
+    /// Try to unwrap DEK from Key Block slots.
+    /// Slots with matching key_id are tried first, then the rest.
+    fn unwrap_dek(
+        &self,
+        key_block: &KeyBlock,
+        kek_aead: &AeadInner,
+        key_id: &[u8; 4],
+        header_bytes: &[u8],
+    ) -> Result<[u8; KEY_SIZE]> {
+        let matched = key_block.slots.iter().filter(|s| s.key_id == *key_id);
+        let unmatched = key_block.slots.iter().filter(|s| s.key_id != *key_id);
+        for slot in matched.chain(unmatched) {
+            if let Ok(dek) = self.try_unwrap_slot(slot, kek_aead, &key_block.dek_nonce, header_bytes) {
+                return Ok(dek);
+            }
+        }
+        Err(AetherError::Decryption("no matching KEK slot found".into()))
+    }
+
+    fn try_unwrap_slot(
+        &self,
+        slot: &KeySlot,
+        kek_aead: &AeadInner,
+        dek_nonce: &Nonce<U12>,
+        header_bytes: &[u8],
+    ) -> Result<[u8; KEY_SIZE]> {
+        let dek_vec = kek_aead.decrypt_ad(dek_nonce, &slot.encrypted_dek, header_bytes)?;
+        let mut dek = [0u8; KEY_SIZE];
+        dek.copy_from_slice(&dek_vec);
+        Ok(dek)
+    }
+
+    // ── STREAM helpers ───────────────────────────────────────────────────
+
+    /// STREAM encrypt: variable chunk size with last-chunk nonce flag and first-chunk AD.
+    fn stream_encrypt<R: BufRead, W: Write>(
+        &self,
+        mut r: R,
+        w: &mut W,
+        aead: &AeadInner,
+        mut countered_nonce: CounteredNonce,
+        first_chunk_ad: &[u8],
+    ) -> Result<()> {
+        let pt_size = self.chunk_kind.plaintext_size();
+        let mut buf = vec![0u8; pt_size];
+        let mut pending_pos = read_exact_or_eof(&mut r, &mut buf)?;
+        let mut is_first = true;
+
+        loop {
+            let mut next_buf = vec![0u8; pt_size];
+            let next_pos = read_exact_or_eof(&mut r, &mut next_buf)?;
+            let is_last = next_pos == 0;
+
+            let nonce = if is_last { countered_nonce.next_last() } else { countered_nonce.next() };
+            let ciphertext = if is_first {
+                is_first = false;
+                aead.encrypt_ad(&nonce, &buf[..pending_pos], first_chunk_ad)?
+            } else {
+                aead.encrypt(&nonce, &buf[..pending_pos])?
+            };
+            w.write_all(&ciphertext)?;
+
+            if is_last {
+                break;
+            }
+            buf.copy_from_slice(&next_buf);
+            pending_pos = next_pos;
+        }
+        Ok(())
+    }
+
+    /// STREAM decrypt: variable chunk size with last-chunk detection and first-chunk AD.
+    fn stream_decrypt<R: BufRead, W: Write>(
+        &self,
+        r: &mut R,
+        w: &mut W,
+        aead: &AeadInner,
+        mut countered_nonce: CounteredNonce,
+        chunk_kind: ChunkKind,
+        first_chunk_ad: &[u8],
+    ) -> Result<()> {
         let buf_size = chunk_kind.ciphertext_size();
-        let aead = AeadInner::new(algo, &self.key);
-        let mut countered_nonce = CounteredNonce::new(header.iv);
         let mut is_first = true;
         let mut seen_last = false;
 
         loop {
             let mut buf = vec![0u8; buf_size];
-            let pos = read_exact_or_eof(&mut r, &mut buf)?;
+            let pos = read_exact_or_eof(r, &mut buf)?;
             if pos == 0 {
                 if !seen_last {
                     return Err(AetherError::Decryption("stream truncated: no last chunk".into()));
@@ -346,18 +453,17 @@ impl Cipher {
                 break;
             }
 
-            // Try normal nonce first; if that fails, try last-chunk nonce
             let normal_nonce = countered_nonce.peek(false);
             let last_nonce = countered_nonce.peek(true);
             countered_nonce.counter += 1;
 
             let plaintext = if is_first {
                 is_first = false;
-                if let Ok(pt) = aead.decrypt_ad(&normal_nonce, &buf[..pos], header_bytes) {
+                if let Ok(pt) = aead.decrypt_ad(&normal_nonce, &buf[..pos], first_chunk_ad) {
                     pt
                 } else {
                     seen_last = true;
-                    aead.decrypt_ad(&last_nonce, &buf[..pos], header_bytes)?
+                    aead.decrypt_ad(&last_nonce, &buf[..pos], first_chunk_ad)?
                 }
             } else if let Ok(pt) = aead.decrypt(&normal_nonce, &buf[..pos]) {
                 pt
@@ -368,7 +474,6 @@ impl Cipher {
             w.write_all(&plaintext)?;
 
             if seen_last {
-                // Verify no more data after last chunk
                 let mut trail = [0u8; 1];
                 let n = r.read(&mut trail)?;
                 if n > 0 {
@@ -436,7 +541,7 @@ mod tests {
     use crate::header::INTEGRITY_SIZE;
 
     fn roundtrip(algo: CipherAlgorithm, plaintext: &[u8]) {
-        // v1 default
+        // v1 default (envelope encryption)
         let key = [42u8; KEY_SIZE];
         let mut cipher = Cipher::with_algorithm(&key, algo);
         let mut ciphertext = Vec::new();
@@ -457,7 +562,7 @@ mod tests {
         assert_eq!(plaintext, &plaintext2[..]);
     }
 
-    // ── v1 tests ─────────────────────────────────────────────────────────
+    // ── v1 tests (envelope + STREAM) ─────────────────────────────────────
 
     #[test]
     fn v1_aes_small() {
@@ -486,7 +591,6 @@ mod tests {
 
     #[test]
     fn v1_exact_chunk_boundary() {
-        // Exactly one chunk worth of plaintext (1 MiB default)
         let pt = vec![0xABu8; ChunkKind::DEFAULT.plaintext_size()];
         roundtrip(CipherAlgorithm::Aes256Gcm, &pt);
     }
@@ -542,10 +646,40 @@ mod tests {
         let mut ciphertext = Vec::new();
         cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
 
-        // Tamper with a non-magic byte in the header (e.g., flip a flags bit)
-        ciphertext[3] ^= 0x01;
+        // Tamper with IV byte in the header
+        ciphertext[5] ^= 0x01;
         let mut result = Vec::new();
         let err = cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn v1_key_block_tampering_detected() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::Aes256Gcm);
+        let plaintext = b"key block tamper test";
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+
+        // Tamper with a byte inside the key block (after 32-byte header)
+        ciphertext[HEADER_SIZE + 10] ^= 0x01;
+        let mut result = Vec::new();
+        let err = cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn v1_wrong_key_rejected() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::Aes256Gcm);
+        let plaintext = b"wrong key test";
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+
+        let wrong_key = [99u8; KEY_SIZE];
+        let mut cipher2 = Cipher::with_algorithm(&wrong_key, CipherAlgorithm::Aes256Gcm);
+        let mut result = Vec::new();
+        let err = cipher2.decrypt(&ciphertext[..], BufWriter::new(&mut result));
         assert!(err.is_err());
     }
 

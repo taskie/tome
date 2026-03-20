@@ -1,6 +1,7 @@
 use aes_gcm::Nonce;
 use bytes::{Buf, BufMut};
-use std::io::Write;
+use sha2::{Digest, Sha256};
+use std::io::{BufRead, Write};
 use typenum::U12;
 
 use crate::algorithm::CipherAlgorithm;
@@ -13,9 +14,15 @@ pub const HEADER_SIZE: usize = 32;
 pub(crate) const NONCE_SIZE: usize = 12;
 pub(crate) const COUNTER_SIZE: usize = 8;
 pub(crate) const INTEGRITY_SIZE: usize = 16;
-const AEAD_TAG_SIZE: usize = 16;
+pub(crate) const AEAD_TAG_SIZE: usize = 16;
 /// Base ciphertext chunk size (chunk_kind=0). Actual = BASE_CHUNK_SIZE << chunk_kind.
 const BASE_CHUNK_SIZE: usize = 8192;
+
+pub(crate) const KEY_ID_SIZE: usize = 4;
+pub(crate) const ENCRYPTED_DEK_SIZE: usize = KEY_SIZE + AEAD_TAG_SIZE; // 48
+const SLOT_SIZE: usize = KEY_ID_SIZE + ENCRYPTED_DEK_SIZE; // 52
+/// Fixed part of Key Block header: key_block_len(2) + kdf_id(1) + slot_count(1) + dek_nonce(12)
+const KEY_BLOCK_HEADER_SIZE: usize = 4 + NONCE_SIZE; // 16
 
 // ──────────────────────────────────────────────────────────────────────────────
 // HeaderFlags — structured view of the 16-bit flags field
@@ -201,6 +208,197 @@ impl CounteredNonce {
         self.counter += 1;
         nonce
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// KdfId — key derivation function identifier
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum KdfId {
+    None = 0,
+    Argon2id = 1,
+}
+
+impl KdfId {
+    pub fn from_u8(v: u8) -> Result<Self> {
+        match v {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Argon2id),
+            _ => Err(AetherError::InvalidHeader(format!("unknown kdf_id: {v}"))),
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// KdfParams — KDF-specific parameters stored in the Key Block
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KdfParams {
+    None,
+    Argon2id { salt: [u8; INTEGRITY_SIZE], m_cost: u32, t_cost: u32, p_cost: u32 },
+}
+
+impl KdfParams {
+    pub fn kdf_id(&self) -> KdfId {
+        match self {
+            Self::None => KdfId::None,
+            Self::Argon2id { .. } => KdfId::Argon2id,
+        }
+    }
+
+    fn serialized_size(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Argon2id { .. } => INTEGRITY_SIZE + 4 + 4 + 4, // salt(16) + m_cost(4) + t_cost(4) + p_cost(4)
+        }
+    }
+
+    fn write_to<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
+        match self {
+            Self::None => {}
+            Self::Argon2id { salt, m_cost, t_cost, p_cost } => {
+                w.write_all(salt)?;
+                w.write_all(&m_cost.to_be_bytes())?;
+                w.write_all(&t_cost.to_be_bytes())?;
+                w.write_all(&p_cost.to_be_bytes())?;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_from(kdf_id: KdfId, r: &mut &[u8]) -> Result<Self> {
+        match kdf_id {
+            KdfId::None => Ok(Self::None),
+            KdfId::Argon2id => {
+                if r.len() < INTEGRITY_SIZE + 12 {
+                    return Err(AetherError::InvalidHeader("kdf_params too short for argon2id".into()));
+                }
+                let mut salt = [0u8; INTEGRITY_SIZE];
+                salt.copy_from_slice(&r[..INTEGRITY_SIZE]);
+                r.advance(INTEGRITY_SIZE);
+                let m_cost = r.get_u32();
+                let t_cost = r.get_u32();
+                let p_cost = r.get_u32();
+                Ok(Self::Argon2id { salt, m_cost, t_cost, p_cost })
+            }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// KeySlot — a single KEK slot in the Key Block
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct KeySlot {
+    pub key_id: [u8; KEY_ID_SIZE],
+    pub encrypted_dek: [u8; ENCRYPTED_DEK_SIZE],
+}
+
+impl KeySlot {
+    fn write_to<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
+        w.write_all(&self.key_id)?;
+        w.write_all(&self.encrypted_dek)?;
+        Ok(())
+    }
+
+    fn read_from(r: &mut &[u8]) -> Result<Self> {
+        if r.len() < SLOT_SIZE {
+            return Err(AetherError::InvalidHeader("slot data too short".into()));
+        }
+        let mut key_id = [0u8; KEY_ID_SIZE];
+        key_id.copy_from_slice(&r[..KEY_ID_SIZE]);
+        r.advance(KEY_ID_SIZE);
+        let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
+        encrypted_dek.copy_from_slice(&r[..ENCRYPTED_DEK_SIZE]);
+        r.advance(ENCRYPTED_DEK_SIZE);
+        Ok(Self { key_id, encrypted_dek })
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// KeyBlock — envelope encryption metadata between header and data chunks
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct KeyBlock {
+    pub kdf_params: KdfParams,
+    pub dek_nonce: Nonce<U12>,
+    pub slots: Vec<KeySlot>,
+}
+
+impl KeyBlock {
+    pub fn serialized_size(&self) -> usize {
+        KEY_BLOCK_HEADER_SIZE + self.kdf_params.serialized_size() + SLOT_SIZE * self.slots.len()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let size = self.serialized_size();
+        let mut buf = Vec::with_capacity(size);
+        buf.put_u16(size as u16);
+        buf.push(self.kdf_params.kdf_id() as u8);
+        buf.push(self.slots.len() as u8);
+        buf.write_all(self.dek_nonce.as_ref()).unwrap();
+        self.kdf_params.write_to(&mut buf).unwrap();
+        for slot in &self.slots {
+            slot.write_to(&mut buf).unwrap();
+        }
+        debug_assert_eq!(buf.len(), size);
+        buf
+    }
+
+    /// Read a Key Block from a reader. Returns the parsed block and its raw bytes (for AD use).
+    pub fn from_reader<R: BufRead>(r: &mut R) -> Result<(Self, Vec<u8>)> {
+        let mut len_buf = [0u8; 2];
+        r.read_exact(&mut len_buf)?;
+        let key_block_len = u16::from_be_bytes(len_buf) as usize;
+        if key_block_len < KEY_BLOCK_HEADER_SIZE {
+            return Err(AetherError::InvalidHeader("key_block_len too small".into()));
+        }
+
+        let mut remaining = vec![0u8; key_block_len - 2];
+        r.read_exact(&mut remaining)?;
+
+        // Reconstruct full bytes for AD
+        let mut full_bytes = Vec::with_capacity(key_block_len);
+        full_bytes.extend_from_slice(&len_buf);
+        full_bytes.extend_from_slice(&remaining);
+
+        let mut cursor: &[u8] = &remaining;
+        let kdf_id = KdfId::from_u8(cursor.get_u8())?;
+        let slot_count = cursor.get_u8();
+
+        if cursor.len() < NONCE_SIZE {
+            return Err(AetherError::InvalidHeader("key block too short for dek_nonce".into()));
+        }
+        let mut dek_nonce = Nonce::default();
+        dek_nonce.as_mut_slice().copy_from_slice(&cursor[..NONCE_SIZE]);
+        cursor.advance(NONCE_SIZE);
+
+        let kdf_params = KdfParams::read_from(kdf_id, &mut cursor)?;
+
+        let mut slots = Vec::with_capacity(slot_count as usize);
+        for _ in 0..slot_count {
+            slots.push(KeySlot::read_from(&mut cursor)?);
+        }
+
+        Ok((Self { kdf_params, dek_nonce, slots }, full_bytes))
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Utility
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Compute key_id = SHA-256(key)[0..4] for fast slot lookup.
+pub(crate) fn compute_key_id(key: &[u8; KEY_SIZE]) -> [u8; KEY_ID_SIZE] {
+    let hash = Sha256::digest(key);
+    let mut id = [0u8; KEY_ID_SIZE];
+    id.copy_from_slice(&hash[..KEY_ID_SIZE]);
+    id
 }
 
 #[cfg(test)]
