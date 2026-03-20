@@ -240,6 +240,28 @@ impl CounteredNonce {
     }
 }
 
+/// Compute a nonce for a given counter value without mutable state.
+///
+/// This is the stateless equivalent of `CounteredNonce::peek`, suitable for
+/// parallel chunk processing where each worker computes its own nonce.
+pub(crate) fn compute_nonce(
+    original: &[u8; MAX_NONCE_SIZE],
+    nonce_size: usize,
+    counter: u64,
+    is_last: bool,
+) -> [u8; MAX_NONCE_SIZE] {
+    let mut nonce = *original;
+    let counter_start = nonce_size - COUNTER_SIZE;
+    let ys = counter.to_be_bytes();
+    for (x, y) in nonce[counter_start..nonce_size].iter_mut().zip(ys.iter()) {
+        *x ^= y;
+    }
+    if is_last {
+        nonce[0] ^= 0x80;
+    }
+    nonce
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // KdfId — key derivation function identifier
 // ──────────────────────────────────────────────────────────────────────────────

@@ -26,14 +26,14 @@ use crate::header::{
 // AEAD enum dispatch
 // ──────────────────────────────────────────────────────────────────────────────
 
-enum AeadInner {
+pub(crate) enum AeadInner {
     Aes(Box<Aes256Gcm>),
     ChaCha(ChaCha20Poly1305),
     XChaCha(XChaCha20Poly1305),
 }
 
 impl AeadInner {
-    fn new(algo: CipherAlgorithm, key: &[u8; KEY_SIZE]) -> Self {
+    pub(crate) fn new(algo: CipherAlgorithm, key: &[u8; KEY_SIZE]) -> Self {
         match algo {
             CipherAlgorithm::Aes256Gcm => {
                 Self::Aes(Box::new(Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(key))))
@@ -55,7 +55,7 @@ impl AeadInner {
     }
 
     /// Encrypt `buf` in place (appends 16-byte AEAD tag). Avoids intermediate `Vec` allocation.
-    fn encrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
+    pub(crate) fn encrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
         use aes_gcm::aead::AeadInPlace as _;
         match self {
             Self::Aes(gcm) => gcm.encrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
@@ -66,7 +66,7 @@ impl AeadInner {
     }
 
     /// Decrypt `buf` in place (verifies and removes 16-byte AEAD tag).
-    fn decrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
+    pub(crate) fn decrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
         use aes_gcm::aead::AeadInPlace as _;
         match self {
             Self::Aes(gcm) => gcm.decrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
@@ -198,6 +198,38 @@ impl Cipher {
 
     pub fn decrypt<R: BufRead, W: Write>(&mut self, r: R, w: BufWriter<W>) -> Result<()> {
         self.decrypt_auto(r, w)
+    }
+
+    /// Parallel v1 encryption. Falls back to serial for v0.
+    ///
+    /// `num_workers` is the number of worker threads. 0 = auto-detect.
+    pub fn encrypt_parallel<R: BufRead + Send, W: Write>(
+        &mut self,
+        r: R,
+        w: BufWriter<W>,
+        num_workers: usize,
+    ) -> Result<()> {
+        match self.format_version {
+            0 => self.encrypt_v0(r, w),
+            1 => self.encrypt_v1_parallel(r, w, num_workers),
+            v => Err(AetherError::InvalidHeader(format!("unsupported format version: {v}"))),
+        }
+    }
+
+    /// Parallel v1 decryption. Falls back to serial for v0.
+    ///
+    /// `num_workers` is the number of worker threads. 0 = auto-detect.
+    ///
+    /// **Warning**: plaintext is written before the final chunk's AEAD tag is
+    /// verified. If authentication fails, this function returns an error but
+    /// earlier plaintext may have already been written.
+    pub fn decrypt_parallel<R: BufRead + Send, W: Write>(
+        &mut self,
+        r: R,
+        w: BufWriter<W>,
+        num_workers: usize,
+    ) -> Result<()> {
+        self.decrypt_auto_parallel(r, w, num_workers)
     }
 
     /// v0 encrypt: integrity suffix appended to plaintext, fixed 8 KiB chunks.
@@ -361,6 +393,128 @@ impl Cipher {
         let dek_aead = AeadInner::new(algo, &dek);
         let countered_nonce = CounteredNonce::new(header.nonce_bytes());
         self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad)?;
+
+        dek.zeroize();
+        Ok(())
+    }
+
+    /// Parallel v1 encrypt: same envelope setup as `encrypt_v1`, but chunk
+    /// processing is distributed across a crossbeam thread pool.
+    fn encrypt_v1_parallel<R: BufRead + Send, W: Write>(
+        &mut self,
+        mut r: R,
+        mut w: BufWriter<W>,
+        num_workers: usize,
+    ) -> Result<()> {
+        let nonce_size = self.algorithm.nonce_size();
+
+        // 1. Generate random DEK
+        let mut dek = [0u8; KEY_SIZE];
+        OsRng.fill_bytes(&mut dek);
+
+        // 2. Build header
+        let flags = HeaderFlags::new(1, self.chunk_kind, self.algorithm);
+        let mut data_iv = [0u8; MAX_NONCE_SIZE];
+        OsRng.fill_bytes(&mut data_iv[..nonce_size]);
+        let header = Header::new_v1(&data_iv[..nonce_size], flags);
+        let header_bytes = header.to_bytes();
+        w.write_all(&header_bytes)?;
+
+        // 3. Build Key Block
+        let mut dek_nonce = [0u8; MAX_NONCE_SIZE];
+        OsRng.fill_bytes(&mut dek_nonce[..nonce_size]);
+        let kek_aead = AeadInner::new(self.algorithm, &self.key);
+        let mut encrypted_dek_buf = dek.to_vec();
+        kek_aead.encrypt_in_place(&dek_nonce, &mut encrypted_dek_buf, &header_bytes)?;
+        let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
+        encrypted_dek.copy_from_slice(&encrypted_dek_buf);
+
+        let key_id = compute_key_id(&self.key);
+        let kdf_params = self.kdf_params.clone().unwrap_or(KdfParams::None);
+        let key_block = KeyBlock { kdf_params, dek_nonce, nonce_size, slots: vec![KeySlot { key_id, encrypted_dek }] };
+        let key_block_bytes = key_block.to_bytes();
+        w.write_all(&key_block_bytes)?;
+
+        // 4. Parallel STREAM encrypt with DEK
+        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+        first_chunk_ad.extend_from_slice(&header_bytes);
+        first_chunk_ad.extend_from_slice(&key_block_bytes);
+
+        crate::parallel::par_stream_encrypt(
+            &mut r,
+            &mut w,
+            &crate::parallel::ParStreamParams {
+                algorithm: self.algorithm,
+                key: &dek,
+                nonce_original: &data_iv,
+                nonce_size,
+                chunk_kind: self.chunk_kind,
+                first_chunk_ad: &first_chunk_ad,
+                num_workers,
+            },
+        )?;
+
+        dek.zeroize();
+        Ok(())
+    }
+
+    fn decrypt_auto_parallel<R: BufRead + Send, W: Write>(
+        &mut self,
+        mut r: R,
+        w: BufWriter<W>,
+        num_workers: usize,
+    ) -> Result<()> {
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        r.read_exact(&mut header_bytes)?;
+        let header = Header::from_bytes(&header_bytes)?;
+        match header.flags.version {
+            0 => self.decrypt_v0(&header, &header_bytes, r, w),
+            1 => self.decrypt_v1_parallel(&header, &header_bytes, r, w, num_workers),
+            v => Err(AetherError::InvalidHeader(format!("unsupported format version: {v}"))),
+        }
+    }
+
+    fn decrypt_v1_parallel<R: BufRead + Send, W: Write>(
+        &self,
+        header: &Header,
+        header_bytes: &[u8],
+        mut r: R,
+        mut w: BufWriter<W>,
+        num_workers: usize,
+    ) -> Result<()> {
+        let algo = header.flags.algorithm;
+        let nonce_size = algo.nonce_size();
+        let chunk_kind = header.flags.chunk_kind;
+
+        // 1. Read Key Block
+        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r, nonce_size)?;
+
+        // 2. Find matching slot and unwrap DEK
+        let kek_aead = AeadInner::new(algo, &self.key);
+        let key_id = compute_key_id(&self.key);
+        let mut dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
+
+        // 3. Parallel STREAM decrypt with DEK
+        let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
+        first_chunk_ad.extend_from_slice(header_bytes);
+        first_chunk_ad.extend_from_slice(&key_block_bytes);
+
+        let mut nonce_original = [0u8; MAX_NONCE_SIZE];
+        nonce_original[..nonce_size].copy_from_slice(header.nonce_bytes());
+
+        crate::parallel::par_stream_decrypt(
+            &mut r,
+            &mut w,
+            &crate::parallel::ParStreamParams {
+                algorithm: algo,
+                key: &dek,
+                nonce_original: &nonce_original,
+                nonce_size,
+                chunk_kind,
+                first_chunk_ad: &first_chunk_ad,
+                num_workers,
+            },
+        )?;
 
         dek.zeroize();
         Ok(())
@@ -561,7 +715,7 @@ impl Cipher {
     }
 }
 
-fn read_exact_or_eof<R: BufRead>(r: &mut R, buf: &mut [u8]) -> Result<usize> {
+pub(crate) fn read_exact_or_eof<R: BufRead>(r: &mut R, buf: &mut [u8]) -> Result<usize> {
     let buf_len = buf.len();
     let mut pos = 0usize;
     loop {
@@ -927,5 +1081,129 @@ mod tests {
     fn with_key_b64_rejects_invalid() {
         let result = Cipher::with_key_b64("not-valid-base64!!!");
         assert!(result.is_err());
+    }
+
+    // ── parallel tests ───────────────────────────────────────────────────
+
+    fn roundtrip_parallel(algo: CipherAlgorithm, plaintext: &[u8], num_workers: usize) {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, algo);
+        let mut ciphertext = Vec::new();
+        cipher.encrypt_parallel(plaintext, BufWriter::new(&mut ciphertext), num_workers).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), num_workers).unwrap();
+        assert_eq!(plaintext, &result[..]);
+    }
+
+    /// Parallel encrypt → serial decrypt.
+    fn par_encrypt_serial_decrypt(algo: CipherAlgorithm, plaintext: &[u8]) {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, algo);
+        let mut ciphertext = Vec::new();
+        cipher.encrypt_parallel(plaintext, BufWriter::new(&mut ciphertext), 0).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result)).unwrap();
+        assert_eq!(plaintext, &result[..]);
+    }
+
+    /// Serial encrypt → parallel decrypt.
+    fn serial_encrypt_par_decrypt(algo: CipherAlgorithm, plaintext: &[u8]) {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, algo);
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(plaintext, BufWriter::new(&mut ciphertext)).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), 0).unwrap();
+        assert_eq!(plaintext, &result[..]);
+    }
+
+    #[test]
+    fn par_aes_small() {
+        roundtrip_parallel(CipherAlgorithm::Aes256Gcm, b"Hello, world!", 2);
+    }
+
+    #[test]
+    fn par_chacha_small() {
+        roundtrip_parallel(CipherAlgorithm::ChaCha20Poly1305, b"Hello, world!", 2);
+    }
+
+    #[test]
+    fn par_xchacha_small() {
+        roundtrip_parallel(CipherAlgorithm::XChaCha20Poly1305, b"Hello, world!", 2);
+    }
+
+    #[test]
+    fn par_empty() {
+        roundtrip_parallel(CipherAlgorithm::Aes256Gcm, b"", 2);
+    }
+
+    #[test]
+    fn par_xchacha_empty() {
+        roundtrip_parallel(CipherAlgorithm::XChaCha20Poly1305, b"", 2);
+    }
+
+    #[test]
+    fn par_multi_chunk() {
+        // 200 KiB with 64 KiB chunks → ~3 chunks
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::Aes256Gcm);
+        cipher.set_chunk_kind(ChunkKind::new(3).unwrap()); // 64 KiB
+        let plaintext = vec![0xCDu8; 200_000];
+        let mut ciphertext = Vec::new();
+        cipher.encrypt_parallel(&plaintext[..], BufWriter::new(&mut ciphertext), 4).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), 4).unwrap();
+        assert_eq!(plaintext, result);
+    }
+
+    #[test]
+    fn par_xchacha_multi_chunk() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        cipher.set_chunk_kind(ChunkKind::new(3).unwrap());
+        let plaintext = vec![0xABu8; 200_000];
+        let mut ciphertext = Vec::new();
+        cipher.encrypt_parallel(&plaintext[..], BufWriter::new(&mut ciphertext), 4).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), 4).unwrap();
+        assert_eq!(plaintext, result);
+    }
+
+    #[test]
+    fn par_exact_chunk_boundary() {
+        let pt = vec![0xABu8; ChunkKind::DEFAULT.plaintext_size()];
+        roundtrip_parallel(CipherAlgorithm::Aes256Gcm, &pt, 4);
+    }
+
+    #[test]
+    fn par_encrypt_serial_decrypt_aes() {
+        par_encrypt_serial_decrypt(CipherAlgorithm::Aes256Gcm, &vec![0u8; 200_000]);
+    }
+
+    #[test]
+    fn par_encrypt_serial_decrypt_xchacha() {
+        par_encrypt_serial_decrypt(CipherAlgorithm::XChaCha20Poly1305, &vec![0u8; 200_000]);
+    }
+
+    #[test]
+    fn serial_encrypt_par_decrypt_aes() {
+        serial_encrypt_par_decrypt(CipherAlgorithm::Aes256Gcm, &vec![0u8; 200_000]);
+    }
+
+    #[test]
+    fn serial_encrypt_par_decrypt_xchacha() {
+        serial_encrypt_par_decrypt(CipherAlgorithm::XChaCha20Poly1305, &vec![0u8; 200_000]);
+    }
+
+    #[test]
+    fn par_wrong_key_rejected() {
+        let key1 = [42u8; KEY_SIZE];
+        let key2 = [99u8; KEY_SIZE];
+        let mut enc = Cipher::with_algorithm(&key1, CipherAlgorithm::Aes256Gcm);
+        let mut ciphertext = Vec::new();
+        enc.encrypt_parallel(&b"secret data"[..], BufWriter::new(&mut ciphertext), 2).unwrap();
+        let mut dec = Cipher::with_algorithm(&key2, CipherAlgorithm::Aes256Gcm);
+        let mut result = Vec::new();
+        assert!(dec.decrypt_parallel(&ciphertext[..], BufWriter::new(&mut result), 2).is_err());
     }
 }

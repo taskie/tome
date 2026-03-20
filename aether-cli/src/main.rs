@@ -75,6 +75,10 @@ pub struct Opt {
     #[arg(long, default_value = "7")]
     pub chunk_kind: u8,
 
+    /// Number of parallel worker jobs (0 = auto-detect, omit for serial)
+    #[arg(short = 'j', long)]
+    pub jobs: Option<usize>,
+
     /// Input file ("-" or omit for stdin)
     #[arg(value_name = "FILE")]
     pub input: Option<PathBuf>,
@@ -114,7 +118,26 @@ fn execute<R: BufRead, W: Write>(
     Ok(())
 }
 
-fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result<(), Box<dyn std::error::Error>> {
+fn execute_parallel<R: BufRead + Send, W: Write>(
+    cipher: &mut Cipher,
+    r: R,
+    w: BufWriter<W>,
+    opt: &Opt,
+    num_workers: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if opt.decrypt {
+        cipher.decrypt_parallel(r, w, num_workers)?;
+    } else {
+        cipher.encrypt_parallel(r, w, num_workers)?;
+    }
+    Ok(())
+}
+
+fn process<R: BufRead + Send, W: Write>(
+    mut r: R,
+    w: BufWriter<W>,
+    opt: &Opt,
+) -> Result<(), Box<dyn std::error::Error>> {
     let algo: aether::CipherAlgorithm =
         opt.cipher.parse().map_err(|e: String| -> Box<dyn std::error::Error> { e.into() })?;
     let chunk_kind = aether::ChunkKind::new(opt.chunk_kind)?;
@@ -138,7 +161,11 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             };
             let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
             let mut r = consumed[..].chain(r);
-            execute(&mut cipher, &mut r, w, opt)?;
+            if let Some(n) = opt.jobs {
+                execute_parallel(&mut cipher, &mut r, w, opt, n)?;
+            } else {
+                execute(&mut cipher, &mut r, w, opt)?;
+            }
             return Ok(());
         } else {
             Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
@@ -160,7 +187,11 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             };
             let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(salt), algo)?;
             let mut r = consumed[..].chain(r);
-            execute(&mut cipher, &mut r, w, opt)?;
+            if let Some(n) = opt.jobs {
+                execute_parallel(&mut cipher, &mut r, w, opt, n)?;
+            } else {
+                execute(&mut cipher, &mut r, w, opt)?;
+            }
             return Ok(());
         } else {
             Cipher::with_password_algorithm(password.as_bytes(), None, algo)?
@@ -170,7 +201,11 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
     };
     cipher.set_format_version(opt.format_version);
     cipher.set_chunk_kind(chunk_kind);
-    execute(&mut cipher, r, w, opt)?;
+    if let Some(n) = opt.jobs {
+        execute_parallel(&mut cipher, r, w, opt, n)?;
+    } else {
+        execute(&mut cipher, r, w, opt)?;
+    }
     Ok(())
 }
 
@@ -271,8 +306,10 @@ fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
     }
 
     if opt.input.is_none() || opt.input_is_stdin() {
-        let stdin = std::io::stdin();
-        let r = stdin.lock();
+        // Read stdin into memory so the reader is Send (required for --jobs).
+        let mut buf = Vec::new();
+        std::io::stdin().lock().read_to_end(&mut buf)?;
+        let r = std::io::Cursor::new(buf);
         if opt.stdout || opt.output.is_none() {
             let w = std::io::stdout();
             let w = w.lock();

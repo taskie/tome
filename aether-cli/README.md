@@ -63,6 +63,7 @@ MY_KEY=<base64key> aether -K MY_KEY file.txt
 | `--cipher <ALGO>` | Cipher algorithm: `xchacha20-poly1305` (default) / `chacha20-poly1305` / `aes256gcm` |
 | `--format-version <N>` | Format version: `0` (legacy) / `1` (streaming AEAD, default) |
 | `--chunk-kind <N>` | Chunk size for v1: `0`=8 KiB … `7`=1 MiB (default) … `15`=256 MiB |
+| `-j, --jobs <N>` | Parallel worker jobs (`0` = auto-detect, omit for serial) |
 | `-i, --info` | Display encrypted file metadata (no key required) |
 
 ## File Extension

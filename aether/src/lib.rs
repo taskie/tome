@@ -2,6 +2,7 @@ pub mod algorithm;
 pub mod cipher;
 pub mod error;
 pub mod header;
+mod parallel;
 
 pub use algorithm::CipherAlgorithm;
 pub use cipher::Cipher;
