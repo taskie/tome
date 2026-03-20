@@ -106,7 +106,7 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             let mut header_bytes = [0u8; aether::HEADER_SIZE];
             r.read_exact(&mut header_bytes)?;
             let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo)?;
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity()), algo)?;
             let mut r = header_bytes[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());
@@ -125,7 +125,7 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
             let mut header_bytes = [0u8; aether::HEADER_SIZE];
             r.read_exact(&mut header_bytes)?;
             let header = aether::Header::from_bytes(&header_bytes)?;
-            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity), algo)?;
+            let mut cipher = Cipher::with_password_algorithm(password.as_bytes(), Some(header.integrity()), algo)?;
             let mut r = header_bytes[..].chain(r);
             execute(&mut cipher, &mut r, w, opt)?;
             return Ok(());

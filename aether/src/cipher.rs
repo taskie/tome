@@ -6,20 +6,20 @@ use std::{
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{AeadCore, KeyInit, OsRng},
+    aead::{KeyInit, OsRng},
 };
 use argon2::Argon2;
 use base64::Engine;
-use chacha20poly1305::ChaCha20Poly1305;
+use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
 use crypto_bigint::rand_core::RngCore as _;
-use typenum::U12;
+use typenum::{U12, U24};
 use zeroize::Zeroize;
 
 use crate::algorithm::CipherAlgorithm;
 use crate::error::{AetherError, Result};
 use crate::header::{
     ChunkKind, CounteredNonce, ENCRYPTED_DEK_SIZE, HEADER_SIZE, Header, HeaderFlags, INTEGRITY_SIZE, Integrity,
-    KEY_SIZE, KdfParams, KeyBlock, KeySlot, NONCE_SIZE, compute_key_id,
+    KEY_SIZE, KdfParams, KeyBlock, KeySlot, MAX_NONCE_SIZE, NONCE_SIZE_STD, compute_key_id,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -29,6 +29,7 @@ use crate::header::{
 enum AeadInner {
     Aes(Box<Aes256Gcm>),
     ChaCha(ChaCha20Poly1305),
+    XChaCha(XChaCha20Poly1305),
 }
 
 impl AeadInner {
@@ -40,43 +41,57 @@ impl AeadInner {
             CipherAlgorithm::ChaCha20Poly1305 => {
                 Self::ChaCha(ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key)))
             }
+            CipherAlgorithm::XChaCha20Poly1305 => {
+                Self::XChaCha(XChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key)))
+            }
         }
     }
 
-    fn encrypt(&self, nonce: &Nonce<U12>, plaintext: &[u8]) -> Result<Vec<u8>> {
+    fn nonce_size(&self) -> usize {
+        match self {
+            Self::Aes(_) | Self::ChaCha(_) => 12,
+            Self::XChaCha(_) => 24,
+        }
+    }
+
+    fn encrypt(&self, nonce: &[u8; MAX_NONCE_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
         use aes_gcm::aead::Aead;
         match self {
-            Self::Aes(gcm) => gcm.encrypt(nonce, plaintext),
-            Self::ChaCha(cc) => cc.encrypt(nonce, plaintext),
+            Self::Aes(gcm) => gcm.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), plaintext),
+            Self::ChaCha(cc) => cc.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), plaintext),
+            Self::XChaCha(xcc) => xcc.encrypt(Nonce::<U24>::from_slice(nonce), plaintext),
         }
         .map_err(|e| AetherError::Encryption(e.to_string()))
     }
 
-    fn encrypt_ad(&self, nonce: &Nonce<U12>, plaintext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
+    fn encrypt_ad(&self, nonce: &[u8; MAX_NONCE_SIZE], plaintext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
         use aes_gcm::aead::{Aead, Payload};
         let payload = Payload { msg: plaintext, aad: ad };
         match self {
-            Self::Aes(gcm) => gcm.encrypt(nonce, payload),
-            Self::ChaCha(cc) => cc.encrypt(nonce, payload),
+            Self::Aes(gcm) => gcm.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
+            Self::ChaCha(cc) => cc.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
+            Self::XChaCha(xcc) => xcc.encrypt(Nonce::<U24>::from_slice(nonce), payload),
         }
         .map_err(|e| AetherError::Encryption(e.to_string()))
     }
 
-    fn decrypt(&self, nonce: &Nonce<U12>, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    fn decrypt(&self, nonce: &[u8; MAX_NONCE_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
         use aes_gcm::aead::Aead;
         match self {
-            Self::Aes(gcm) => gcm.decrypt(nonce, ciphertext),
-            Self::ChaCha(cc) => cc.decrypt(nonce, ciphertext),
+            Self::Aes(gcm) => gcm.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), ciphertext),
+            Self::ChaCha(cc) => cc.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), ciphertext),
+            Self::XChaCha(xcc) => xcc.decrypt(Nonce::<U24>::from_slice(nonce), ciphertext),
         }
         .map_err(|e| AetherError::Decryption(e.to_string()))
     }
 
-    fn decrypt_ad(&self, nonce: &Nonce<U12>, ciphertext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
+    fn decrypt_ad(&self, nonce: &[u8; MAX_NONCE_SIZE], ciphertext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
         use aes_gcm::aead::{Aead, Payload};
         let payload = Payload { msg: ciphertext, aad: ad };
         match self {
-            Self::Aes(gcm) => gcm.decrypt(nonce, payload),
-            Self::ChaCha(cc) => cc.decrypt(nonce, payload),
+            Self::Aes(gcm) => gcm.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
+            Self::ChaCha(cc) => cc.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
+            Self::XChaCha(xcc) => xcc.decrypt(Nonce::<U24>::from_slice(nonce), payload),
         }
         .map_err(|e| AetherError::Decryption(e.to_string()))
     }
@@ -116,7 +131,10 @@ impl Cipher {
         kdf_params: Option<KdfParams>,
     ) -> Cipher {
         let aead = AeadInner::new(algorithm, key);
-        let countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
+        let nonce_size = algorithm.nonce_size();
+        let mut nonce_bytes = [0u8; MAX_NONCE_SIZE];
+        OsRng.fill_bytes(&mut nonce_bytes[..nonce_size]);
+        let countered_nonce = CounteredNonce::new(&nonce_bytes[..nonce_size]);
         Cipher { aead, algorithm, key: *key, countered_nonce, integrity, format_version, chunk_kind, kdf_params }
     }
 
@@ -203,9 +221,14 @@ impl Cipher {
     }
 
     /// v0 encrypt: integrity suffix appended to plaintext, fixed 8 KiB chunks.
+    /// Only supports 12-byte nonce algorithms (AES-256-GCM, ChaCha20-Poly1305).
     fn encrypt_v0<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<()> {
-        let buf_size = ChunkKind::V0.ciphertext_size();
-        let mut countered_nonce = CounteredNonce::new(Aes256Gcm::generate_nonce(&mut OsRng));
+        if self.algorithm.nonce_size() != NONCE_SIZE_STD {
+            return Err(AetherError::InvalidHeader(format!("v0 format does not support {}", self.algorithm)));
+        }
+        let mut iv = [0u8; NONCE_SIZE_STD];
+        OsRng.fill_bytes(&mut iv);
+        let mut countered_nonce = CounteredNonce::new(&iv);
         let integrity = if let Some(integrity) = self.integrity {
             integrity
         } else {
@@ -213,10 +236,11 @@ impl Cipher {
             OsRng.fill_bytes(&mut integrity);
             integrity
         };
-        let header = Header::new_v0(&countered_nonce.peek(false), integrity, self.algorithm).to_bytes();
+        let header = Header::new_v0(&iv, integrity, self.algorithm).to_bytes();
         w.write_all(&header)?;
         let mut r = r.chain(&integrity[..]);
         let pt_size = ChunkKind::V0.plaintext_size();
+        let buf_size = ChunkKind::V0.ciphertext_size();
         loop {
             let mut buf = vec![0u8; pt_size];
             let pos = read_exact_or_eof(&mut r, &mut buf)?;
@@ -233,19 +257,23 @@ impl Cipher {
 
     /// v1 encrypt: envelope encryption (KEK/DEK) + STREAM construction.
     fn encrypt_v1<R: BufRead, W: Write>(&mut self, r: R, mut w: BufWriter<W>) -> Result<()> {
+        let nonce_size = self.algorithm.nonce_size();
+
         // 1. Generate random DEK
         let mut dek = [0u8; KEY_SIZE];
         OsRng.fill_bytes(&mut dek);
 
-        // 2. Build header (version=1, reserved integrity = zeros)
+        // 2. Build header (version=1, reserved payload tail = zeros)
         let flags = HeaderFlags::new(1, self.chunk_kind, self.algorithm);
-        let data_iv = Aes256Gcm::generate_nonce(&mut OsRng);
-        let header = Header::new(&data_iv, [0u8; INTEGRITY_SIZE], flags);
+        let mut data_iv = [0u8; MAX_NONCE_SIZE];
+        OsRng.fill_bytes(&mut data_iv[..nonce_size]);
+        let header = Header::new_v1(&data_iv[..nonce_size], flags);
         let header_bytes = header.to_bytes();
         w.write_all(&header_bytes)?;
 
         // 3. Build Key Block: wrap DEK with KEK
-        let dek_nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut dek_nonce = [0u8; MAX_NONCE_SIZE];
+        OsRng.fill_bytes(&mut dek_nonce[..nonce_size]);
         let kek_aead = AeadInner::new(self.algorithm, &self.key);
         let encrypted_dek_vec = kek_aead.encrypt_ad(&dek_nonce, &dek, &header_bytes)?;
         let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
@@ -253,7 +281,7 @@ impl Cipher {
 
         let key_id = compute_key_id(&self.key);
         let kdf_params = self.kdf_params.clone().unwrap_or(KdfParams::None);
-        let key_block = KeyBlock { kdf_params, dek_nonce, slots: vec![KeySlot { key_id, encrypted_dek }] };
+        let key_block = KeyBlock { kdf_params, dek_nonce, nonce_size, slots: vec![KeySlot { key_id, encrypted_dek }] };
         let key_block_bytes = key_block.to_bytes();
         w.write_all(&key_block_bytes)?;
 
@@ -263,7 +291,7 @@ impl Cipher {
         first_chunk_ad.extend_from_slice(&key_block_bytes);
 
         let dek_aead = AeadInner::new(self.algorithm, &dek);
-        let countered_nonce = CounteredNonce::new(data_iv);
+        let countered_nonce = CounteredNonce::new(&data_iv[..nonce_size]);
         self.stream_encrypt(r, &mut w, &dek_aead, countered_nonce, &first_chunk_ad)?;
 
         dek.zeroize();
@@ -293,7 +321,7 @@ impl Cipher {
         let buf_size = ChunkKind::V0.ciphertext_size();
         let algo = header.flags.algorithm;
         let aead = AeadInner::new(algo, &self.key);
-        let mut countered_nonce = CounteredNonce::new(header.iv);
+        let mut countered_nonce = CounteredNonce::new(header.nonce_bytes());
         let mut tmp_old = Vec::with_capacity(buf_size);
         let mut tmp_new = Vec::with_capacity(buf_size);
         loop {
@@ -316,7 +344,7 @@ impl Cipher {
             return Err(AetherError::Decryption("data too short for integrity check".into()));
         }
         let (tmp, actual_integrity) = tmp_old.split_at(tmp_old.len() - INTEGRITY_SIZE);
-        if header.integrity != actual_integrity {
+        if header.integrity() != actual_integrity {
             return Err(AetherError::IntegrityMismatch);
         }
         w.write_all(tmp)?;
@@ -332,26 +360,24 @@ impl Cipher {
         mut w: BufWriter<W>,
     ) -> Result<()> {
         let algo = header.flags.algorithm;
+        let nonce_size = algo.nonce_size();
         let chunk_kind = header.flags.chunk_kind;
 
         // 1. Read Key Block
-        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r)?;
+        let (key_block, key_block_bytes) = KeyBlock::from_reader(&mut r, nonce_size)?;
 
-        // 2. Derive KEK if password mode
-        let kek = &self.key;
-
-        // 3. Find matching slot and unwrap DEK
-        let kek_aead = AeadInner::new(algo, kek);
-        let key_id = compute_key_id(kek);
+        // 2. Find matching slot and unwrap DEK
+        let kek_aead = AeadInner::new(algo, &self.key);
+        let key_id = compute_key_id(&self.key);
         let mut dek = self.unwrap_dek(&key_block, &kek_aead, &key_id, header_bytes)?;
 
-        // 4. STREAM decrypt with DEK
+        // 3. STREAM decrypt with DEK
         let mut first_chunk_ad = Vec::with_capacity(header_bytes.len() + key_block_bytes.len());
         first_chunk_ad.extend_from_slice(header_bytes);
         first_chunk_ad.extend_from_slice(&key_block_bytes);
 
         let dek_aead = AeadInner::new(algo, &dek);
-        let countered_nonce = CounteredNonce::new(header.iv);
+        let countered_nonce = CounteredNonce::new(header.nonce_bytes());
         self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad)?;
 
         dek.zeroize();
@@ -381,7 +407,7 @@ impl Cipher {
         &self,
         slot: &KeySlot,
         kek_aead: &AeadInner,
-        dek_nonce: &Nonce<U12>,
+        dek_nonce: &[u8; MAX_NONCE_SIZE],
         header_bytes: &[u8],
     ) -> Result<[u8; KEY_SIZE]> {
         let dek_vec = kek_aead.decrypt_ad(dek_nonce, &slot.encrypted_dek, header_bytes)?;
@@ -488,11 +514,12 @@ impl Cipher {
     // ── Byte-level encrypt/decrypt (file names, not streaming) ───────────
 
     pub fn encrypt_bytes(&mut self, bs: &[u8]) -> Result<Vec<u8>> {
-        let mut result = Vec::with_capacity(NONCE_SIZE + bs.len() + 16);
+        let nonce_size = self.aead.nonce_size();
         let nonce = self.countered_nonce.next();
-        let mut enc = self.aead.encrypt(&nonce, bs)?;
-        result.append(&mut enc);
-        result.extend_from_slice(nonce.as_slice());
+        let enc = self.aead.encrypt(&nonce, bs)?;
+        let mut result = Vec::with_capacity(enc.len() + nonce_size);
+        result.extend_from_slice(&enc);
+        result.extend_from_slice(&nonce[..nonce_size]);
         Ok(result)
     }
 
@@ -504,11 +531,14 @@ impl Cipher {
     }
 
     pub fn decrypt_bytes(&mut self, bs: &[u8]) -> Result<Vec<u8>> {
-        let mut bs = bs.to_vec();
-        let nonce = bs.split_off(bs.len() - NONCE_SIZE);
-        let nonce = Nonce::from_slice(&nonce);
-        let plaintext = self.aead.decrypt(nonce, bs.as_slice())?;
-        Ok(plaintext)
+        let nonce_size = self.aead.nonce_size();
+        if bs.len() < nonce_size {
+            return Err(AetherError::Decryption("data too short for nonce".into()));
+        }
+        let (ciphertext, nonce_bytes) = bs.split_at(bs.len() - nonce_size);
+        let mut nonce = [0u8; MAX_NONCE_SIZE];
+        nonce[..nonce_size].copy_from_slice(nonce_bytes);
+        self.aead.decrypt(&nonce, ciphertext)
     }
 
     pub fn decrypt_file_name(&mut self, s: &OsStr) -> Result<OsString> {
@@ -541,7 +571,6 @@ mod tests {
     use crate::header::INTEGRITY_SIZE;
 
     fn roundtrip(algo: CipherAlgorithm, plaintext: &[u8]) {
-        // v1 default (envelope encryption)
         let key = [42u8; KEY_SIZE];
         let mut cipher = Cipher::with_algorithm(&key, algo);
         let mut ciphertext = Vec::new();
@@ -575,6 +604,11 @@ mod tests {
     }
 
     #[test]
+    fn v1_xchacha_small() {
+        roundtrip(CipherAlgorithm::XChaCha20Poly1305, b"Hello, world!");
+    }
+
+    #[test]
     fn v1_aes_large() {
         roundtrip(CipherAlgorithm::Aes256Gcm, &vec![0u8; 10240]);
     }
@@ -585,8 +619,18 @@ mod tests {
     }
 
     #[test]
+    fn v1_xchacha_large() {
+        roundtrip(CipherAlgorithm::XChaCha20Poly1305, &vec![0u8; 10240]);
+    }
+
+    #[test]
     fn v1_empty() {
         roundtrip(CipherAlgorithm::Aes256Gcm, b"");
+    }
+
+    #[test]
+    fn v1_xchacha_empty() {
+        roundtrip(CipherAlgorithm::XChaCha20Poly1305, b"");
     }
 
     #[test]
@@ -609,6 +653,19 @@ mod tests {
     }
 
     #[test]
+    fn v1_xchacha_custom_chunk_kind() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        cipher.set_chunk_kind(ChunkKind::new(3).unwrap()); // 64 KiB
+        let plaintext = vec![0xCDu8; 200_000];
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result)).unwrap();
+        assert_eq!(plaintext, result);
+    }
+
+    #[test]
     fn v1_cross_algo_decrypt_auto_detects() {
         let key = [42u8; KEY_SIZE];
         let mut cipher_aes = Cipher::with_algorithm(&key, CipherAlgorithm::Aes256Gcm);
@@ -616,9 +673,25 @@ mod tests {
         let mut ciphertext = Vec::new();
         cipher_aes.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
 
+        // Decrypt with a ChaCha-configured cipher — should auto-detect AES from header
         let mut cipher_chacha = Cipher::with_algorithm(&key, CipherAlgorithm::ChaCha20Poly1305);
         let mut result = Vec::new();
         cipher_chacha.decrypt(&ciphertext[..], BufWriter::new(&mut result)).unwrap();
+        assert_eq!(plaintext.as_slice(), &result[..]);
+    }
+
+    #[test]
+    fn v1_xchacha_cross_algo_decrypt() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        let plaintext = b"xchacha cross-algo";
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+
+        // Decrypt with AES-configured cipher — should auto-detect XChaCha20 from header
+        let mut cipher2 = Cipher::with_algorithm(&key, CipherAlgorithm::Aes256Gcm);
+        let mut result = Vec::new();
+        cipher2.decrypt(&ciphertext[..], BufWriter::new(&mut result)).unwrap();
         assert_eq!(plaintext.as_slice(), &result[..]);
     }
 
@@ -631,7 +704,6 @@ mod tests {
         let mut ciphertext = Vec::new();
         cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
 
-        // Truncate to remove last chunk
         let truncated = &ciphertext[..ciphertext.len() - 100];
         let mut result = Vec::new();
         let err = cipher.decrypt(truncated, BufWriter::new(&mut result));
@@ -646,7 +718,6 @@ mod tests {
         let mut ciphertext = Vec::new();
         cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
 
-        // Tamper with IV byte in the header
         ciphertext[5] ^= 0x01;
         let mut result = Vec::new();
         let err = cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result));
@@ -661,7 +732,6 @@ mod tests {
         let mut ciphertext = Vec::new();
         cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
 
-        // Tamper with a byte inside the key block (after 32-byte header)
         ciphertext[HEADER_SIZE + 10] ^= 0x01;
         let mut result = Vec::new();
         let err = cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result));
@@ -705,7 +775,18 @@ mod tests {
         roundtrip_v0(CipherAlgorithm::ChaCha20Poly1305, &vec![0u8; 10240]);
     }
 
-    // ── file name tests (version-independent) ────────────────────────────
+    #[test]
+    fn v0_xchacha_rejected() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        cipher.set_format_version(0);
+        let plaintext = b"should fail";
+        let mut ciphertext = Vec::new();
+        let err = cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext));
+        assert!(err.is_err());
+    }
+
+    // ── file name tests ──────────────────────────────────────────────────
 
     #[test]
     fn file_name_aes() {
@@ -721,6 +802,16 @@ mod tests {
     fn file_name_chacha() {
         let key = [42u8; KEY_SIZE];
         let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::ChaCha20Poly1305);
+        let s = "hello_world.txt";
+        let ciphertext = cipher.encrypt_file_name(s.as_ref()).unwrap();
+        let plaintext = cipher.decrypt_file_name(&ciphertext).unwrap();
+        assert_eq!(s, plaintext.to_string_lossy());
+    }
+
+    #[test]
+    fn file_name_xchacha() {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
         let s = "hello_world.txt";
         let ciphertext = cipher.encrypt_file_name(s.as_ref()).unwrap();
         let plaintext = cipher.decrypt_file_name(&ciphertext).unwrap();
@@ -749,6 +840,20 @@ mod tests {
         let integrity = [42u8; INTEGRITY_SIZE];
         let mut cipher =
             Cipher::with_password_algorithm(password, Some(integrity), CipherAlgorithm::ChaCha20Poly1305).unwrap();
+        let plaintext = b"Hello, world!";
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();
+        let mut result = Vec::new();
+        cipher.decrypt(&ciphertext[..], BufWriter::new(&mut result)).unwrap();
+        assert_eq!(plaintext.as_slice(), &result[..]);
+    }
+
+    #[test]
+    fn password_xchacha() {
+        let password = b"test";
+        let integrity = [42u8; INTEGRITY_SIZE];
+        let mut cipher =
+            Cipher::with_password_algorithm(password, Some(integrity), CipherAlgorithm::XChaCha20Poly1305).unwrap();
         let plaintext = b"Hello, world!";
         let mut ciphertext = Vec::new();
         cipher.encrypt(&plaintext[..], BufWriter::new(&mut ciphertext)).unwrap();

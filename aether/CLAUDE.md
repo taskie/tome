@@ -20,11 +20,12 @@ Backward compatibility: existing files with flags `0x0000` (AES) / `0x0001` (Cha
 
 ## algorithm Values
 
-| Value | Algorithm |
-|-------|-----------|
-| 0 | AES-256-GCM |
-| 1 | ChaCha20-Poly1305 |
-| 2–15 | Reserved (AES-256-GCM-SIV, XChaCha20, etc.) |
+| Value | Algorithm | Nonce Size |
+|-------|-----------|------------|
+| 0 | AES-256-GCM | 12 bytes |
+| 1 | ChaCha20-Poly1305 | 12 bytes |
+| 2 | XChaCha20-Poly1305 | 24 bytes |
+| 3–15 | Reserved | — |
 
 ## chunk_kind Values
 
@@ -62,7 +63,7 @@ Offset  Size  Field
 0       2     key_block_len   — total byte length of Key Block (including this field)
 2       1     kdf_id          — 0 = none (raw key), 1 = argon2id
 3       1     slot_count      — number of KEK slots (1–255)
-4       12    dek_nonce       — nonce for DEK encryption (independent from data IV)
+4       var   dek_nonce       — nonce for DEK encryption (12 or 24 bytes, matches algorithm)
 16      var   kdf_params      — KDF-specific parameters (depends on kdf_id)
 var     52×N  slots           — array of KEK slots
 ```
@@ -78,17 +79,20 @@ var     52×N  slots           — array of KEK slots
 
 ### Header integrity Field
 
-v1 sets the header integrity field to all zeros (reserved). KDF salt is stored in kdf_params within the Key Block instead.
+v1 reinterprets the 28-byte payload area (bytes [4..32]) of the header as `nonce[N] + reserved[28-N]`, where N is the algorithm's nonce size (12 or 24). The reserved bytes are zeros. KDF salt is stored in kdf_params within the Key Block.
 
 ## v1 STREAM Nonce Construction
 
 ```
-nonce (12 bytes) = IV ⊕ (0x00{4} ‖ counter_u64_BE)
-last chunk:        nonce[0] ^= 0x80
+nonce (N bytes) = IV ⊕ counter_padded
+last chunk:       nonce[0] ^= 0x80
 ```
 
-- IV: random 12 bytes stored in header
-- counter: chunk number (0-based), XORed into bytes [4..12]
+Counter is XORed into the last 8 bytes of the nonce:
+- 12-byte nonce: `IV ⊕ (0x00{4} ‖ counter_u64_BE)`, counter at bytes [4..12]
+- 24-byte nonce: `IV ⊕ (0x00{16} ‖ counter_u64_BE)`, counter at bytes [16..24]
+
+- IV: random nonce stored in header (12 or 24 bytes depending on algorithm)
 - last-chunk flag: high bit of byte [0] — prevents truncation attacks
 - Recommended upper limit: 2^32 chunks to avoid nonce reuse
 
@@ -118,14 +122,17 @@ This ensures that tampering with the header, Key Block, or any slot is detected 
 ## `encrypt_bytes` / `decrypt_bytes`
 
 File name encryption (`encrypt_bytes` / `decrypt_bytes`) is independent of the streaming format.
-Single-chunk AEAD + appended nonce; unaffected by v1 changes.
+Single-chunk AEAD + appended nonce (12 or 24 bytes depending on algorithm). Nonce size is determined by the `Cipher`'s algorithm, not auto-detected.
 
-## Implementation Phases
+## Implementation Status
 
-1. **Key Block types** — Add `KeyBlock`, `KeySlot`, `KdfId`, `KdfParams` to `header.rs` with serialize/deserialize
-2. **DEK generation + wrapping** — Cipher generates random DEK, encrypts it with KEK, builds Key Block
-3. **v1 STREAM encryption** — `CounteredNonce` with `is_last`, first chunk AD = header + key_block, encrypt with DEK
-4. **v1 STREAM decryption** — Read header → Key Block → unwrap DEK → STREAM decrypt with version dispatch
-5. **Password mode migration** — `with_password` stores Argon2id params in Key Block kdf_params instead of header integrity
-6. **Testing** — v0 backward compat + v1 roundtrip + multi-slot + chunk_kind variants + truncation + header/key_block tampering
+All phases are complete:
+
+1. ~~**Key Block types**~~ — `KeyBlock`, `KeySlot`, `KdfId`, `KdfParams` in `header.rs`
+2. ~~**DEK generation + wrapping**~~ — Cipher generates random DEK, wraps with KEK
+3. ~~**v1 STREAM encryption**~~ — `CounteredNonce` with `is_last`, first chunk AD = header + key_block
+4. ~~**v1 STREAM decryption**~~ — Header → Key Block → unwrap DEK → STREAM decrypt
+5. ~~**Password mode migration**~~ — Argon2id params stored in Key Block kdf_params
+6. ~~**XChaCha20-Poly1305**~~ — 24-byte nonce support via `[u8; 24]` fixed arrays, header payload reinterpretation
+7. ~~**Testing**~~ — v0 compat + v1 roundtrip (AES/ChaCha20/XChaCha20) + cross-algo decrypt + tampering + truncation
 7. **Documentation** — Update ARCHITECTURE.md aether section

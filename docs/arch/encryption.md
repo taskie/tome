@@ -30,12 +30,12 @@ block-beta
 bits [15:12]  version       — 0 = legacy, 1 = envelope + streaming AEAD
 bits [11:8]   reserved      — must be 0
 bits [7:4]    chunk_kind    — ciphertext chunk size = 8192 << chunk_kind
-bits [3:0]    algorithm     — 0 = AES-256-GCM, 1 = ChaCha20-Poly1305
+bits [3:0]    algorithm     — 0 = AES-256-GCM, 1 = ChaCha20-Poly1305, 2 = XChaCha20-Poly1305
 ```
 
 ### v0 (Legacy)
 
-Fixed 8 KiB chunks. Nonce = `IV ⊕ counter`. Integrity value appended to plaintext before encryption and verified after full decryption.
+Fixed 8 KiB chunks. Nonce = `IV ⊕ counter`. Integrity value appended to plaintext before encryption and verified after full decryption. Only supports 12-byte nonce algorithms (AES-256-GCM, ChaCha20-Poly1305).
 
 ### v1 (Envelope Encryption + Streaming AEAD)
 
@@ -50,8 +50,8 @@ block-beta
     block:header:5
         magic["magic<br/>0xae71<br/><small>2 bytes</small>"]
         flags["flags<br/><small>2 bytes</small>"]
-        iv["IV<br/><small>12 bytes</small>"]
-        reserved["reserved<br/>(0x00)<br/><small>16 bytes</small>"]
+        iv["nonce<br/><small>12 or 24 bytes</small>"]
+        reserved["reserved<br/>(0x00)<br/><small>16 or 4 bytes</small>"]
     end
 
     block:keyblock:5
@@ -91,6 +91,18 @@ block-beta
 |-----|-------------|
 | **KEK** (Key Encryption Key) | User-provided key (raw 32 bytes or derived from password via Argon2id). Used only to encrypt/decrypt the DEK |
 | **DEK** (Data Encryption Key) | Randomly generated 32-byte key per file. Used for AEAD encryption of the actual data |
+
+#### Nonce Sizes
+
+The header payload area (28 bytes after magic + flags) is interpreted based on the algorithm's nonce size:
+
+| Algorithm | Nonce | Payload layout |
+|-----------|-------|----------------|
+| AES-256-GCM | 12 bytes | `nonce[12] + reserved[16]` |
+| ChaCha20-Poly1305 | 12 bytes | `nonce[12] + reserved[16]` |
+| XChaCha20-Poly1305 | 24 bytes | `nonce[24] + reserved[4]` |
+
+The same nonce size applies to the `dek_nonce` field in the Key Block.
 
 #### Key Block Layout
 
@@ -144,7 +156,7 @@ The file header (32 bytes) is used as associated data so that header tampering i
 
 Data is encrypted using the DEK with the STREAM construction:
 
-- **Nonce**: `IV ⊕ (0x00{4} || counter_u64_BE)`. Last chunk: `nonce[0] ^= 0x80`.
+- **Nonce**: `base_nonce ⊕ counter` where counter is XORed into the last 8 bytes of the nonce. Last chunk: `nonce[0] ^= 0x80`. For 12-byte nonces: `IV ⊕ (0x00{4} || counter_u64_BE)`. For 24-byte nonces: `IV ⊕ (0x00{16} || counter_u64_BE)`.
 - **AD**: first chunk uses `header[0..32] || key_block` as associated data; subsequent chunks use empty AD.
 - **Last-chunk detection**: encrypt uses read-ahead; decrypt tries the normal nonce first, then the last-chunk nonce.
 - **chunk_kind**: variable chunk size (default chunk_kind=7 → 1 MiB).
