@@ -14,42 +14,64 @@ use tempfile::NamedTempFile;
 use tracing::error;
 
 #[derive(Debug, Parser)]
-#[command(name = "aether")]
+#[command(
+    name = "aether",
+    about = "Authenticated encryption tool (AES-256-GCM / ChaCha20-Poly1305 / XChaCha20-Poly1305)",
+    long_about = "Encrypt and decrypt files using authenticated encryption with envelope key wrapping (KEK/DEK).\n\n\
+        A key must be provided via one of: --key-file, --key-env, --password-env, or --password-prompt.\n\
+        Without --output or --stdout, encrypting FILE produces FILE.aet; decrypting FILE.aet produces FILE.",
+    after_help = "EXAMPLES:\n  \
+        aether -k secret.key plaintext.txt          Encrypt to plaintext.txt.aet\n  \
+        aether -dk secret.key plaintext.txt.aet     Decrypt to plaintext.txt\n  \
+        aether -k secret.key -o out.enc input.bin   Encrypt to explicit output path\n  \
+        aether -p input.txt                         Encrypt with interactive password\n  \
+        aether -dp input.txt.aet                    Decrypt with interactive password\n  \
+        echo data | aether -ck secret.key           Encrypt stdin to stdout\n  \
+        aether -K KEY_VAR --cipher xchacha20 file   Encrypt with XChaCha20-Poly1305"
+)]
 pub struct Opt {
+    /// Write output to stdout instead of a file
     #[arg(short = 'c', long)]
     pub stdout: bool,
 
+    /// Decrypt (default is encrypt)
     #[arg(short, long)]
     pub decrypt: bool,
 
+    /// Output file path (default: INPUT.aet for encrypt, INPUT without .aet for decrypt)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
+    /// Prompt for a password interactively (confirms on encrypt)
     #[arg(short, long)]
     pub password_prompt: bool,
 
-    #[arg(short = 'P', long)]
+    /// Read password from the named environment variable
+    #[arg(short = 'P', long, value_name = "VAR")]
     pub password_env: Option<String>,
 
+    /// Path to a 32-byte binary key file ("-" for stdin)
     #[arg(short, long, env = "AETHER_KEY_FILE")]
     pub key_file: Option<PathBuf>,
 
-    #[arg(short = 'K', long)]
+    /// Read base64-encoded key from the named environment variable
+    #[arg(short = 'K', long, value_name = "VAR")]
     pub key_env: Option<String>,
 
-    /// Cipher algorithm: aes256gcm (default) or chacha20-poly1305
+    /// AEAD algorithm: aes256gcm, chacha20-poly1305, or xchacha20-poly1305
     #[arg(long, default_value = "aes256gcm")]
     pub cipher: String,
 
-    /// Format version: 0 (legacy) or 1 (streaming AEAD, default)
+    /// Format version: 0 (legacy) or 1 (envelope + streaming AEAD)
     #[arg(long, default_value = "1")]
     pub format_version: u8,
 
-    /// Chunk size selector for v1 (0=8KiB .. 7=1MiB .. 15=256MiB, default: 7)
+    /// Chunk size selector for v1: ciphertext = 8 KiB × 2^N (0=8K, 3=64K, 7=1M, 13=64M)
     #[arg(long, default_value = "7")]
     pub chunk_kind: u8,
 
-    #[arg(value_name = "INPUT")]
+    /// Input file ("-" or omit for stdin)
+    #[arg(value_name = "FILE")]
     pub input: Option<PathBuf>,
 }
 
