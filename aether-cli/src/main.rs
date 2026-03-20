@@ -8,7 +8,7 @@ use std::{
     process::exit,
 };
 
-use aether::Cipher;
+use aether::{Cipher, KdfParams, KeyBlock};
 use clap::Parser;
 use tempfile::NamedTempFile;
 use tracing::error;
@@ -27,16 +27,21 @@ use tracing::error;
         aether -p input.txt                         Encrypt with interactive password\n  \
         aether -dp input.txt.aet                    Decrypt with interactive password\n  \
         echo data | aether -ck secret.key           Encrypt stdin to stdout\n  \
-        aether -K KEY_VAR --cipher xchacha20 file   Encrypt with XChaCha20-Poly1305"
+        aether -K KEY_VAR --cipher xchacha20 file   Encrypt with XChaCha20-Poly1305\n  \
+        aether -i encrypted.aet                     Show file structure metadata"
 )]
 pub struct Opt {
     /// Write output to stdout instead of a file
-    #[arg(short = 'c', long)]
+    #[arg(short = 'c', long, conflicts_with = "info")]
     pub stdout: bool,
 
     /// Decrypt (default is encrypt)
-    #[arg(short, long)]
+    #[arg(short, long, conflicts_with = "info")]
     pub decrypt: bool,
+
+    /// Display encrypted file structure metadata (no key required)
+    #[arg(short, long, conflicts_with_all = ["decrypt", "stdout", "output"])]
+    pub info: bool,
 
     /// Output file path (default: INPUT.aet for encrypt, INPUT without .aet for decrypt)
     #[arg(short, long)]
@@ -187,9 +192,73 @@ fn auto_ext(s: &Path, decrypt: bool) -> PathBuf {
     if decrypt { remove_ext(s) } else { append_ext(s) }
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn info<R: BufRead>(mut r: R) -> Result<(), Box<dyn std::error::Error>> {
+    let mut header_bytes = [0u8; aether::HEADER_SIZE];
+    r.read_exact(&mut header_bytes)?;
+    let header = aether::Header::from_bytes(&header_bytes)?;
+    let flags = header.flags;
+
+    println!("Format version:    {}", flags.version);
+    println!("Algorithm:         {}", flags.algorithm);
+    println!("Nonce size:        {} bytes", flags.algorithm.nonce_size());
+    println!("Nonce:             {}", hex(header.nonce_bytes()));
+    let ct_size = flags.chunk_kind.ciphertext_size();
+    let human = if ct_size >= 1024 * 1024 {
+        format!("{} MiB", ct_size / (1024 * 1024))
+    } else {
+        format!("{} KiB", ct_size / 1024)
+    };
+    println!("Chunk kind:        {} (chunk = {})", flags.chunk_kind.value(), human);
+
+    if flags.version == 0 {
+        println!("Integrity:         {}", hex(&header.integrity()));
+    } else if flags.version == 1 {
+        let nonce_size = flags.algorithm.nonce_size();
+        let (key_block, _raw) = KeyBlock::from_reader(&mut r, nonce_size)?;
+        let kdf = &key_block.kdf_params;
+        match kdf {
+            KdfParams::None => println!("KDF:               none (raw key)"),
+            KdfParams::Argon2id { salt, m_cost, t_cost, p_cost } => {
+                println!("KDF:               argon2id");
+                println!("  salt:            {}", hex(salt));
+                println!("  m_cost:          {} KiB", m_cost);
+                println!("  t_cost:          {}", t_cost);
+                println!("  p_cost:          {}", p_cost);
+            }
+        }
+        println!("DEK nonce:         {}", hex(&key_block.dek_nonce[..nonce_size]));
+        println!("Slot count:        {}", key_block.slots.len());
+        for (i, slot) in key_block.slots.iter().enumerate() {
+            println!("  slot[{}] key_id:  {}", i, hex(&slot.key_id));
+        }
+    }
+
+    Ok(())
+}
+
 fn main_with_error() -> Result<i32, Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let opt = Opt::parse();
+
+    if opt.info {
+        if let Some(input) = opt.input.as_ref() {
+            if Opt::path_is_stdin(input) {
+                let stdin = std::io::stdin();
+                info(stdin.lock())?;
+            } else {
+                let f = File::open(input)?;
+                info(std::io::BufReader::new(f))?;
+            }
+        } else {
+            let stdin = std::io::stdin();
+            info(stdin.lock())?;
+        }
+        return Ok(0);
+    }
 
     if opt.key_file_is_stdin() && opt.input_is_stdin() {
         return Err("key and input are both stdin".into());

@@ -149,7 +149,7 @@ impl Header {
     }
 
     /// Get the nonce bytes. Length depends on algorithm.
-    pub(crate) fn nonce_bytes(&self) -> &[u8] {
+    pub fn nonce_bytes(&self) -> &[u8] {
         &self.payload[..self.flags.algorithm.nonce_size()]
     }
 
