@@ -54,44 +54,24 @@ impl AeadInner {
         }
     }
 
-    fn encrypt(&self, nonce: &[u8; MAX_NONCE_SIZE], plaintext: &[u8]) -> Result<Vec<u8>> {
-        use aes_gcm::aead::Aead;
+    /// Encrypt `buf` in place (appends 16-byte AEAD tag). Avoids intermediate `Vec` allocation.
+    fn encrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
+        use aes_gcm::aead::AeadInPlace as _;
         match self {
-            Self::Aes(gcm) => gcm.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), plaintext),
-            Self::ChaCha(cc) => cc.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), plaintext),
-            Self::XChaCha(xcc) => xcc.encrypt(Nonce::<U24>::from_slice(nonce), plaintext),
+            Self::Aes(gcm) => gcm.encrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
+            Self::ChaCha(cc) => cc.encrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
+            Self::XChaCha(xcc) => xcc.encrypt_in_place(Nonce::<U24>::from_slice(nonce), ad, buf),
         }
         .map_err(|e| AetherError::Encryption(e.to_string()))
     }
 
-    fn encrypt_ad(&self, nonce: &[u8; MAX_NONCE_SIZE], plaintext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
-        use aes_gcm::aead::{Aead, Payload};
-        let payload = Payload { msg: plaintext, aad: ad };
+    /// Decrypt `buf` in place (verifies and removes 16-byte AEAD tag).
+    fn decrypt_in_place(&self, nonce: &[u8; MAX_NONCE_SIZE], buf: &mut Vec<u8>, ad: &[u8]) -> Result<()> {
+        use aes_gcm::aead::AeadInPlace as _;
         match self {
-            Self::Aes(gcm) => gcm.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
-            Self::ChaCha(cc) => cc.encrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
-            Self::XChaCha(xcc) => xcc.encrypt(Nonce::<U24>::from_slice(nonce), payload),
-        }
-        .map_err(|e| AetherError::Encryption(e.to_string()))
-    }
-
-    fn decrypt(&self, nonce: &[u8; MAX_NONCE_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>> {
-        use aes_gcm::aead::Aead;
-        match self {
-            Self::Aes(gcm) => gcm.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), ciphertext),
-            Self::ChaCha(cc) => cc.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), ciphertext),
-            Self::XChaCha(xcc) => xcc.decrypt(Nonce::<U24>::from_slice(nonce), ciphertext),
-        }
-        .map_err(|e| AetherError::Decryption(e.to_string()))
-    }
-
-    fn decrypt_ad(&self, nonce: &[u8; MAX_NONCE_SIZE], ciphertext: &[u8], ad: &[u8]) -> Result<Vec<u8>> {
-        use aes_gcm::aead::{Aead, Payload};
-        let payload = Payload { msg: ciphertext, aad: ad };
-        match self {
-            Self::Aes(gcm) => gcm.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
-            Self::ChaCha(cc) => cc.decrypt(Nonce::<U12>::from_slice(&nonce[..12]), payload),
-            Self::XChaCha(xcc) => xcc.decrypt(Nonce::<U24>::from_slice(nonce), payload),
+            Self::Aes(gcm) => gcm.decrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
+            Self::ChaCha(cc) => cc.decrypt_in_place(Nonce::<U12>::from_slice(&nonce[..12]), ad, buf),
+            Self::XChaCha(xcc) => xcc.decrypt_in_place(Nonce::<U24>::from_slice(nonce), ad, buf),
         }
         .map_err(|e| AetherError::Decryption(e.to_string()))
     }
@@ -240,17 +220,19 @@ impl Cipher {
         w.write_all(&header)?;
         let mut r = r.chain(&integrity[..]);
         let pt_size = ChunkKind::V0.plaintext_size();
-        let buf_size = ChunkKind::V0.ciphertext_size();
+        let ct_size = ChunkKind::V0.ciphertext_size();
+        let mut read_buf = vec![0u8; pt_size];
+        let mut work = Vec::with_capacity(ct_size);
         loop {
-            let mut buf = vec![0u8; pt_size];
-            let pos = read_exact_or_eof(&mut r, &mut buf)?;
+            let pos = read_exact_or_eof(&mut r, &mut read_buf)?;
             if pos == 0 {
                 break;
             }
             let nonce = countered_nonce.next();
-            let ciphertext = self.aead.encrypt(&nonce, &buf[..pos])?;
-            debug_assert!(ciphertext.len() <= buf_size);
-            w.write_all(&ciphertext)?;
+            work.clear();
+            work.extend_from_slice(&read_buf[..pos]);
+            self.aead.encrypt_in_place(&nonce, &mut work, &[])?;
+            w.write_all(&work)?;
         }
         Ok(())
     }
@@ -271,13 +253,14 @@ impl Cipher {
         let header_bytes = header.to_bytes();
         w.write_all(&header_bytes)?;
 
-        // 3. Build Key Block: wrap DEK with KEK
+        // 3. Build Key Block: wrap DEK with KEK (in-place)
         let mut dek_nonce = [0u8; MAX_NONCE_SIZE];
         OsRng.fill_bytes(&mut dek_nonce[..nonce_size]);
         let kek_aead = AeadInner::new(self.algorithm, &self.key);
-        let encrypted_dek_vec = kek_aead.encrypt_ad(&dek_nonce, &dek, &header_bytes)?;
+        let mut encrypted_dek_buf = dek.to_vec();
+        kek_aead.encrypt_in_place(&dek_nonce, &mut encrypted_dek_buf, &header_bytes)?;
         let mut encrypted_dek = [0u8; ENCRYPTED_DEK_SIZE];
-        encrypted_dek.copy_from_slice(&encrypted_dek_vec);
+        encrypted_dek.copy_from_slice(&encrypted_dek_buf);
 
         let key_id = compute_key_id(&self.key);
         let kdf_params = self.kdf_params.clone().unwrap_or(KdfParams::None);
@@ -318,36 +301,35 @@ impl Cipher {
         mut r: R,
         mut w: BufWriter<W>,
     ) -> Result<()> {
-        let buf_size = ChunkKind::V0.ciphertext_size();
+        let ct_size = ChunkKind::V0.ciphertext_size();
         let algo = header.flags.algorithm;
         let aead = AeadInner::new(algo, &self.key);
         let mut countered_nonce = CounteredNonce::new(header.nonce_bytes());
-        let mut tmp_old = Vec::with_capacity(buf_size);
-        let mut tmp_new = Vec::with_capacity(buf_size);
+        let mut read_buf = vec![0u8; ct_size];
+        let mut work = Vec::with_capacity(ct_size);
+        let mut delayed = Vec::new();
         loop {
-            let mut buf = vec![0u8; buf_size];
-            let pos = read_exact_or_eof(&mut r, &mut buf)?;
+            let pos = read_exact_or_eof(&mut r, &mut read_buf)?;
             if pos == 0 {
                 break;
             }
             let nonce = countered_nonce.next();
-            let plaintext = aead.decrypt(&nonce, &buf[..pos])?;
-            if !tmp_old.is_empty() {
-                w.write_all(&tmp_old)?;
+            work.clear();
+            work.extend_from_slice(&read_buf[..pos]);
+            aead.decrypt_in_place(&nonce, &mut work, &[])?;
+            if !delayed.is_empty() {
+                w.write_all(&delayed)?;
             }
-            tmp_old.clear();
-            tmp_old.append(&mut tmp_new);
-            tmp_new.extend_from_slice(&plaintext);
+            std::mem::swap(&mut delayed, &mut work);
         }
-        tmp_old.append(&mut tmp_new);
-        if tmp_old.len() < INTEGRITY_SIZE {
+        if delayed.len() < INTEGRITY_SIZE {
             return Err(AetherError::Decryption("data too short for integrity check".into()));
         }
-        let (tmp, actual_integrity) = tmp_old.split_at(tmp_old.len() - INTEGRITY_SIZE);
+        let (data, actual_integrity) = delayed.split_at(delayed.len() - INTEGRITY_SIZE);
         if header.integrity() != actual_integrity {
             return Err(AetherError::IntegrityMismatch);
         }
-        w.write_all(tmp)?;
+        w.write_all(data)?;
         Ok(())
     }
 
@@ -410,15 +392,19 @@ impl Cipher {
         dek_nonce: &[u8; MAX_NONCE_SIZE],
         header_bytes: &[u8],
     ) -> Result<[u8; KEY_SIZE]> {
-        let dek_vec = kek_aead.decrypt_ad(dek_nonce, &slot.encrypted_dek, header_bytes)?;
+        let mut buf = slot.encrypted_dek.to_vec();
+        kek_aead.decrypt_in_place(dek_nonce, &mut buf, header_bytes)?;
         let mut dek = [0u8; KEY_SIZE];
-        dek.copy_from_slice(&dek_vec);
+        dek.copy_from_slice(&buf);
         Ok(dek)
     }
 
     // ── STREAM helpers ───────────────────────────────────────────────────
 
     /// STREAM encrypt: variable chunk size with last-chunk nonce flag and first-chunk AD.
+    ///
+    /// Uses `BufRead::fill_buf` for EOF detection instead of a two-buffer lookahead,
+    /// and reuses a single work buffer for in-place AEAD to avoid per-chunk allocations.
     fn stream_encrypt<R: BufRead, W: Write>(
         &self,
         mut r: R,
@@ -428,34 +414,41 @@ impl Cipher {
         first_chunk_ad: &[u8],
     ) -> Result<()> {
         let pt_size = self.chunk_kind.plaintext_size();
-        let mut buf = vec![0u8; pt_size];
-        let mut pending_pos = read_exact_or_eof(&mut r, &mut buf)?;
+        let ct_size = self.chunk_kind.ciphertext_size();
+        let mut read_buf = vec![0u8; pt_size];
+        let mut work = Vec::with_capacity(ct_size);
         let mut is_first = true;
 
         loop {
-            let mut next_buf = vec![0u8; pt_size];
-            let next_pos = read_exact_or_eof(&mut r, &mut next_buf)?;
-            let is_last = next_pos == 0;
-
+            let pos = read_exact_or_eof(&mut r, &mut read_buf)?;
+            if pos == 0 && !is_first {
+                break;
+            }
+            let is_last = pos < pt_size || r.fill_buf()?.is_empty();
             let nonce = if is_last { countered_nonce.next_last() } else { countered_nonce.next() };
-            let ciphertext = if is_first {
+            let ad = if is_first {
                 is_first = false;
-                aead.encrypt_ad(&nonce, &buf[..pending_pos], first_chunk_ad)?
+                first_chunk_ad
             } else {
-                aead.encrypt(&nonce, &buf[..pending_pos])?
+                &[]
             };
-            w.write_all(&ciphertext)?;
+
+            work.clear();
+            work.extend_from_slice(&read_buf[..pos]);
+            aead.encrypt_in_place(&nonce, &mut work, ad)?;
+            w.write_all(&work)?;
 
             if is_last {
                 break;
             }
-            buf.copy_from_slice(&next_buf);
-            pending_pos = next_pos;
         }
         Ok(())
     }
 
     /// STREAM decrypt: variable chunk size with last-chunk detection and first-chunk AD.
+    ///
+    /// Reuses read and work buffers across iterations. Short chunks (pos < ct_size)
+    /// are known to be last, skipping the double-AEAD trial.
     fn stream_decrypt<R: BufRead, W: Write>(
         &self,
         r: &mut R,
@@ -465,13 +458,14 @@ impl Cipher {
         chunk_kind: ChunkKind,
         first_chunk_ad: &[u8],
     ) -> Result<()> {
-        let buf_size = chunk_kind.ciphertext_size();
+        let ct_size = chunk_kind.ciphertext_size();
+        let mut read_buf = vec![0u8; ct_size];
+        let mut work = Vec::with_capacity(ct_size);
         let mut is_first = true;
         let mut seen_last = false;
 
         loop {
-            let mut buf = vec![0u8; buf_size];
-            let pos = read_exact_or_eof(r, &mut buf)?;
+            let pos = read_exact_or_eof(r, &mut read_buf)?;
             if pos == 0 {
                 if !seen_last {
                     return Err(AetherError::Decryption("stream truncated: no last chunk".into()));
@@ -479,25 +473,41 @@ impl Cipher {
                 break;
             }
 
-            let normal_nonce = countered_nonce.peek(false);
-            let last_nonce = countered_nonce.peek(true);
-            countered_nonce.counter += 1;
-
-            let plaintext = if is_first {
+            let ad = if is_first {
                 is_first = false;
-                if let Ok(pt) = aead.decrypt_ad(&normal_nonce, &buf[..pos], first_chunk_ad) {
-                    pt
-                } else {
-                    seen_last = true;
-                    aead.decrypt_ad(&last_nonce, &buf[..pos], first_chunk_ad)?
-                }
-            } else if let Ok(pt) = aead.decrypt(&normal_nonce, &buf[..pos]) {
-                pt
+                first_chunk_ad
             } else {
-                seen_last = true;
-                aead.decrypt(&last_nonce, &buf[..pos])?
+                &[]
             };
-            w.write_all(&plaintext)?;
+
+            // Short chunk must be the last chunk — skip the normal-nonce trial.
+            if pos < ct_size {
+                let nonce = countered_nonce.peek(true);
+                countered_nonce.counter += 1;
+                work.clear();
+                work.extend_from_slice(&read_buf[..pos]);
+                aead.decrypt_in_place(&nonce, &mut work, ad)?;
+                w.write_all(&work)?;
+                seen_last = true;
+            } else {
+                // Full-size chunk: try normal nonce first.
+                let normal_nonce = countered_nonce.peek(false);
+                let last_nonce = countered_nonce.peek(true);
+                countered_nonce.counter += 1;
+
+                work.clear();
+                work.extend_from_slice(&read_buf[..pos]);
+                if aead.decrypt_in_place(&normal_nonce, &mut work, ad).is_ok() {
+                    w.write_all(&work)?;
+                } else {
+                    // Retry with last nonce — restore ciphertext from read_buf.
+                    work.clear();
+                    work.extend_from_slice(&read_buf[..pos]);
+                    aead.decrypt_in_place(&last_nonce, &mut work, ad)?;
+                    w.write_all(&work)?;
+                    seen_last = true;
+                }
+            }
 
             if seen_last {
                 let mut trail = [0u8; 1];
@@ -516,11 +526,10 @@ impl Cipher {
     pub fn encrypt_bytes(&mut self, bs: &[u8]) -> Result<Vec<u8>> {
         let nonce_size = self.aead.nonce_size();
         let nonce = self.countered_nonce.next();
-        let enc = self.aead.encrypt(&nonce, bs)?;
-        let mut result = Vec::with_capacity(enc.len() + nonce_size);
-        result.extend_from_slice(&enc);
-        result.extend_from_slice(&nonce[..nonce_size]);
-        Ok(result)
+        let mut buf = bs.to_vec();
+        self.aead.encrypt_in_place(&nonce, &mut buf, &[])?;
+        buf.extend_from_slice(&nonce[..nonce_size]);
+        Ok(buf)
     }
 
     pub fn encrypt_file_name(&mut self, s: &OsStr) -> Result<OsString> {
@@ -538,7 +547,9 @@ impl Cipher {
         let (ciphertext, nonce_bytes) = bs.split_at(bs.len() - nonce_size);
         let mut nonce = [0u8; MAX_NONCE_SIZE];
         nonce[..nonce_size].copy_from_slice(nonce_bytes);
-        self.aead.decrypt(&nonce, ciphertext)
+        let mut buf = ciphertext.to_vec();
+        self.aead.decrypt_in_place(&nonce, &mut buf, &[])?;
+        Ok(buf)
     }
 
     pub fn decrypt_file_name(&mut self, s: &OsStr) -> Result<OsString> {
