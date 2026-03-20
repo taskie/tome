@@ -4,9 +4,9 @@
 /// Nonce sizes: AES-256-GCM and ChaCha20-Poly1305 use 12 bytes; XChaCha20-Poly1305 uses 24 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CipherAlgorithm {
-    #[default]
     Aes256Gcm,
     ChaCha20Poly1305,
+    #[default]
     XChaCha20Poly1305,
 }
 

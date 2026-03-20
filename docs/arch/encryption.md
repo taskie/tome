@@ -1,6 +1,6 @@
 # Encryption
 
-`aether` crate: AES-256-GCM or ChaCha20-Poly1305 authenticated encryption with Argon2id key derivation.
+`aether` crate: XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM authenticated encryption with Argon2id key derivation.
 
 `EncryptedStorage<S>` is implemented in `tome-store/src/encrypted.rs`. It is activated via `tome store copy --encrypt --key-file <path>`.
 
@@ -218,7 +218,7 @@ It uses single-chunk AEAD with an appended nonce and is unaffected by the format
 | Module | Contents |
 |--------|---------|
 | `error.rs` | `AetherError` enum (thiserror) — all fallible paths |
-| `algorithm.rs` | `CipherAlgorithm` enum (`Aes256Gcm` \| `ChaCha20Poly1305`) |
+| `algorithm.rs` | `CipherAlgorithm` enum (`Aes256Gcm` \| `ChaCha20Poly1305` \| `XChaCha20Poly1305`) |
 | `header.rs` | `Header`, `HeaderFlags`, `ChunkKind`, `CounteredNonce`, `KeyBlock`, `KeySlot`, constants |
 | `cipher.rs` | `Cipher` (v0/v1 dispatch), `AeadInner` enum, encrypt/decrypt methods |
 

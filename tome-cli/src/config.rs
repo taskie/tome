@@ -58,7 +58,7 @@ pub struct StoreConfig {
     ///   `vault://secret/data/tome?field=key`
     pub key_source: Option<String>,
 
-    /// Default cipher algorithm ("aes256gcm" or "chacha20poly1305")
+    /// Default cipher algorithm ("xchacha20-poly1305", "chacha20-poly1305", or "aes256gcm")
     pub cipher: Option<String>,
 }
 

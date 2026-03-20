@@ -9,7 +9,7 @@ use tracing::info;
 use crate::{StoreError, error::Result, storage::Storage};
 
 /// A `Storage` wrapper that transparently encrypts on upload and decrypts on download
-/// using `aether` (AES-256-GCM or ChaCha20-Poly1305 + Argon2id).
+/// using `aether` (XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM).
 ///
 /// Remote paths are unchanged by this wrapper — the caller is responsible for
 /// using a suitable path (e.g. from `aether::Cipher::encrypt_file_name`).
@@ -20,7 +20,7 @@ pub struct EncryptedStorage<S> {
 }
 
 impl<S: Storage> EncryptedStorage<S> {
-    /// Wrap `inner` with a 32-byte raw key (defaults to AES-256-GCM).
+    /// Wrap `inner` with a 32-byte raw key (defaults to XChaCha20-Poly1305).
     pub fn new(inner: S, key: [u8; 32]) -> Self {
         Self { inner, key, algorithm: aether::CipherAlgorithm::default() }
     }

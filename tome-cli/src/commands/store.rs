@@ -83,7 +83,7 @@ async fn resolve_encryption_for_store(
     };
 
     // Resolve cipher
-    let cipher_str = cli_cipher.or(per_store.cipher.as_deref()).unwrap_or("aes256gcm");
+    let cipher_str = cli_cipher.or(per_store.cipher.as_deref()).unwrap_or("xchacha20-poly1305");
     let cipher_algo: CipherAlgorithm = cipher_str.parse().map_err(|e: String| anyhow::anyhow!(e))?;
 
     Ok(Some((key, cipher_algo)))
@@ -132,7 +132,7 @@ pub struct StoreAddArgs {
     /// External secret manager URI for the encryption key
     #[arg(long)]
     pub key_source: Option<String>,
-    /// Cipher algorithm: aes256gcm or chacha20-poly1305
+    /// Cipher algorithm: xchacha20-poly1305, chacha20-poly1305, or aes256gcm
     #[arg(long)]
     pub cipher: Option<String>,
 }
@@ -156,7 +156,7 @@ pub struct StoreSetArgs {
     /// External secret manager URI for the encryption key
     #[arg(long)]
     pub key_source: Option<String>,
-    /// Cipher algorithm: aes256gcm or chacha20-poly1305
+    /// Cipher algorithm: xchacha20-poly1305, chacha20-poly1305, or aes256gcm
     #[arg(long)]
     pub cipher: Option<String>,
 }
@@ -188,7 +188,7 @@ pub struct StorePushArgs {
     /// External secret manager URI for the encryption key
     #[arg(long)]
     pub key_source: Option<String>,
-    /// Cipher algorithm: aes256gcm (default) or chacha20-poly1305
+    /// Cipher algorithm: xchacha20-poly1305 (default), chacha20-poly1305, or aes256gcm
     #[arg(long)]
     pub cipher: Option<String>,
 }

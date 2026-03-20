@@ -16,7 +16,7 @@ use tracing::error;
 #[derive(Debug, Parser)]
 #[command(
     name = "aether",
-    about = "Authenticated encryption tool (AES-256-GCM / ChaCha20-Poly1305 / XChaCha20-Poly1305)",
+    about = "Authenticated encryption tool (XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM)",
     long_about = "Encrypt and decrypt files using authenticated encryption with envelope key wrapping (KEK/DEK).\n\n\
         A key must be provided via one of: --key-file, --key-env, --password-env, or --password-prompt.\n\
         Without --output or --stdout, encrypting FILE produces FILE.aet; decrypting FILE.aet produces FILE.",
@@ -27,7 +27,7 @@ use tracing::error;
         aether -p input.txt                         Encrypt with interactive password\n  \
         aether -dp input.txt.aet                    Decrypt with interactive password\n  \
         echo data | aether -ck secret.key           Encrypt stdin to stdout\n  \
-        aether -K KEY_VAR --cipher xchacha20 file   Encrypt with XChaCha20-Poly1305\n  \
+        aether -K KEY_VAR --cipher aes256gcm file   Encrypt with AES-256-GCM\n  \
         aether -i encrypted.aet                     Show file structure metadata"
 )]
 pub struct Opt {
@@ -64,7 +64,7 @@ pub struct Opt {
     pub key_env: Option<String>,
 
     /// AEAD algorithm: aes256gcm, chacha20-poly1305, or xchacha20-poly1305
-    #[arg(long, default_value = "aes256gcm")]
+    #[arg(long, default_value = "xchacha20-poly1305")]
     pub cipher: String,
 
     /// Format version: 0 (legacy) or 1 (envelope + streaming AEAD)

@@ -274,7 +274,7 @@ When `--encrypt` and key options are provided to `store add` or `store set`, the
 
 Supported URL schemes: `file:///path`, `ssh://user@host/path`, `s3://bucket/prefix`
 
-Cipher options for `--cipher`: `aes256gcm` (default), `chacha20-poly1305`
+Cipher options for `--cipher`: `xchacha20-poly1305` (default), `chacha20-poly1305`, `aes256gcm`
 
 Key sources for `--key-source` (alternative to `--key-file`):
 
@@ -416,7 +416,7 @@ tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
 tome-cli/      Unified CLI (scan / watch / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
 tome-web/      Next.js 16 web frontend
-aether/        AEAD authenticated encryption (AES-256-GCM / ChaCha20-Poly1305 + Argon2id)
+aether/        AEAD authenticated encryption (XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id)
 treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk utilities
 ```
 

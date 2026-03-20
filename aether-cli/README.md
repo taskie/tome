@@ -1,7 +1,7 @@
 # aether
 
 File encryption/decryption CLI using streaming AEAD.
-Supports AES-256-GCM and ChaCha20-Poly1305 with streaming processing for files of any size.
+Supports XChaCha20-Poly1305, ChaCha20-Poly1305, and AES-256-GCM with streaming processing for files of any size.
 
 ## Installation
 
@@ -60,9 +60,10 @@ MY_KEY=<base64key> aether -K MY_KEY file.txt
 | `-d, --decrypt` | Decrypt mode |
 | `-c, --stdout` | Write output to stdout |
 | `-o, --output <PATH>` | Output file path |
-| `--cipher <ALGO>` | Cipher algorithm: `aes256gcm` (default) / `chacha20-poly1305` |
+| `--cipher <ALGO>` | Cipher algorithm: `xchacha20-poly1305` (default) / `chacha20-poly1305` / `aes256gcm` |
 | `--format-version <N>` | Format version: `0` (legacy) / `1` (streaming AEAD, default) |
 | `--chunk-kind <N>` | Chunk size for v1: `0`=8 KiB … `7`=1 MiB (default) … `15`=256 MiB |
+| `-i, --info` | Display encrypted file metadata (no key required) |
 
 ## File Extension
 

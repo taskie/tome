@@ -16,7 +16,7 @@
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
 | `tome-cli` | Unified CLI: scan / watch / store / sync / diff / restore / tag / verify / gc / serve |
 | `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
-| `aether` | Streaming AEAD encryption: AES-256-GCM / ChaCha20-Poly1305 + Argon2id KDF |
+| `aether` | Streaming AEAD encryption: XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id KDF |
 | `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
