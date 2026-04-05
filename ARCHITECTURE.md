@@ -14,7 +14,7 @@
 | `tome-dynamo` | DynamoDB `MetadataStore` implementation (single-table design) |
 | `tome-store` | Async `Storage` trait + implementations: Local, SSH, S3, Encrypted |
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
-| `tome-cli` | Unified CLI: scan / watch / store / sync / diff / restore / tag / verify / gc / serve |
+| `tome-cli` | Unified CLI: scan / log / show / diff / files / history / status / restore / store / remote / sync / tag / verify / gc / push / pull / serve / watch |
 | `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
 | `aether` | Streaming AEAD encryption: XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id KDF |
 | `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
@@ -76,6 +76,81 @@ Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `i
 
 ---
 
+## CLI Command Taxonomy
+
+> Full analysis: [ADR-010](docs/adr/010-cli-command-taxonomy.md)
+
+tome's CLI follows a **two-layer model** inspired by git:
+
+| Layer | Commands | Purpose |
+|-------|----------|---------|
+| **Porcelain** (verbs) | `scan`, `log`, `show`, `diff`, `files`, `history`, `status`, `push`, `pull`, `watch` | Everyday user-facing actions on the implicit repository |
+| **Plumbing** (nouns) | `store`, `remote`, `sync`, `tag` | Resource management subtrees with CRUD subcommands |
+| **Infrastructure** | `init`, `serve`, `gc`, `verify`, `restore` | Setup, maintenance, and recovery |
+
+### Subcommand verb consistency
+
+All resource subtrees use the same verbs: `add`, `set`, `rm`, `list`. This mirrors git's `remote add/rm/rename` pattern. `tag rm` is canonical; `tag delete` is a hidden alias for backward compatibility.
+
+### Snapshot references
+
+Commands that accept snapshot identifiers (`diff`, `show`, `restore`) support a shared reference syntax parsed by the `SnapshotRef` module:
+
+| Syntax | Meaning |
+|--------|---------|
+| `@latest` | Most recent snapshot |
+| `@latest~N` | N-th ancestor of the latest |
+| `@YYYY-MM-DD` | Latest snapshot on or before that date (local TZ) |
+| `@YYYY-MM-DDThh:mm` | Datetime variant |
+| Raw `i64` | Direct snapshot ID (backward compatible) |
+
+### Output format
+
+Query commands (`log`, `show`, `files`, `history`, `status`) support `--format json` via a shared `OutputFormat` enum, enabling scripting with tools like `jq`.
+
+---
+
+## Configuration Hierarchy
+
+> Full analysis: [ADR-011](docs/adr/011-config-hierarchy.md)
+
+### Resolution order
+
+tome resolves settings from five layers (highest priority first):
+
+```
+1. CLI arguments          --repo photos
+2. Environment variables  TOME_REPO=photos
+3. Project-local config   ./tome.toml
+4. Global config          ~/.config/tome/tome.toml
+5. Built-in defaults      "default"
+```
+
+Layers 1–2 are handled by clap's argument parser. Layers 3–4 are merged by `config::load_config()`, with project-local values overriding global ones. Layer 5 is the compiled-in fallback.
+
+### Comparison with git
+
+| Aspect | git | tome |
+|--------|-----|------|
+| **Repo identity** | Implicit (working directory = repo) | Explicit (`--repo` / `TOME_REPO` / config `repo`) |
+| **Config discovery** | Walks up to `.git/config` | Fixed: `./tome.toml` + `~/.config/tome/tome.toml` |
+| **Per-project anchor** | `.git/` directory | `tome.db` database file |
+| **Config layers** | 7 (builtin → system → global → local → worktree → env → CLI) | 5 (builtin → global → local → env → CLI) |
+
+Key difference: git discovers the repository by walking the directory tree up from `$PWD` to find `.git/`. tome does not walk parent directories — the database file `tome.db` is the project anchor, and `./tome.toml` is always read from the current directory. This is intentional: tome is a personal tool where `cwd` is the project root, and the complexity of parent-directory walking provides marginal benefit.
+
+### The `--repo` fallback
+
+A single database can contain multiple named repositories (e.g., `default`, `photos`, `docs`). The `--repo` flag selects which one to operate on. Rather than hardcoding `"default"` in every command, the effective repo name is resolved as:
+
+```
+CLI --repo  >  TOME_REPO env  >  tome.toml `repo`  >  [scan] repo  >  "default"
+```
+
+This allows users to set `repo = "photos"` once in `tome.toml` and have all commands use it without repeating `--repo photos`.
+
+---
+
 ## Detailed Documentation
 
 ### Architecture (`docs/arch/`)
@@ -109,6 +184,11 @@ Legacy crates (`ichno`, `ichno_cli`, `ichnome`, `ichnome_cli`, `ichnome_web`, `i
 | [ADR-004](docs/adr/004-metadatastore-trait.md) | MetadataStore Trait Abstraction |
 | [ADR-005](docs/adr/005-dynamodb-single-table.md) | DynamoDB Single-Table Design |
 | [ADR-006](docs/adr/006-declarative-ddl.md) | Declarative DDL over Runtime Migrations |
+| [ADR-007](docs/adr/007-tree-hash-integration.md) | Tree Hash Integration |
+| [ADR-008](docs/adr/008-directory-listing-api.md) | Directory Listing API |
+| [ADR-009](docs/adr/009-aether-in-place-aead.md) | In-Place AEAD and Buffer Reuse |
+| [ADR-010](docs/adr/010-cli-command-taxonomy.md) | CLI Command Taxonomy Review |
+| [ADR-011](docs/adr/011-config-hierarchy.md) | Configuration Hierarchy and `--repo` Default |
 
 ---
 
