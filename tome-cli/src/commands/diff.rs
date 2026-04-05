@@ -18,7 +18,7 @@ pub struct DiffArgs {
     /// Snapshot 2 reference (ID, @latest, @latest~N, @YYYY-MM-DD)
     pub snapshot2: String,
     /// Repository name (required for @-references) [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Path prefix filter (limit diff to files under this prefix)
     #[arg(long, default_value = "")]

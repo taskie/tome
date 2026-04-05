@@ -13,7 +13,7 @@ use crate::output::OutputFormat;
 #[derive(Args)]
 pub struct LogArgs {
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Maximum number of snapshots to display
     #[arg(long, short = 'n')]

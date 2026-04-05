@@ -18,7 +18,7 @@ const DEFAULT_MAX_DELAY_SECS: u64 = 600;
 #[derive(Args)]
 pub struct WatchArgs {
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 
     /// Directory to watch (default: current directory or saved scan_root)

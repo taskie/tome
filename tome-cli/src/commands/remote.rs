@@ -33,7 +33,7 @@ pub struct RemoteAddArgs {
     /// Peer URL: sqlite:///path, postgres://... or https://tome.example.com
     pub peer_url: String,
     /// Local repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Remote repository name on the peer [default: same as --repo]
     #[arg(long)]
@@ -51,7 +51,7 @@ pub struct RemoteSetArgs {
     #[arg(long)]
     pub peer_repo: Option<String>,
     /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 }
 
@@ -60,14 +60,14 @@ pub struct RemoteRmArgs {
     /// Peer name
     pub name: String,
     /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 }
 
 #[derive(Args)]
 pub struct RemoteListArgs {
     /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 }
 

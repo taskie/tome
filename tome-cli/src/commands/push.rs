@@ -22,7 +22,7 @@ pub struct PushArgs {
     pub peer: String,
 
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 
     /// Store name to push blobs to [config: store.default_store]
@@ -52,7 +52,7 @@ pub struct PullArgs {
     pub peer: String,
 
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 
     /// Also copy blobs from the remote store to a local store

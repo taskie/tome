@@ -173,7 +173,7 @@ pub struct StoreRmArgs {
 #[derive(Args)]
 pub struct StorePushArgs {
     /// Repository name to push (default: "default")
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Store name to push to [config: store.default_store]
     pub store: Option<String>,

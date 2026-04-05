@@ -15,7 +15,7 @@ use super::store::{StoreVerifyArgs, store_verify};
 #[derive(Args)]
 pub struct VerifyArgs {
     /// Repository name (default: "default")
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Root directory of scanned files (overrides scan_root from snapshot metadata)
     pub path: Option<std::path::PathBuf>,

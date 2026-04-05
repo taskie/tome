@@ -87,6 +87,11 @@ async fn main() -> Result<()> {
     let db = cli.db.or(cfg.db).unwrap_or_else(|| "tome.db".to_owned());
     let machine_id = cli.machine_id.or(cfg.machine_id).unwrap_or(0);
 
+    // Resolve the effective repo name from config (top-level `repo` > `[scan] repo`).
+    // This is used as a fallback when the user provides neither --repo nor TOME_REPO.
+    // clap already handles CLI --repo > TOME_REPO; we fill the config layer here.
+    let config_repo = cfg.repo.as_deref().or(cfg.scan.repo.as_deref());
+
     // Initialize Sonyflake ID generator.
     tome_core::id::init(machine_id, None::<i64>).context("failed to initialize ID generator")?;
 
@@ -99,7 +104,16 @@ async fn main() -> Result<()> {
 
     let db_conn = tome_db::connection::open(&db_url).await.context("failed to open database")?;
 
-    match cli.command {
+    // Apply config repo fallback to mutable command args.
+    // clap handles: CLI --repo > TOME_REPO env > default_value "default".
+    // We intercept the last case: if the value is still "default" and config
+    // specifies a different repo, use the config value.
+    let mut command = cli.command;
+    if let Some(cr) = config_repo {
+        apply_config_repo(&mut command, cr);
+    }
+
+    match command {
         Commands::Init(_) => unreachable!(),
         Commands::Scan(args) => commands::scan::run(&db_conn, args).await?,
         Commands::Log(args) => commands::log::run(&db_conn, args).await?,
@@ -134,4 +148,33 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Override `repo` fields that still hold the compiled-in default (`"default"`)
+/// with the value from the config file. This fills the gap between clap's
+/// CLI > env > default_value resolution and the config-file layer.
+fn apply_config_repo(cmd: &mut Commands, repo: &str) {
+    // Helper: replace "default" with the config value.
+    let patch = |field: &mut String| {
+        if *field == "default" {
+            *field = repo.to_owned();
+        }
+    };
+    match cmd {
+        Commands::Scan(a) => patch(&mut a.repo),
+        Commands::Log(a) => patch(&mut a.repo),
+        Commands::Show(a) => patch(&mut a.repo),
+        Commands::Diff(a) => patch(&mut a.repo),
+        Commands::Files(a) => patch(&mut a.repo),
+        Commands::History(a) => patch(&mut a.repo),
+        Commands::Status(a) => patch(&mut a.repo),
+        Commands::Restore(a) => patch(&mut a.repo),
+        Commands::Verify(a) => patch(&mut a.repo),
+        Commands::Push(a) => patch(&mut a.repo),
+        Commands::Pull(a) => patch(&mut a.repo),
+        Commands::Watch(a) => patch(&mut a.repo),
+        // Store push has repo inside the subcommand args — handled separately.
+        // Sync, Remote, Tag, Gc, Init, Serve don't need config repo override.
+        _ => {}
+    }
 }

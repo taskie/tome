@@ -18,7 +18,7 @@ pub struct RestoreArgs {
     #[arg(long)]
     pub snapshot: String,
     /// Repository name (required for @-references) [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Restore only from this store (default: use any available store)
     #[arg(long)]

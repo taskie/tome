@@ -24,6 +24,10 @@ pub struct TomeConfig {
     /// Sonyflake machine ID (overridden by --machine-id / TOME_MACHINE_ID)
     pub machine_id: Option<u16>,
 
+    /// Default repository name (overridden by --repo / TOME_REPO).
+    /// Falls back to `[scan] repo` for backward compatibility, then `"default"`.
+    pub repo: Option<String>,
+
     pub scan: ScanConfig,
     pub store: StoreConfig,
     pub serve: ServeConfig,
@@ -124,6 +128,9 @@ fn merge(dst: &mut TomeConfig, src: TomeConfig) {
     if src.machine_id.is_some() {
         dst.machine_id = src.machine_id;
     }
+    if src.repo.is_some() {
+        dst.repo = src.repo;
+    }
     merge_scan(&mut dst.scan, src.scan);
     merge_store(&mut dst.store, src.store);
     merge_serve(&mut dst.serve, src.serve);
@@ -167,6 +174,32 @@ fn merge_watch(dst: &mut WatchConfig, src: WatchConfig) {
     if src.max_delay.is_some() {
         dst.max_delay = src.max_delay;
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Repo default resolution
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Resolve the effective repository name.
+///
+/// Priority: `cli_value` (from `--repo`) > `TOME_REPO` env var > top-level
+/// `repo` config key > `[scan] repo` config key > `"default"`.
+pub fn resolve_repo(cli_value: Option<&str>, cfg: &TomeConfig) -> String {
+    if let Some(v) = cli_value {
+        return v.to_owned();
+    }
+    if let Ok(v) = std::env::var("TOME_REPO") {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    if let Some(ref v) = cfg.repo {
+        return v.clone();
+    }
+    if let Some(ref v) = cfg.scan.repo {
+        return v.clone();
+    }
+    "default".to_owned()
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ use crate::output::OutputFormat;
 #[derive(Args)]
 pub struct StatusArgs {
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Root directory (overrides scan_root from snapshot metadata)
     pub path: Option<std::path::PathBuf>,

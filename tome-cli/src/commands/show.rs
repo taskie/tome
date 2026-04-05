@@ -20,7 +20,7 @@ pub struct ShowArgs {
     #[arg(default_value = "@latest")]
     pub snapshot: String,
     /// Repository name [default: "default"]
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]

@@ -43,7 +43,7 @@ pub struct SyncConfigArgs {
     #[arg(short, long)]
     pub list: bool,
     /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 }
 
@@ -52,7 +52,7 @@ pub struct SyncPullArgs {
     /// Peer name
     pub name: String,
     /// Local repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 }
 
@@ -61,7 +61,7 @@ pub struct SyncPushArgs {
     /// Peer name
     pub name: String,
     /// Local repository name [default: "default"]
-    #[arg(long, default_value = "default")]
+    #[arg(long, env = "TOME_REPO", default_value = "default")]
     pub repo: String,
     /// Local machine_id to record as source (defaults to current Sonyflake machine_id)
     #[arg(long)]

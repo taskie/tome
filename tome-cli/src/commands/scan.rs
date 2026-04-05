@@ -18,7 +18,7 @@ use tome_db::ops;
 #[derive(Args)]
 pub struct ScanArgs {
     /// Repository name (default: "default")
-    #[arg(long, short = 'r', default_value = "default")]
+    #[arg(long, short = 'r', env = "TOME_REPO", default_value = "default")]
     pub repo: String,
 
     /// Do not respect .gitignore / .ignore files
