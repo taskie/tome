@@ -75,6 +75,28 @@ async fn tag_delete_removes_tag() {
     assert_eq!(tags[0].key, "keep");
 }
 
+/// `tome tag rm` removes a specific tag (same as `delete`).
+#[tokio::test]
+async fn tag_rm_removes_tag() {
+    let env = Env::new().await;
+    env.write("file.txt", b"content");
+    env.scan().await.unwrap();
+
+    let digest = env.first_blob_digest_hex().await;
+    env.tag_set(&digest, "keep", Some("yes")).await.unwrap();
+    env.tag_set(&digest, "remove", Some("yes")).await.unwrap();
+
+    env.tag_rm(&digest, "remove").await.unwrap();
+
+    let repo = ops::get_or_create_repository(&env.db, "default").await.unwrap();
+    let entries = ops::present_cache_entries(&env.db, repo.id).await.unwrap();
+    let blob_id = entries[0].object_id.unwrap();
+    let tags = ops::list_tags(&env.db, blob_id).await.unwrap();
+
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].key, "keep");
+}
+
 // ── Search ───────────────────────────────────────────────────────────────────
 
 /// `tome tag search` finds blobs by key (and optionally value).

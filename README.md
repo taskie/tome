@@ -318,7 +318,7 @@ Key-value metadata on blobs.
 
 ```bash
 tome tag set <digest> <key> [value]    # set a tag
-tome tag delete <digest> <key>         # remove a tag
+tome tag rm <digest> <key>             # remove a tag
 tome tag list <digest>                 # list tags for a blob
 tome tag search <key> [value]          # find blobs by tag
 ```

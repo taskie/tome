@@ -14,7 +14,7 @@
 | 高 | `tome status` — 前回スキャンからの変更を read-only 検出。`scan.rs` の判定フェーズを分離（`--hash` で full digest） |
 | 中 | `tome repo list/rm/rename` — リポジトリ管理サブコマンド（`rm` は `--force` 必須、cascade 削除） |
 | ~~中~~ | ~~`sync` → `remote` リネーム~~ — 実装済み（`tome remote add/rm/list/set` 新設、`sync add/rm/list/set` は非推奨警告つきで残存） |
-| 中 | `tome tag rm` 追加 — `tag delete` をエイリアスとして残す（`store rm`, `remote rm` と統一） |
+| ~~中~~ | ~~`tome tag rm` 追加~~ — 実装済み（`tag rm` が正式名、`tag delete` は隠しエイリアス） |
 | 中 | `.tomeignore` サポート — `ignore::WalkBuilder::add_custom_ignore_filename(".tomeignore")` を追加 |
 | 中 | プログレス表示 — `indicatif` クレートで stderr にバー表示（`--quiet` / `--verbose` で制御） |
 | 中 | 並列ハッシュ計算 — `tokio::task::spawn_blocking` + `--jobs N`（デフォルト: num_cpus）。DB 書き込みは逐次 |

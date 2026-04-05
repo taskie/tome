@@ -19,7 +19,10 @@ pub struct TagArgs {
 pub enum TagCommands {
     /// Set (upsert) a key=value tag on a blob
     Set(TagSetArgs),
-    /// Delete a tag key from a blob
+    /// Remove a tag key from a blob
+    Rm(TagDeleteArgs),
+    /// Remove a tag key from a blob (alias for `rm`)
+    #[command(hide = true)]
     Delete(TagDeleteArgs),
     /// List all tags for a blob
     List(TagListArgs),
@@ -66,7 +69,7 @@ pub struct TagSearchArgs {
 pub async fn run(db: &DatabaseConnection, args: TagArgs) -> Result<()> {
     match args.command {
         TagCommands::Set(a) => tag_set(db, a).await,
-        TagCommands::Delete(a) => tag_delete(db, a).await,
+        TagCommands::Rm(a) | TagCommands::Delete(a) => tag_delete(db, a).await,
         TagCommands::List(a) => tag_list(db, a).await,
         TagCommands::Search(a) => tag_search(db, a).await,
     }

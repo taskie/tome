@@ -254,6 +254,17 @@ impl Env {
         .await
     }
 
+    /// Run `tome tag rm`.
+    pub async fn tag_rm(&self, digest: &str, key: &str) -> anyhow::Result<()> {
+        tag::run(
+            &self.db,
+            tag::TagArgs {
+                command: tag::TagCommands::Rm(tag::TagDeleteArgs { digest: digest.to_string(), key: key.to_string() }),
+            },
+        )
+        .await
+    }
+
     /// Run `tome tag list`.
     pub async fn tag_list(&self, digest: &str) -> anyhow::Result<()> {
         tag::run(
