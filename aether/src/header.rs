@@ -28,44 +28,95 @@ const HEADER_PAYLOAD_SIZE: usize = 28;
 // HeaderFlags — structured view of the 16-bit flags field
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Per-chunk compression method.
+///
+/// Encoded in header flags bits `[11:8]` (formerly reserved).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Compression {
+    /// No compression.
+    #[default]
+    None,
+    /// zstd per-chunk adaptive compression.
+    Zstd,
+}
+
+impl Compression {
+    fn to_bits(self) -> u16 {
+        match self {
+            Self::None => 0,
+            Self::Zstd => 1,
+        }
+    }
+
+    fn from_bits(bits: u16) -> Result<Self> {
+        match bits & 0x0F {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Zstd),
+            other => Err(AetherError::InvalidHeader(format!("unknown compression: {other}"))),
+        }
+    }
+
+    /// Returns `true` if compression is enabled.
+    pub fn is_enabled(self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
+impl std::fmt::Display for Compression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => f.write_str("none"),
+            Self::Zstd => f.write_str("zstd"),
+        }
+    }
+}
+
 /// Parsed representation of the 16-bit header flags.
 ///
 /// ```text
 /// bits [15:12]  version      format version (0–15)
-/// bits [11:8]   reserved     must be 0
+/// bits [11:8]   compression  0 = none, 1 = zstd
 /// bits [7:4]    chunk_kind   chunk size selector
 /// bits [3:0]    algorithm    AEAD algorithm
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HeaderFlags {
     pub version: u8,
+    pub compression: Compression,
     pub chunk_kind: ChunkKind,
     pub algorithm: CipherAlgorithm,
 }
 
 impl HeaderFlags {
     pub fn new(version: u8, chunk_kind: ChunkKind, algorithm: CipherAlgorithm) -> Self {
-        Self { version, chunk_kind, algorithm }
+        Self { version, compression: Compression::None, chunk_kind, algorithm }
+    }
+
+    pub fn with_compression(
+        version: u8,
+        compression: Compression,
+        chunk_kind: ChunkKind,
+        algorithm: CipherAlgorithm,
+    ) -> Self {
+        Self { version, compression, chunk_kind, algorithm }
     }
 
     /// Encode to the raw 16-bit flags value.
     pub fn to_bits(self) -> u16 {
         let v = (self.version as u16 & 0x0F) << 12;
+        let z = (self.compression.to_bits() & 0x0F) << 8;
         let c = (self.chunk_kind.0 as u16 & 0x0F) << 4;
         let a = self.algorithm.to_bits() & 0x0F;
-        v | c | a
+        v | z | c | a
     }
 
     /// Decode from a raw 16-bit flags value.
     pub fn from_bits(bits: u16) -> Result<Self> {
         let version = ((bits >> 12) & 0x0F) as u8;
-        let reserved = ((bits >> 8) & 0x0F) as u8;
-        if reserved != 0 {
-            return Err(AetherError::InvalidHeader(format!("reserved bits not zero: {reserved:#x}")));
-        }
+        let compression = Compression::from_bits((bits >> 8) & 0x0F)?;
         let chunk_kind = ChunkKind::new(((bits >> 4) & 0x0F) as u8)?;
         let algorithm = CipherAlgorithm::from_bits(bits & 0x0F)?;
-        Ok(Self { version, chunk_kind, algorithm })
+        Ok(Self { version, compression, chunk_kind, algorithm })
     }
 }
 
@@ -538,9 +589,34 @@ mod tests {
     }
 
     #[test]
-    fn header_rejects_reserved_bits() {
-        let flags_raw: u16 = 0x0100; // reserved = 1
+    fn header_rejects_unknown_compression() {
+        let flags_raw: u16 = 0x0200; // compression = 2 (unknown)
         assert!(HeaderFlags::from_bits(flags_raw).is_err());
+    }
+
+    #[test]
+    fn compression_flag_roundtrip() {
+        // No compression
+        let flags = HeaderFlags::new(1, ChunkKind::DEFAULT, CipherAlgorithm::XChaCha20Poly1305);
+        assert_eq!(flags.compression, Compression::None);
+        let parsed = HeaderFlags::from_bits(flags.to_bits()).unwrap();
+        assert_eq!(parsed.compression, Compression::None);
+
+        // zstd compression
+        let flags =
+            HeaderFlags::with_compression(1, Compression::Zstd, ChunkKind::DEFAULT, CipherAlgorithm::XChaCha20Poly1305);
+        assert_eq!(flags.to_bits(), 0x1172); // version=1, compression=1, chunk=7, algo=2
+        let parsed = HeaderFlags::from_bits(flags.to_bits()).unwrap();
+        assert_eq!(parsed.compression, Compression::Zstd);
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.algorithm, CipherAlgorithm::XChaCha20Poly1305);
+    }
+
+    #[test]
+    fn compression_zstd_accepted() {
+        let flags_raw: u16 = 0x0100; // compression = 1 (zstd), rest = 0
+        let flags = HeaderFlags::from_bits(flags_raw).unwrap();
+        assert_eq!(flags.compression, Compression::Zstd);
     }
 
     #[test]

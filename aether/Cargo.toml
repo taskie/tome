@@ -17,3 +17,4 @@ sha2 = "0.10"
 thiserror = { workspace = true }
 typenum = "1"
 zeroize = { version = "1", features = ["derive"] }
+zstd = "0.13"

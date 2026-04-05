@@ -18,8 +18,8 @@ use zeroize::Zeroize;
 use crate::algorithm::CipherAlgorithm;
 use crate::error::{AetherError, Result};
 use crate::header::{
-    ChunkKind, CounteredNonce, ENCRYPTED_DEK_SIZE, HEADER_SIZE, Header, HeaderFlags, INTEGRITY_SIZE, Integrity,
-    KEY_SIZE, KdfParams, KeyBlock, KeySlot, MAX_NONCE_SIZE, NONCE_SIZE_STD, compute_key_id,
+    ChunkKind, Compression, CounteredNonce, ENCRYPTED_DEK_SIZE, HEADER_SIZE, Header, HeaderFlags, INTEGRITY_SIZE,
+    Integrity, KEY_SIZE, KdfParams, KeyBlock, KeySlot, MAX_NONCE_SIZE, NONCE_SIZE_STD, compute_key_id,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -93,6 +93,8 @@ pub struct Cipher {
     chunk_kind: ChunkKind,
     /// KDF parameters for v1 envelope encryption (password mode).
     kdf_params: Option<KdfParams>,
+    /// Compression method for v1 encryption. Decryption auto-detects from header.
+    compression: Compression,
 }
 
 impl Drop for Cipher {
@@ -115,7 +117,17 @@ impl Cipher {
         let mut nonce_bytes = [0u8; MAX_NONCE_SIZE];
         OsRng.fill_bytes(&mut nonce_bytes[..nonce_size]);
         let countered_nonce = CounteredNonce::new(&nonce_bytes[..nonce_size]);
-        Cipher { aead, algorithm, key: *key, countered_nonce, integrity, format_version, chunk_kind, kdf_params }
+        Cipher {
+            aead,
+            algorithm,
+            key: *key,
+            countered_nonce,
+            integrity,
+            format_version,
+            chunk_kind,
+            kdf_params,
+            compression: Compression::None,
+        }
     }
 
     pub fn new(key: &[u8; KEY_SIZE]) -> Cipher {
@@ -186,6 +198,11 @@ impl Cipher {
         self.chunk_kind = chunk_kind;
     }
 
+    /// Enable or disable compression for v1 encryption.
+    pub fn set_compression(&mut self, compression: Compression) {
+        self.compression = compression;
+    }
+
     // ── Streaming encrypt/decrypt ────────────────────────────────────────
 
     pub fn encrypt<R: BufRead, W: Write>(&mut self, r: R, w: BufWriter<W>) -> Result<()> {
@@ -245,8 +262,8 @@ impl Cipher {
         let mut dek = [0u8; KEY_SIZE];
         OsRng.fill_bytes(&mut dek);
 
-        // 2. Build header (version=1, reserved payload tail = zeros)
-        let flags = HeaderFlags::new(1, self.chunk_kind, self.algorithm);
+        // 2. Build header (version=1)
+        let flags = HeaderFlags::with_compression(1, self.compression, self.chunk_kind, self.algorithm);
         let mut data_iv = [0u8; MAX_NONCE_SIZE];
         OsRng.fill_bytes(&mut data_iv[..nonce_size]);
         let header = Header::new_v1(&data_iv[..nonce_size], flags);
@@ -275,7 +292,7 @@ impl Cipher {
 
         let dek_aead = AeadInner::new(self.algorithm, &dek);
         let countered_nonce = CounteredNonce::new(&data_iv[..nonce_size]);
-        self.stream_encrypt(r, &mut w, &dek_aead, countered_nonce, &first_chunk_ad)?;
+        self.stream_encrypt(r, &mut w, &dek_aead, countered_nonce, &first_chunk_ad, self.compression)?;
 
         dek.zeroize();
         Ok(())
@@ -360,7 +377,8 @@ impl Cipher {
 
         let dek_aead = AeadInner::new(algo, &dek);
         let countered_nonce = CounteredNonce::new(header.nonce_bytes());
-        self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad)?;
+        let compression = header.flags.compression;
+        self.stream_decrypt(&mut r, &mut w, &dek_aead, countered_nonce, chunk_kind, &first_chunk_ad, compression)?;
 
         dek.zeroize();
         Ok(())
@@ -412,11 +430,17 @@ impl Cipher {
         aead: &AeadInner,
         mut countered_nonce: CounteredNonce,
         first_chunk_ad: &[u8],
+        compression: Compression,
     ) -> Result<()> {
-        let pt_size = self.chunk_kind.plaintext_size();
+        // When compression is enabled, each chunk payload is prefixed with a 1-byte
+        // marker (0x00 = raw, 0x01 = zstd). The prefix is inside the AEAD envelope,
+        // so plaintext capacity per chunk is reduced by 1 byte.
+        let compress = compression.is_enabled();
+        let pt_size = if compress { self.chunk_kind.plaintext_size() - 1 } else { self.chunk_kind.plaintext_size() };
         let ct_size = self.chunk_kind.ciphertext_size();
         let mut read_buf = vec![0u8; pt_size];
         let mut work = Vec::with_capacity(ct_size);
+        let mut compress_buf = if compress { Vec::with_capacity(pt_size) } else { Vec::new() };
         let mut is_first = true;
 
         loop {
@@ -434,7 +458,20 @@ impl Cipher {
             };
 
             work.clear();
-            work.extend_from_slice(&read_buf[..pos]);
+            if compress {
+                compress_buf.clear();
+                zstd::stream::copy_encode(&read_buf[..pos], &mut compress_buf, 3)
+                    .map_err(|e| AetherError::Compression(e.to_string()))?;
+                if compress_buf.len() < pos {
+                    work.push(0x01); // zstd
+                    work.extend_from_slice(&compress_buf);
+                } else {
+                    work.push(0x00); // raw
+                    work.extend_from_slice(&read_buf[..pos]);
+                }
+            } else {
+                work.extend_from_slice(&read_buf[..pos]);
+            }
             aead.encrypt_in_place(&nonce, &mut work, ad)?;
             w.write_all(&work)?;
 
@@ -449,6 +486,7 @@ impl Cipher {
     ///
     /// Reuses read and work buffers across iterations. Short chunks (pos < ct_size)
     /// are known to be last, skipping the double-AEAD trial.
+    #[allow(clippy::too_many_arguments)]
     fn stream_decrypt<R: BufRead, W: Write>(
         &self,
         r: &mut R,
@@ -457,10 +495,13 @@ impl Cipher {
         mut countered_nonce: CounteredNonce,
         chunk_kind: ChunkKind,
         first_chunk_ad: &[u8],
+        compression: Compression,
     ) -> Result<()> {
+        let compress = compression.is_enabled();
         let ct_size = chunk_kind.ciphertext_size();
         let mut read_buf = vec![0u8; ct_size];
         let mut work = Vec::with_capacity(ct_size);
+        let mut decompress_buf = if compress { Vec::with_capacity(chunk_kind.plaintext_size()) } else { Vec::new() };
         let mut is_first = true;
         let mut seen_last = false;
 
@@ -487,7 +528,7 @@ impl Cipher {
                 work.clear();
                 work.extend_from_slice(&read_buf[..pos]);
                 aead.decrypt_in_place(&nonce, &mut work, ad)?;
-                w.write_all(&work)?;
+                write_maybe_decompress(w, &work, compress, &mut decompress_buf)?;
                 seen_last = true;
             } else {
                 // Full-size chunk: try normal nonce first.
@@ -498,13 +539,13 @@ impl Cipher {
                 work.clear();
                 work.extend_from_slice(&read_buf[..pos]);
                 if aead.decrypt_in_place(&normal_nonce, &mut work, ad).is_ok() {
-                    w.write_all(&work)?;
+                    write_maybe_decompress(w, &work, compress, &mut decompress_buf)?;
                 } else {
                     // Retry with last nonce — restore ciphertext from read_buf.
                     work.clear();
                     work.extend_from_slice(&read_buf[..pos]);
                     aead.decrypt_in_place(&last_nonce, &mut work, ad)?;
-                    w.write_all(&work)?;
+                    write_maybe_decompress(w, &work, compress, &mut decompress_buf)?;
                     seen_last = true;
                 }
             }
@@ -561,6 +602,41 @@ impl Cipher {
     }
 }
 
+/// Write decrypted chunk data, decompressing if the compression prefix indicates zstd.
+///
+/// When `compress` is true, the first byte is a marker: `0x00` = raw, `0x01` = zstd.
+fn write_maybe_decompress<W: Write>(
+    w: &mut W,
+    data: &[u8],
+    compress: bool,
+    decompress_buf: &mut Vec<u8>,
+) -> Result<()> {
+    if !compress {
+        w.write_all(data)?;
+        return Ok(());
+    }
+    if data.is_empty() {
+        return Err(AetherError::Compression("empty chunk (missing compression prefix)".into()));
+    }
+    match data[0] {
+        0x00 => {
+            // Raw (uncompressed).
+            w.write_all(&data[1..])?;
+        }
+        0x01 => {
+            // zstd compressed.
+            decompress_buf.clear();
+            zstd::stream::copy_decode(&data[1..], &mut *decompress_buf)
+                .map_err(|e| AetherError::Compression(e.to_string()))?;
+            w.write_all(decompress_buf)?;
+        }
+        other => {
+            return Err(AetherError::Compression(format!("unknown compression prefix: {other:#x}")));
+        }
+    }
+    Ok(())
+}
+
 fn read_exact_or_eof<R: BufRead>(r: &mut R, buf: &mut [u8]) -> Result<usize> {
     let buf_len = buf.len();
     let mut pos = 0usize;
@@ -584,6 +660,17 @@ mod tests {
     fn roundtrip(algo: CipherAlgorithm, plaintext: &[u8]) {
         let key = [42u8; KEY_SIZE];
         let mut cipher = Cipher::with_algorithm(&key, algo);
+        let mut ciphertext = Vec::new();
+        cipher.encrypt(plaintext, BufWriter::new(&mut ciphertext)).unwrap();
+        let mut plaintext2 = Vec::new();
+        cipher.decrypt(&ciphertext[..], BufWriter::new(&mut plaintext2)).unwrap();
+        assert_eq!(plaintext, &plaintext2[..]);
+    }
+
+    fn roundtrip_compressed(algo: CipherAlgorithm, plaintext: &[u8]) {
+        let key = [42u8; KEY_SIZE];
+        let mut cipher = Cipher::with_algorithm(&key, algo);
+        cipher.set_compression(Compression::Zstd);
         let mut ciphertext = Vec::new();
         cipher.encrypt(plaintext, BufWriter::new(&mut ciphertext)).unwrap();
         let mut plaintext2 = Vec::new();
@@ -762,6 +849,65 @@ mod tests {
         let mut result = Vec::new();
         let err = cipher2.decrypt(&ciphertext[..], BufWriter::new(&mut result));
         assert!(err.is_err());
+    }
+
+    // ── v1 compressed tests ────────────────────────────────────────────
+
+    #[test]
+    fn v1_compressed_small() {
+        roundtrip_compressed(CipherAlgorithm::XChaCha20Poly1305, b"Hello, world!");
+    }
+
+    #[test]
+    fn v1_compressed_empty() {
+        roundtrip_compressed(CipherAlgorithm::XChaCha20Poly1305, b"");
+    }
+
+    #[test]
+    fn v1_compressed_large_compressible() {
+        // Highly compressible: repeated text.
+        let data: Vec<u8> = "The quick brown fox jumps over the lazy dog.\n".repeat(5000).into_bytes();
+        roundtrip_compressed(CipherAlgorithm::XChaCha20Poly1305, &data);
+    }
+
+    #[test]
+    fn v1_compressed_large_incompressible() {
+        // Random data: won't compress, should fall back to raw prefix.
+        use crypto_bigint::rand_core::RngCore as _;
+        let mut data = vec![0u8; 200_000];
+        aes_gcm::aead::OsRng.fill_bytes(&mut data);
+        roundtrip_compressed(CipherAlgorithm::XChaCha20Poly1305, &data);
+    }
+
+    #[test]
+    fn v1_compressed_exact_chunk_boundary() {
+        // With compression, effective plaintext per chunk is chunk_size - 1 (for prefix byte).
+        let pt_size = ChunkKind::DEFAULT.plaintext_size() - 1;
+        let pt = vec![0xABu8; pt_size];
+        roundtrip_compressed(CipherAlgorithm::Aes256Gcm, &pt);
+    }
+
+    #[test]
+    fn v1_compressed_reduces_size() {
+        // Verify that compressible data produces smaller ciphertext than uncompressed.
+        let key = [42u8; KEY_SIZE];
+        let data: Vec<u8> = "aaaa\n".repeat(50_000).into_bytes();
+
+        let mut cipher_plain = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        let mut ct_plain = Vec::new();
+        cipher_plain.encrypt(&data[..], BufWriter::new(&mut ct_plain)).unwrap();
+
+        let mut cipher_comp = Cipher::with_algorithm(&key, CipherAlgorithm::XChaCha20Poly1305);
+        cipher_comp.set_compression(Compression::Zstd);
+        let mut ct_comp = Vec::new();
+        cipher_comp.encrypt(&data[..], BufWriter::new(&mut ct_comp)).unwrap();
+
+        assert!(
+            ct_comp.len() < ct_plain.len(),
+            "compressed ({}) should be smaller than plain ({})",
+            ct_comp.len(),
+            ct_plain.len()
+        );
     }
 
     // ── v0 backward compat tests ─────────────────────────────────────────

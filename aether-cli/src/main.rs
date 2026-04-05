@@ -75,6 +75,10 @@ pub struct Opt {
     #[arg(long, default_value = "7")]
     pub chunk_kind: u8,
 
+    /// Enable zstd per-chunk adaptive compression (v1 only)
+    #[arg(long)]
+    pub compress: bool,
+
     /// Input file ("-" or omit for stdin)
     #[arg(value_name = "FILE")]
     pub input: Option<PathBuf>,
@@ -170,6 +174,9 @@ fn process<R: BufRead, W: Write>(mut r: R, w: BufWriter<W>, opt: &Opt) -> Result
     };
     cipher.set_format_version(opt.format_version);
     cipher.set_chunk_kind(chunk_kind);
+    if opt.compress {
+        cipher.set_compression(aether::Compression::Zstd);
+    }
     execute(&mut cipher, r, w, opt)?;
     Ok(())
 }
@@ -219,6 +226,7 @@ fn info<R: BufRead>(mut r: R) -> Result<(), Box<dyn std::error::Error>> {
         format!("{} KiB", ct_size / 1024)
     };
     println!("Chunk kind:        {} (chunk = {})", flags.chunk_kind.value(), human);
+    println!("Compression:       {}", flags.compression);
 
     if flags.version == 0 {
         println!("Integrity:         {}", hex(&header.integrity()));

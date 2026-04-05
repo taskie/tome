@@ -19,6 +19,9 @@ pub enum AetherError {
     #[error("KDF error: {0}")]
     Kdf(String),
 
+    #[error("compression error: {0}")]
+    Compression(String),
+
     #[error("base64 decode error: {0}")]
     Base64(String),
 
