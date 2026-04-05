@@ -28,7 +28,9 @@ enum Commands {
     Restore(commands::restore::RestoreArgs),
     /// Manage object stores
     Store(commands::store::StoreArgs),
-    /// Manage sync peers and pull changes
+    /// Manage remote peers (add, set, rm, list)
+    Remote(commands::remote::RemoteArgs),
+    /// Manage sync peers and pull/push changes
     Sync(commands::sync::SyncArgs),
     /// Manage blob tags (key=value metadata)
     Tag(commands::tag::TagArgs),
@@ -93,6 +95,7 @@ async fn main() -> Result<()> {
         Commands::Diff(args) => commands::diff::run(&db_conn, args).await?,
         Commands::Restore(args) => commands::restore::run(&db_conn, args).await?,
         Commands::Store(args) => commands::store::run(&db_conn, args, &cfg.store).await?,
+        Commands::Remote(args) => commands::remote::run(&db_conn, args).await?,
         Commands::Sync(args) => commands::sync::run(&db_conn, args).await?,
         Commands::Tag(args) => commands::tag::run(&db_conn, args).await?,
         Commands::Verify(args) => commands::verify::run(&db_conn, args).await?,

@@ -4,6 +4,7 @@ pub mod gc;
 mod helpers;
 pub mod init;
 pub mod push;
+pub mod remote;
 pub mod restore;
 pub mod scan;
 pub mod store;

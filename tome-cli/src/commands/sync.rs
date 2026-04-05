@@ -126,6 +126,22 @@ pub struct SyncPushArgs {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
+    match &args.command {
+        SyncCommands::Add(_) => {
+            eprintln!("warning: `tome sync add` is deprecated; use `tome remote add` instead");
+        }
+        SyncCommands::Set(_) => {
+            eprintln!("warning: `tome sync set` is deprecated; use `tome remote set` instead");
+        }
+        SyncCommands::Rm(_) => {
+            eprintln!("warning: `tome sync rm` is deprecated; use `tome remote rm` instead");
+        }
+        SyncCommands::List(_) => {
+            eprintln!("warning: `tome sync list` is deprecated; use `tome remote list` instead");
+        }
+        _ => {}
+    }
+
     match args.command {
         SyncCommands::Add(a) => sync_add(db, a).await,
         SyncCommands::Set(a) => sync_set(db, a).await,
@@ -141,7 +157,7 @@ pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
 // sync add
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn sync_add(db: &DatabaseConnection, args: SyncAddArgs) -> Result<()> {
+pub(crate) async fn sync_add(db: &DatabaseConnection, args: SyncAddArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let peer_repo = args.peer_repo.unwrap_or_else(|| args.repo.clone());
 
@@ -156,7 +172,7 @@ async fn sync_add(db: &DatabaseConnection, args: SyncAddArgs) -> Result<()> {
 // sync set
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn sync_set(db: &DatabaseConnection, args: SyncSetArgs) -> Result<()> {
+pub(crate) async fn sync_set(db: &DatabaseConnection, args: SyncSetArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let peer = ops::find_sync_peer(db, &args.name, repo.id)
         .await?
@@ -185,7 +201,7 @@ async fn sync_set(db: &DatabaseConnection, args: SyncSetArgs) -> Result<()> {
 // sync rm
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn sync_rm(db: &DatabaseConnection, args: SyncRmArgs) -> Result<()> {
+pub(crate) async fn sync_rm(db: &DatabaseConnection, args: SyncRmArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let peer = ops::find_sync_peer(db, &args.name, repo.id)
         .await?
@@ -200,7 +216,7 @@ async fn sync_rm(db: &DatabaseConnection, args: SyncRmArgs) -> Result<()> {
 // sync list
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn sync_list(db: &DatabaseConnection, args: SyncListArgs) -> Result<()> {
+pub(crate) async fn sync_list(db: &DatabaseConnection, args: SyncListArgs) -> Result<()> {
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let peers = ops::list_sync_peers(db, repo.id).await?;
 

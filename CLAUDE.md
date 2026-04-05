@@ -38,7 +38,7 @@ tome-db/      — SeaORM エンティティ + マイグレーション + ops + M
 tome-dynamo/  — DynamoDB バックエンド（MetadataStore 実装、シングルテーブル設計）
 tome-store/   — ファイルストレージ抽象化（Local / SSH / S3 / 暗号化）
 tome-server/  — HTTP API サーバー (axum)
-tome-cli/     — 統一 CLI（scan / store / sync / remote / push / pull / diff / restore / tag / verify / gc / init / serve / log / show / status / files / history / repo）
+tome-cli/     — 統一 CLI（scan / store / remote / sync / push / pull / diff / restore / tag / verify / gc / init / serve / log / show / status / files / history / repo）
 tome-web/     — Next.js 16 Web フロントエンド（tome-web/CLAUDE.md 参照）
 aether/       — Streaming AEAD 暗号化ライブラリ（aether/CLAUDE.md 参照）
 treblo/       — ハッシュアルゴリズム（xxHash64/SHA-256/BLAKE3）・ファイルツリー走査・hex ユーティリティ

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use tome_cli::{
-    commands::{diff, gc, push, restore, scan, store, sync, tag, verify},
+    commands::{diff, gc, push, remote, restore, scan, store, sync, tag, verify},
     config::StoreConfig,
 };
 use tome_core::hash::{DigestAlgorithm, FastHashAlgorithm};
@@ -428,6 +428,75 @@ impl Env {
                     repo: repo.to_string(),
                 }),
             },
+        )
+        .await
+    }
+
+    // ── remote helpers ──────────────────────────────────────────────────────
+
+    /// Run `tome remote add`.
+    pub async fn remote_add(
+        &self,
+        name: &str,
+        peer_url: &str,
+        repo: &str,
+        peer_repo: Option<&str>,
+    ) -> anyhow::Result<()> {
+        remote::run(
+            &self.db,
+            remote::RemoteArgs {
+                command: remote::RemoteCommands::Add(sync::SyncAddArgs {
+                    name: name.to_string(),
+                    peer_url: peer_url.to_string(),
+                    repo: repo.to_string(),
+                    peer_repo: peer_repo.map(|s| s.to_string()),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome remote set`.
+    pub async fn remote_set(
+        &self,
+        name: &str,
+        peer_url: Option<&str>,
+        peer_repo: Option<&str>,
+        repo: &str,
+    ) -> anyhow::Result<()> {
+        remote::run(
+            &self.db,
+            remote::RemoteArgs {
+                command: remote::RemoteCommands::Set(sync::SyncSetArgs {
+                    name: name.to_string(),
+                    peer_url: peer_url.map(|s| s.to_string()),
+                    peer_repo: peer_repo.map(|s| s.to_string()),
+                    repo: repo.to_string(),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome remote rm`.
+    pub async fn remote_rm(&self, name: &str, repo: &str) -> anyhow::Result<()> {
+        remote::run(
+            &self.db,
+            remote::RemoteArgs {
+                command: remote::RemoteCommands::Rm(sync::SyncRmArgs {
+                    name: name.to_string(),
+                    repo: repo.to_string(),
+                }),
+            },
+        )
+        .await
+    }
+
+    /// Run `tome remote list`.
+    pub async fn remote_list(&self, repo: &str) -> anyhow::Result<()> {
+        remote::run(
+            &self.db,
+            remote::RemoteArgs { command: remote::RemoteCommands::List(sync::SyncListArgs { repo: repo.to_string() }) },
         )
         .await
     }

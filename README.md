@@ -124,8 +124,8 @@ tome store copy local remote
 # Register this machine with a central tome server
 tome init --server https://sync.example.com
 
-# Register a sync peer (HTTP mode — no direct DB access required)
-tome sync add central "https://sync.example.com" --repo default
+# Register a remote peer (HTTP mode — no direct DB access required)
+tome remote add central "https://sync.example.com" --repo default
 
 # Scan, upload blobs, and push metadata to the central server in one step
 tome push central
@@ -140,7 +140,7 @@ tome pull central --with-blobs --store remote --local-store local
 Direct PostgreSQL access is also supported (for LAN / VPN environments):
 
 ```bash
-tome sync add lan "postgres://user:pass@db.lan/tome" --repo default
+tome remote add lan "postgres://user:pass@db.lan/tome" --repo default
 tome push lan
 ```
 
@@ -345,19 +345,27 @@ tome pull central --with-blobs --store remote --local-store local
                                               # also copy blobs to a local store
 ```
 
+### `tome remote <COMMAND>`
+
+Manage remote peers. Peers can be specified as a **PostgreSQL URL** (`postgres://...`)
+for direct DB access, or an **HTTP URL** (`http://...` / `https://...`) to sync via
+the `tome serve` API.
+
+```bash
+tome remote add [--repo <name>] <name> <peer-url>   # register a remote peer
+tome remote add --peer-repo docs central postgres://central/tome  # remote repo name differs
+tome remote set <name> [--peer-url <url>] [--peer-repo <name>]   # update peer settings
+tome remote rm <name> [--repo <name>]                             # remove a remote peer
+tome remote list                                      # list peers
+```
+
 ### `tome sync <COMMAND>`
 
 Low-level sync operations. Prefer `tome push` / `tome pull` for everyday use.
 
-Peers can be specified as a **PostgreSQL URL** (`postgres://...`) for direct DB access,
-or an **HTTP URL** (`http://...` / `https://...`) to sync via the `tome serve` API.
+> **Note:** `tome sync add/set/rm/list` are deprecated — use `tome remote` instead.
 
 ```bash
-tome sync add [--repo <name>] <name> <peer-url>   # register a sync peer
-tome sync add --peer-repo docs central postgres://central/tome  # remote repo name differs
-tome sync set <name> [--peer-url <url>] [--peer-repo <name>]   # update peer settings
-tome sync rm <name> [--repo <name>]                             # remove a sync peer
-tome sync list                                      # list peers
 tome sync config <name> <key> <value>               # set a peer config value
 tome sync config <name> <key>                        # get a peer config value
 tome sync config <name> --unset <key>                # remove a peer config value
@@ -392,7 +400,7 @@ npm run dev
 # → http://localhost:3000
 ```
 
-Pages: repository list · snapshot list · current files · snapshot diff · file history · blob detail · cross-repository diff · stores · tags · sync peers
+Pages: repository list · snapshot list · current files · snapshot diff · file history · blob detail · cross-repository diff · stores · tags · remote peers
 
 ## Security
 
@@ -414,7 +422,7 @@ tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
 tome-dynamo/   DynamoDB MetadataStore implementation (single-table design)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
-tome-cli/      Unified CLI (scan / watch / store / sync / push / pull / diff / restore / tag / verify / gc / serve)
+tome-cli/      Unified CLI (scan / watch / store / remote / sync / push / pull / diff / restore / tag / verify / gc / serve)
 tome-web/      Next.js 16 web frontend
 aether/        AEAD authenticated encryption (XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id)
 treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk utilities
