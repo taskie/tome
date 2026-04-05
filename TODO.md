@@ -6,22 +6,22 @@
 
 | 優先度 | 内容 |
 |--------|------|
-| 高 | スナップショット参照記法 — `@latest` / `@latest~N` / `@YYYY-MM-DD[Thh:mm]` / i64 直指定。`diff`, `show`, `restore` に適用 |
-| 高 | `tome log` — スナップショット一覧（`--limit`, `--oneline`, `--after`, `--before`） |
-| 高 | `tome show <ref>` — スナップショット詳細（diff + metadata）。参照記法を使用 |
-| 高 | `tome files` — 追跡中ファイル一覧（entry_cache）（`--prefix`, `--format`, `--include-deleted`） |
-| 高 | `tome history <path>` — ファイル変更履歴（`ops::path_history_with_blobs`） |
-| 高 | `tome status` — 前回スキャンからの変更を read-only 検出。`scan.rs` の判定フェーズを分離（`--hash` で full digest） |
+| ~~高~~ | ~~スナップショット参照記法~~ — 実装済み（`@latest` / `@latest~N` / `@YYYY-MM-DD[Thh:mm]` / i64。`diff`, `show`, `restore` に適用） |
+| ~~高~~ | ~~`tome log`~~ — 実装済み（`--limit`, `--oneline`, `--after`, `--before`, `--format json`） |
+| ~~高~~ | ~~`tome show <ref>`~~ — 実装済み（スナップショット詳細 + entries。参照記法使用） |
+| ~~高~~ | ~~`tome files`~~ — 実装済み（`--prefix`, `--format json`, `--include-deleted`） |
+| ~~高~~ | ~~`tome history <path>`~~ — 実装済み（`--format json`） |
+| ~~高~~ | ~~`tome status`~~ — 実装済み（mtime/size 比較、`--hash` で full digest） |
 | 中 | `tome repo list/rm/rename` — リポジトリ管理サブコマンド（`rm` は `--force` 必須、cascade 削除） |
-| ~~中~~ | ~~`sync` → `remote` リネーム~~ — 実装済み（`tome remote add/rm/list/set` 新設、`sync add/rm/list/set` は非推奨警告つきで残存） |
+| ~~中~~ | ~~`sync` → `remote` リネーム~~ — 実装済み（`tome remote add/rm/list/set` 新設、`sync add/rm/list/set` は削除済み） |
 | ~~中~~ | ~~`tome tag rm` 追加~~ — 実装済み（`tag rm` が正式名、`tag delete` は隠しエイリアス） |
 | 中 | `.tomeignore` サポート — `ignore::WalkBuilder::add_custom_ignore_filename(".tomeignore")` を追加 |
 | 中 | プログレス表示 — `indicatif` クレートで stderr にバー表示（`--quiet` / `--verbose` で制御） |
 | 中 | 並列ハッシュ計算 — `tokio::task::spawn_blocking` + `--jobs N`（デフォルト: num_cpus）。DB 書き込みは逐次 |
 | 中 | `store push` / `store copy` 並列化 — `tokio::sync::Semaphore` で同時接続数を制限（`--jobs N`）。スキーム別デフォルト: `file://`=4, `ssh://`=4, `s3://`=8 |
 | 中 | `store push` のバッチクエリ化 — N+1 クエリ（blob ごとに `replica_exists`）を `blobs_missing_in_store` 1クエリに削減 |
-| 中 | `--format json` — `log`, `show`, `files`, `history`, `diff`, `status`, `repo list`, `store list`, `remote list`, `store push` に追加。`store push --format json` は `{pushed, skipped, errors, bytes_transferred, duration_ms}` を出力 |
-| 中 | `verify` 統合 — `tome verify --store <name>` / `--all` を追加（`tome store verify` はエイリアスとして残す） |
+| ~~中~~ | ~~`--format json`~~ — `log`, `show`, `files`, `history`, `status` に実装済み。残: `diff`, `repo list`, `store list`, `remote list`, `store push` |
+| ~~中~~ | ~~`verify` 統合~~ — 実装済み（`tome verify --store <name>` を追加。`tome store verify` もそのまま残存） |
 | 中 | entry_cache 再構築 — `tome cache rebuild` + sync pull 後の自動再構築オプション |
 | 中 | sync push 時のコンフリクト検知 — 中央 DB の分岐を検出し警告 |
 | 中 | sync フィルタ — `--include` / `--exclude` でパスを絞った選択的同期 |

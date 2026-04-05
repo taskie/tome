@@ -30,8 +30,14 @@ cargo install --path tome-cli
 # Scan the current directory — creates tome.db
 tome scan
 
-# See what changed between two snapshots
-tome diff <snapshot_id_before> <snapshot_id_after>
+# Check what changed since the last scan (read-only)
+tome status
+
+# See snapshot history
+tome log --oneline
+
+# See what changed between the last two snapshots
+tome diff @latest~1 @latest
 
 # Browse snapshots and file history in the browser
 tome serve
@@ -226,15 +232,73 @@ After the first scan with an explicit `[PATH]`, the path is saved in the reposit
 
 Snapshots with no changes (added + modified + deleted = 0) are discarded by default. Use `--allow-empty` to keep them.
 
-### `tome diff <snap1> <snap2> [OPTIONS]`
+### `tome log [OPTIONS]`
 
-Compare two snapshots and print changed files.
+List snapshot history.
 
 ```bash
+tome log                               # all snapshots (newest first)
+tome log --oneline                     # compact one-line format
+tome log -n 10                         # last 10 snapshots
+tome log --after 2025-01-01            # snapshots after a date
+tome log --before 2025-06-01           # snapshots before a date
+tome log --format json                 # machine-readable output
+```
+
+### `tome show [REF] [OPTIONS]`
+
+Show snapshot details (entries + metadata).
+
+```bash
+tome show                              # latest snapshot
+tome show @latest~1                    # previous snapshot
+tome show @2025-06-15                  # latest snapshot on or before that date
+tome show 123456                       # by numeric ID
+tome show --format json                # machine-readable output
+```
+
+### `tome diff <snap1> <snap2> [OPTIONS]`
+
+Compare two snapshots and print changed files. Snapshot arguments accept the same
+reference syntax as `tome show` (`@latest`, `@latest~N`, `@YYYY-MM-DD`, or raw ID).
+
+```bash
+tome diff @latest~1 @latest            # compare previous vs latest
 tome diff 123456 789012                # A/M/D status per file
 tome diff 123456 789012 --name-only    # file names only
 tome diff 123456 789012 --stat         # with file sizes and summary
 tome diff 123456 789012 --prefix src/  # limit to files under src/
+```
+
+### `tome files [OPTIONS]`
+
+List tracked files from the entry cache.
+
+```bash
+tome files                             # present files in default repo
+tome files --prefix src/               # filter by path prefix
+tome files --include-deleted           # include deleted files
+tome files --format json               # machine-readable output
+```
+
+### `tome history <PATH> [OPTIONS]`
+
+Show change history for a file path across all snapshots.
+
+```bash
+tome history src/main.rs               # all changes to this file
+tome history --repo myproject config.toml
+tome history --format json src/lib.rs  # machine-readable output
+```
+
+### `tome status [OPTIONS] [PATH]`
+
+Detect changes since the last scan (read-only, does not create a snapshot).
+
+```bash
+tome status                            # fast check: mtime + size
+tome status --hash                     # full content hash (slow but accurate)
+tome status ~/documents                # explicit path
 ```
 
 ### `tome verify [OPTIONS] [PATH]`
@@ -245,14 +309,16 @@ Re-hash every file and compare against stored digests (bit-rot detection).
 tome verify                            # default repo, path from last snapshot metadata
 tome verify --repo myproject           # specific repo
 tome verify --verbose /srv/data        # also print OK lines (default: problems only)
+tome verify --store backup             # verify replicas in a store (same as `store verify`)
 ```
 
 ### `tome restore [OPTIONS] <DEST>`
 
-Restore files from a historical snapshot to a local directory.
+Restore files from a historical snapshot to a local directory. The `--snapshot`
+argument accepts the same reference syntax as `tome show`.
 
 ```bash
-tome restore --snapshot 123456 ./restored
+tome restore --snapshot @latest ./restored
 tome restore --snapshot 123456 --store backup --prefix src/ ./restored
 ```
 
@@ -420,7 +486,7 @@ tome-db/       SeaORM entities, migrations, query operations (ops/ modules)
 tome-dynamo/   DynamoDB MetadataStore implementation (single-table design)
 tome-store/    Storage abstraction (local / SSH / S3 / encrypted)
 tome-server/   HTTP API server (axum, routes/ modules)
-tome-cli/      Unified CLI (scan / watch / store / remote / sync / push / pull / diff / restore / tag / verify / gc / serve)
+tome-cli/      Unified CLI (scan / log / show / diff / files / history / status / restore / store / remote / sync / tag / verify / gc / push / pull / serve / watch)
 tome-web/      Next.js 16 web frontend
 aether/        AEAD authenticated encryption (XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id)
 treblo/        Hash algorithms (xxHash64 / SHA-256 / BLAKE3) and file-tree walk utilities
