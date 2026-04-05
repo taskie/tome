@@ -6,15 +6,20 @@ use tracing::{info, warn};
 use tome_db::ops;
 use tome_store::factory;
 
+use crate::snapshot_ref::{self, SnapshotRef};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
 pub struct RestoreArgs {
-    /// Snapshot ID to restore
+    /// Snapshot reference (ID, @latest, @latest~N, @YYYY-MM-DD)
     #[arg(long)]
     pub snapshot: String,
+    /// Repository name (required for @-references) [default: "default"]
+    #[arg(long, short = 'r', default_value = "default")]
+    pub repo: String,
     /// Restore only from this store (default: use any available store)
     #[arg(long)]
     pub store: Option<String>,
@@ -30,8 +35,9 @@ pub struct RestoreArgs {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn run(db: &DatabaseConnection, args: RestoreArgs) -> Result<()> {
-    let snapshot_id: i64 =
-        args.snapshot.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id: {:?}", args.snapshot))?;
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let snap_ref: SnapshotRef = args.snapshot.parse()?;
+    let snapshot_id = snapshot_ref::resolve(db, repo.id, &snap_ref).await?;
 
     // Resolve optional store filter.
     let store_filter: Option<i64> = if let Some(ref store_name) = args.store {

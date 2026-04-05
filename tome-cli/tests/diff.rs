@@ -38,6 +38,7 @@ async fn diff_shows_added_deleted_modified() {
         diff::DiffArgs {
             snapshot1: snap1_id.clone(),
             snapshot2: snap2_id.clone(),
+            repo: "default".to_string(),
             prefix: String::new(),
             name_only: false,
             stat: false,
@@ -66,6 +67,7 @@ async fn diff_identical_snapshots_returns_ok() {
         diff::DiffArgs {
             snapshot1: snap1_id,
             snapshot2: snap2_id,
+            repo: "default".to_string(),
             prefix: String::new(),
             name_only: false,
             stat: false,
@@ -93,6 +95,7 @@ async fn diff_name_only_flag() {
         diff::DiffArgs {
             snapshot1: snaps[1].id.to_string(),
             snapshot2: snaps[0].id.to_string(),
+            repo: "default".to_string(),
             prefix: String::new(),
             name_only: true,
             stat: false,
@@ -117,6 +120,7 @@ async fn diff_stat_flag() {
         diff::DiffArgs {
             snapshot1: snaps[1].id.to_string(),
             snapshot2: snaps[0].id.to_string(),
+            repo: "default".to_string(),
             prefix: String::new(),
             name_only: false,
             stat: true,
@@ -147,6 +151,7 @@ async fn diff_prefix_filter_ignores_files_outside_prefix() {
         diff::DiffArgs {
             snapshot1: snaps[1].id.to_string(),
             snapshot2: snaps[0].id.to_string(),
+            repo: "default".to_string(),
             prefix: "src/".to_string(),
             name_only: false,
             stat: false,

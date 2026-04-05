@@ -197,6 +197,7 @@ impl Env {
             diff::DiffArgs {
                 snapshot1: snap1.to_string(),
                 snapshot2: snap2.to_string(),
+                repo: "default".to_string(),
                 prefix: prefix.to_string(),
                 name_only: false,
                 stat: false,
@@ -217,6 +218,7 @@ impl Env {
             &self.db,
             restore::RestoreArgs {
                 snapshot: snapshot_id.to_string(),
+                repo: "default".to_string(),
                 store: store_name.map(|s| s.to_string()),
                 prefix: prefix.to_string(),
                 dest,

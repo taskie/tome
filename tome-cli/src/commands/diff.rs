@@ -5,16 +5,21 @@ use std::collections::HashMap;
 
 use tome_db::{entities::object, ops};
 
+use crate::snapshot_ref::{self, SnapshotRef};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[derive(Args)]
 pub struct DiffArgs {
-    /// Snapshot 1 ID (before)
+    /// Snapshot 1 reference (ID, @latest, @latest~N, @YYYY-MM-DD)
     pub snapshot1: String,
-    /// Snapshot 2 ID (after)
+    /// Snapshot 2 reference (ID, @latest, @latest~N, @YYYY-MM-DD)
     pub snapshot2: String,
+    /// Repository name (required for @-references) [default: "default"]
+    #[arg(long, short = 'r', default_value = "default")]
+    pub repo: String,
     /// Path prefix filter (limit diff to files under this prefix)
     #[arg(long, default_value = "")]
     pub prefix: String,
@@ -49,10 +54,11 @@ struct DiffRow {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn run(db: &DatabaseConnection, args: DiffArgs) -> Result<()> {
-    let snap1_id: i64 =
-        args.snapshot1.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id: {:?}", args.snapshot1))?;
-    let snap2_id: i64 =
-        args.snapshot2.parse().map_err(|_| anyhow::anyhow!("invalid snapshot id: {:?}", args.snapshot2))?;
+    let repo = ops::get_or_create_repository(db, &args.repo).await?;
+    let ref1: SnapshotRef = args.snapshot1.parse()?;
+    let ref2: SnapshotRef = args.snapshot2.parse()?;
+    let snap1_id = snapshot_ref::resolve(db, repo.id, &ref1).await?;
+    let snap2_id = snapshot_ref::resolve(db, repo.id, &ref2).await?;
 
     let entries1 = ops::entries_with_digest(db, snap1_id, &args.prefix).await?;
     let entries2 = ops::entries_with_digest(db, snap2_id, &args.prefix).await?;
