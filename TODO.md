@@ -28,7 +28,7 @@
 | 中 | 重複レポート（`tome dedup`）— blob の content-addressing を活かしリポジトリ横断で重複ファイルを報告 |
 | 中 | Webhook / 通知 — `--exec "cmd {pushed} {errors}"` でコマンド実行（先行実装）、または `tome.toml` の `[hooks] after_scan` / `after_push` で Slack / Discord / 汎用 HTTP POST |
 | 中 | `tome restore --check` — 復元前に blob の replica 存在確認（store の到達可能性チェック） |
-| 低 | `--repo` デフォルト一貫化 — 全コマンドで `tome.toml` の `[scan] repo` をデフォルト値として参照 |
+| ~~低~~ | ~~`--repo` デフォルト一貫化~~ — 実装済み（top-level `repo` config + `TOME_REPO` env。全コマンドで config fallback） |
 | 低 | 終了コード整理 — 部分失敗(exit 1) / 致命的エラー(exit 2) を区別。cron 自動化向け |
 | 低 | 鍵ローテーション — aether Header 拡張 + `store reencrypt` コマンド |
 | 低 | Git 互換 tree hash の統合（repository.config で opt-in） |

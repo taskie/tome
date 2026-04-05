@@ -184,9 +184,10 @@ Priority (highest wins): **CLI > env > `./tome.toml` > `~/.config/tome/tome.toml
 # ~/.config/tome/tome.toml or ./tome.toml
 db = "tome.db"
 machine_id = 0
+repo = "default"         # default repository name (env: TOME_REPO)
 
 [scan]
-repo = "default"
+# repo = "default"       # legacy location (top-level `repo` takes precedence)
 
 [store]
 default_store = "backup"
