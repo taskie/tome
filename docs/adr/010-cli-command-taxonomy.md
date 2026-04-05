@@ -1,6 +1,6 @@
 # ADR-010: CLI Command Taxonomy Review
 
-**Status:** Proposed  
+**Status:** Accepted (partially implemented)  
 **Date:** 2026-04-05  
 
 ## Context
@@ -144,15 +144,15 @@ Currently `tome scan` implicitly creates the database. This is convenient but in
 
 ## Summary of recommendations
 
-| # | Change | Priority | Breaking? |
-|---|--------|----------|-----------|
-| 1 | Implement `tag rm` (alias `delete`) | Medium | No |
-| 2 | Implement snapshot reference syntax (`@latest`, `@YYYY-MM-DD`) | High | No |
-| 3 | Unify `store verify` under `verify --store` (keep alias) | Medium | No |
-| 4 | Shared `--repo` default from `tome.toml` | Low | No |
-| 5 | Shared `OutputFormat` enum for `--format json` | Medium | No |
-| 6 | Keep `sync` as plumbing (no further restructuring) | — | — |
-| 7 | Implement the five query commands (`log/show/files/history/status`) | High | No |
+| # | Change | Priority | Breaking? | Status |
+|---|--------|----------|-----------|--------|
+| 1 | Implement `tag rm` (alias `delete`) | Medium | No | Done |
+| 2 | Implement snapshot reference syntax (`@latest`, `@YYYY-MM-DD`) | High | No | Done |
+| 3 | Unify `store verify` under `verify --store` (keep alias) | Medium | No | Done |
+| 4 | Shared `--repo` default from `tome.toml` | Low | No | Open |
+| 5 | Shared `OutputFormat` enum for `--format json` | Medium | No | Done |
+| 6 | Keep `sync` as plumbing (no further restructuring) | — | — | Done |
+| 7 | Implement the five query commands (`log/show/files/history/status`) | High | No | Done |
 
 None of the recommendations are breaking changes. The current taxonomy is sound; the main gaps are missing query commands and snapshot reference syntax, both already identified in TODO.md.
 
