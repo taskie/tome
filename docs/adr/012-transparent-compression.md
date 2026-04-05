@@ -1,6 +1,6 @@
 # ADR-012: Transparent Compression with zstd
 
-**Status:** Proposed  
+**Status:** Accepted  
 **Date:** 2026-04-05  
 
 ## Context

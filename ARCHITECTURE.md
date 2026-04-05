@@ -16,7 +16,7 @@
 | `tome-server` | HTTP API server (axum 0.8, `routes/` modules) |
 | `tome-cli` | Unified CLI: scan / log / show / diff / files / history / status / restore / store / remote / sync / tag / verify / gc / push / pull / serve / watch |
 | `tome-web` | Next.js 16 web frontend (Server Components, Tailwind CSS v4) |
-| `aether` | Streaming AEAD encryption: XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id KDF |
+| `aether` | Streaming AEAD encryption: XChaCha20-Poly1305 / ChaCha20-Poly1305 / AES-256-GCM + Argon2id KDF + zstd compression |
 | `treblo` | Hash algorithms (xxHash64 / SHA-256 / BLAKE3), file-tree walk, hex utilities |
 
 `tome-sync` is not a separate crate; it lives in `tome-cli/src/commands/sync.rs`.
@@ -189,6 +189,7 @@ This allows users to set `repo = "photos"` once in `tome.toml` and have all comm
 | [ADR-009](docs/adr/009-aether-in-place-aead.md) | In-Place AEAD and Buffer Reuse |
 | [ADR-010](docs/adr/010-cli-command-taxonomy.md) | CLI Command Taxonomy Review |
 | [ADR-011](docs/adr/011-config-hierarchy.md) | Configuration Hierarchy and `--repo` Default |
+| [ADR-012](docs/adr/012-transparent-compression.md) | Transparent zstd Compression |
 
 ---
 

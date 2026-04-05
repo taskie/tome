@@ -4,12 +4,12 @@
 
 ```
 bits [15:12]  version      format version (0–15)
-bits [11:8]   reserved     must be 0
+bits [11:8]   compression  0 = none, 1 = zstd (per-chunk adaptive)
 bits [7:4]    chunk_kind   chunk size selector
 bits [3:0]    algorithm    AEAD algorithm
 ```
 
-Backward compatibility: existing files with flags `0x0000` (AES) / `0x0001` (ChaCha20) are correctly parsed as version=0, chunk_kind=0.
+Backward compatibility: existing files with flags `0x0000` (AES) / `0x0001` (ChaCha20) are correctly parsed as version=0, chunk_kind=0, compression=none.
 
 ## Version Definitions
 
@@ -26,6 +26,35 @@ Backward compatibility: existing files with flags `0x0000` (AES) / `0x0001` (Cha
 | 1 | ChaCha20-Poly1305 | 12 bytes |
 | 2 | XChaCha20-Poly1305 | 24 bytes |
 | 3–15 | Reserved | — |
+
+## compression Values
+
+| Value | Method | Description |
+|-------|--------|-------------|
+| 0 | None | No compression (default, backward compatible) |
+| 1 | zstd | Per-chunk adaptive zstd compression |
+| 2–15 | Reserved | — |
+
+### Per-chunk adaptive compression
+
+When compression=1 (zstd), each plaintext chunk is prefixed with a 1-byte marker inside the AEAD envelope:
+
+```
+compressed = zstd_compress(plaintext_chunk, level=3)
+if compressed.len() < plaintext_chunk.len():
+  chunk_data = 0x01 || compressed       (zstd)
+else:
+  chunk_data = 0x00 || plaintext_chunk  (raw, incompressible)
+encrypt(chunk_data) → ciphertext
+```
+
+The prefix byte is authenticated by AEAD and invisible to external observers. Effective plaintext capacity per chunk is reduced by 1 byte when compression is enabled.
+
+On decryption, the prefix byte is checked after AEAD decryption:
+- `0x00` → raw data (strip prefix)
+- `0x01` → zstd decompress the remaining bytes
+
+This automatically handles mixed content: text chunks compress well, while already-compressed data (JPEG, ZIP, etc.) falls back to raw storage with only 1 byte overhead.
 
 ## chunk_kind Values
 
