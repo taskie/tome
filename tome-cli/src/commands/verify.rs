@@ -6,6 +6,8 @@ use tracing::warn;
 use tome_core::hash;
 use tome_db::ops;
 
+use super::store::{StoreVerifyArgs, store_verify};
+
 // ──────────────────────────────────────────────────────────────────────────────
 // CLI types
 // ──────────────────────────────────────────────────────────────────────────────
@@ -20,6 +22,9 @@ pub struct VerifyArgs {
     /// Also print a line for each OK file (default: only print problems)
     #[arg(long, short = 'v')]
     pub verbose: bool,
+    /// Verify replicas in the named store instead of local files
+    #[arg(long)]
+    pub store: Option<String>,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -27,6 +32,17 @@ pub struct VerifyArgs {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn run(db: &DatabaseConnection, args: VerifyArgs) -> Result<()> {
+    // If --store is given, delegate to store verify.
+    if let Some(store_name) = args.store {
+        let algo = ops::get_or_create_repository(db, &args.repo)
+            .await
+            .ok()
+            .as_ref()
+            .and_then(|r| ops::get_repository_digest_algorithm(r).ok())
+            .unwrap_or(hash::DigestAlgorithm::Sha256);
+        return store_verify(db, StoreVerifyArgs { store: store_name, digest_algorithm: algo }).await;
+    }
+
     let repo = ops::get_or_create_repository(db, &args.repo).await?;
     let algo = ops::get_repository_digest_algorithm(&repo)?;
 

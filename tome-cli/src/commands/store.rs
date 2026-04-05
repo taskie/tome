@@ -534,7 +534,7 @@ async fn store_copy(db: &DatabaseConnection, args: StoreCopyArgs, cfg: &StoreCon
 // store verify
 // ──────────────────────────────────────────────────────────────────────────────
 
-async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<()> {
+pub(crate) async fn store_verify(db: &DatabaseConnection, args: StoreVerifyArgs) -> Result<()> {
     let store = resolve_store(db, &args.store).await?;
 
     let storage = factory::open_storage(&store.url).await?;

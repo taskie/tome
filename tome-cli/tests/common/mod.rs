@@ -144,7 +144,12 @@ impl Env {
     pub async fn verify(&self) -> anyhow::Result<()> {
         verify::run(
             &self.db,
-            verify::VerifyArgs { repo: "default".to_string(), path: Some(self.files_dir()), verbose: false },
+            verify::VerifyArgs {
+                repo: "default".to_string(),
+                path: Some(self.files_dir()),
+                verbose: false,
+                store: None,
+            },
         )
         .await
     }
