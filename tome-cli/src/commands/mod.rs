@@ -1,12 +1,17 @@
 pub mod aws_auth;
 pub mod diff;
+pub mod files;
 pub mod gc;
 mod helpers;
+pub mod history;
 pub mod init;
+pub mod log;
 pub mod push;
 pub mod remote;
 pub mod restore;
 pub mod scan;
+pub mod show;
+pub mod status;
 pub mod store;
 pub mod sync;
 pub mod tag;

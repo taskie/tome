@@ -138,6 +138,11 @@ pub async fn cache_entries_by_prefix(
     Ok(q.order_by_asc(entry_cache::Column::Path).all(db).await?)
 }
 
+/// Get all entries from entry_cache for a repository (both present and deleted).
+pub async fn all_cache_entries(db: &DatabaseConnection, repository_id: i64) -> anyhow::Result<Vec<entry_cache::Model>> {
+    Ok(entry_cache::Entity::find().filter(entry_cache::Column::RepositoryId.eq(repository_id)).all(db).await?)
+}
+
 /// Get present entries from entry_cache for a repository.
 pub async fn present_cache_entries(
     db: &DatabaseConnection,

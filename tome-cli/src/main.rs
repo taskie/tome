@@ -22,8 +22,18 @@ struct Cli {
 enum Commands {
     /// Scan a directory and record file changes
     Scan(commands::scan::ScanArgs),
+    /// List snapshot history
+    Log(commands::log::LogArgs),
+    /// Show snapshot details (entries + metadata)
+    Show(commands::show::ShowArgs),
     /// Show differences between two snapshots
     Diff(commands::diff::DiffArgs),
+    /// List tracked files from the entry cache
+    Files(commands::files::FilesArgs),
+    /// Show change history for a file path
+    History(commands::history::HistoryArgs),
+    /// Detect changes since the last scan (read-only)
+    Status(commands::status::StatusArgs),
     /// Restore files from a snapshot via a store
     Restore(commands::restore::RestoreArgs),
     /// Manage object stores
@@ -92,7 +102,12 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Init(_) => unreachable!(),
         Commands::Scan(args) => commands::scan::run(&db_conn, args).await?,
+        Commands::Log(args) => commands::log::run(&db_conn, args).await?,
+        Commands::Show(args) => commands::show::run(&db_conn, args).await?,
         Commands::Diff(args) => commands::diff::run(&db_conn, args).await?,
+        Commands::Files(args) => commands::files::run(&db_conn, args).await?,
+        Commands::History(args) => commands::history::run(&db_conn, args).await?,
+        Commands::Status(args) => commands::status::run(&db_conn, args).await?,
         Commands::Restore(args) => commands::restore::run(&db_conn, args).await?,
         Commands::Store(args) => commands::store::run(&db_conn, args, &cfg.store).await?,
         Commands::Remote(args) => commands::remote::run(&db_conn, args).await?,
