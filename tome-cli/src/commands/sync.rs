@@ -20,65 +20,12 @@ pub struct SyncArgs {
 
 #[derive(Subcommand)]
 pub enum SyncCommands {
-    /// Register a sync peer
-    Add(SyncAddArgs),
-    /// Update a sync peer
-    Set(SyncSetArgs),
-    /// Remove a sync peer
-    Rm(SyncRmArgs),
-    /// List sync peers
-    List(SyncListArgs),
     /// Get or set peer config values (like git config)
     Config(SyncConfigArgs),
     /// Pull changes from a sync peer
     Pull(SyncPullArgs),
     /// Push changes to a sync peer
     Push(SyncPushArgs),
-}
-
-#[derive(Args)]
-pub struct SyncAddArgs {
-    /// Peer name
-    pub name: String,
-    /// Peer URL: sqlite:///path, postgres://... or https://tome.example.com
-    pub peer_url: String,
-    /// Local repository name [default: "default"]
-    #[arg(long, default_value = "default")]
-    pub repo: String,
-    /// Remote repository name on the peer [default: same as --repo]
-    #[arg(long)]
-    pub peer_repo: Option<String>,
-}
-
-#[derive(Args)]
-pub struct SyncSetArgs {
-    /// Peer name
-    pub name: String,
-    /// New peer URL
-    #[arg(long)]
-    pub peer_url: Option<String>,
-    /// New remote repository name on the peer
-    #[arg(long)]
-    pub peer_repo: Option<String>,
-    /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
-    pub repo: String,
-}
-
-#[derive(Args)]
-pub struct SyncRmArgs {
-    /// Peer name
-    pub name: String,
-    /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
-    pub repo: String,
-}
-
-#[derive(Args)]
-pub struct SyncListArgs {
-    /// Repository name [default: "default"]
-    #[arg(long, default_value = "default")]
-    pub repo: String,
 }
 
 #[derive(Args)]
@@ -126,112 +73,11 @@ pub struct SyncPushArgs {
 // ──────────────────────────────────────────────────────────────────────────────
 
 pub async fn run(db: &DatabaseConnection, args: SyncArgs) -> Result<()> {
-    match &args.command {
-        SyncCommands::Add(_) => {
-            eprintln!("warning: `tome sync add` is deprecated; use `tome remote add` instead");
-        }
-        SyncCommands::Set(_) => {
-            eprintln!("warning: `tome sync set` is deprecated; use `tome remote set` instead");
-        }
-        SyncCommands::Rm(_) => {
-            eprintln!("warning: `tome sync rm` is deprecated; use `tome remote rm` instead");
-        }
-        SyncCommands::List(_) => {
-            eprintln!("warning: `tome sync list` is deprecated; use `tome remote list` instead");
-        }
-        _ => {}
-    }
-
     match args.command {
-        SyncCommands::Add(a) => sync_add(db, a).await,
-        SyncCommands::Set(a) => sync_set(db, a).await,
-        SyncCommands::Rm(a) => sync_rm(db, a).await,
-        SyncCommands::List(a) => sync_list(db, a).await,
         SyncCommands::Config(a) => sync_config(db, a).await,
         SyncCommands::Pull(a) => sync_pull(db, a).await,
         SyncCommands::Push(a) => sync_push(db, a).await,
     }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// sync add
-// ──────────────────────────────────────────────────────────────────────────────
-
-pub(crate) async fn sync_add(db: &DatabaseConnection, args: SyncAddArgs) -> Result<()> {
-    let repo = ops::get_or_create_repository(db, &args.repo).await?;
-    let peer_repo = args.peer_repo.unwrap_or_else(|| args.repo.clone());
-
-    let config = serde_json::json!({ "peer_repo": peer_repo });
-    let peer = ops::insert_sync_peer(db, &args.name, &args.peer_url, repo.id, config).await?;
-
-    println!("sync peer registered: {} (id={}, url={}, peer_repo={})", peer.name, peer.id, peer.url, peer_repo);
-    Ok(())
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// sync set
-// ──────────────────────────────────────────────────────────────────────────────
-
-pub(crate) async fn sync_set(db: &DatabaseConnection, args: SyncSetArgs) -> Result<()> {
-    let repo = ops::get_or_create_repository(db, &args.repo).await?;
-    let peer = ops::find_sync_peer(db, &args.name, repo.id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found in repo {:?}", args.name, args.repo))?;
-
-    if args.peer_url.is_none() && args.peer_repo.is_none() {
-        bail!("nothing to update (specify --peer-url and/or --peer-repo)");
-    }
-
-    // Merge peer_repo into existing config if provided.
-    let new_config = if let Some(ref pr) = args.peer_repo {
-        let mut cfg = peer.config.clone();
-        cfg["peer_repo"] = serde_json::json!(pr);
-        Some(cfg)
-    } else {
-        None
-    };
-
-    let updated = ops::update_sync_peer(db, peer.id, args.peer_url.as_deref(), new_config).await?;
-    let peer_repo = updated.config.get("peer_repo").and_then(|v| v.as_str()).unwrap_or("-");
-    println!("sync peer updated: {} (id={}, url={}, peer_repo={})", updated.name, updated.id, updated.url, peer_repo);
-    Ok(())
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// sync rm
-// ──────────────────────────────────────────────────────────────────────────────
-
-pub(crate) async fn sync_rm(db: &DatabaseConnection, args: SyncRmArgs) -> Result<()> {
-    let repo = ops::get_or_create_repository(db, &args.repo).await?;
-    let peer = ops::find_sync_peer(db, &args.name, repo.id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("sync peer {:?} not found in repo {:?}", args.name, args.repo))?;
-
-    ops::delete_sync_peer(db, peer.id).await?;
-    println!("sync peer removed: {} (id={})", peer.name, peer.id);
-    Ok(())
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// sync list
-// ──────────────────────────────────────────────────────────────────────────────
-
-pub(crate) async fn sync_list(db: &DatabaseConnection, args: SyncListArgs) -> Result<()> {
-    let repo = ops::get_or_create_repository(db, &args.repo).await?;
-    let peers = ops::list_sync_peers(db, repo.id).await?;
-
-    if peers.is_empty() {
-        println!("no sync peers for repo {:?}", args.repo);
-        return Ok(());
-    }
-
-    println!("{:<20} {:<20} url", "name", "last_snapshot_id");
-    println!("{}", "-".repeat(70));
-    for p in peers {
-        let last = p.last_snapshot_id.map(|id| id.to_string()).unwrap_or_else(|| "-".to_owned());
-        println!("{:<20} {:<20} {}", p.name, last, p.url);
-    }
-    Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

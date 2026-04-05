@@ -33,7 +33,7 @@ async fn setup_store_and_peer(env: &Env, store_name: &str, peer_name: &str) -> (
     let peer_db_path = peer_env.root.path().join("tome.db");
     let peer_db_url = format!("sqlite://{}?mode=rwc", peer_db_path.display());
 
-    env.sync_add(peer_name, &peer_db_url, "default", None).await.unwrap();
+    env.remote_add(peer_name, &peer_db_url, "default", None).await.unwrap();
 
     (peer_db_url, peer_env)
 }
@@ -145,7 +145,7 @@ async fn pull_retrieves_snapshots_from_peer() {
     let remote_db_path = remote.root.path().join("tome.db");
     let remote_db_url = format!("sqlite://{}?mode=rwc", remote_db_path.display());
 
-    local.sync_add("remote", &remote_db_url, "default", None).await.unwrap();
+    local.remote_add("remote", &remote_db_url, "default", None).await.unwrap();
 
     local.pull("remote", "default", false, None, None).await.unwrap();
 
@@ -166,7 +166,7 @@ async fn pull_up_to_date_is_noop() {
     let remote_db_path = remote.root.path().join("tome.db");
     let remote_db_url = format!("sqlite://{}?mode=rwc", remote_db_path.display());
 
-    local.sync_add("remote", &remote_db_url, "default", None).await.unwrap();
+    local.remote_add("remote", &remote_db_url, "default", None).await.unwrap();
 
     // No snapshots on remote — pull should succeed but create nothing.
     local.pull("remote", "default", false, None, None).await.unwrap();

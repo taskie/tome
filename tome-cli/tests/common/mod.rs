@@ -342,70 +342,6 @@ impl Env {
 
     // ── sync helpers ────────────────────────────────────────────────────────
 
-    /// Run `tome sync add`.
-    pub async fn sync_add(
-        &self,
-        name: &str,
-        peer_url: &str,
-        repo: &str,
-        peer_repo: Option<&str>,
-    ) -> anyhow::Result<()> {
-        sync::run(
-            &self.db,
-            sync::SyncArgs {
-                command: sync::SyncCommands::Add(sync::SyncAddArgs {
-                    name: name.to_string(),
-                    peer_url: peer_url.to_string(),
-                    repo: repo.to_string(),
-                    peer_repo: peer_repo.map(|s| s.to_string()),
-                }),
-            },
-        )
-        .await
-    }
-
-    /// Run `tome sync set`.
-    pub async fn sync_set(
-        &self,
-        name: &str,
-        peer_url: Option<&str>,
-        peer_repo: Option<&str>,
-        repo: &str,
-    ) -> anyhow::Result<()> {
-        sync::run(
-            &self.db,
-            sync::SyncArgs {
-                command: sync::SyncCommands::Set(sync::SyncSetArgs {
-                    name: name.to_string(),
-                    peer_url: peer_url.map(|s| s.to_string()),
-                    peer_repo: peer_repo.map(|s| s.to_string()),
-                    repo: repo.to_string(),
-                }),
-            },
-        )
-        .await
-    }
-
-    /// Run `tome sync rm`.
-    pub async fn sync_rm(&self, name: &str, repo: &str) -> anyhow::Result<()> {
-        sync::run(
-            &self.db,
-            sync::SyncArgs {
-                command: sync::SyncCommands::Rm(sync::SyncRmArgs { name: name.to_string(), repo: repo.to_string() }),
-            },
-        )
-        .await
-    }
-
-    /// Run `tome sync list`.
-    pub async fn sync_list(&self, repo: &str) -> anyhow::Result<()> {
-        sync::run(
-            &self.db,
-            sync::SyncArgs { command: sync::SyncCommands::List(sync::SyncListArgs { repo: repo.to_string() }) },
-        )
-        .await
-    }
-
     /// Run `tome sync config`.
     pub async fn sync_config(
         &self,
@@ -445,7 +381,7 @@ impl Env {
         remote::run(
             &self.db,
             remote::RemoteArgs {
-                command: remote::RemoteCommands::Add(sync::SyncAddArgs {
+                command: remote::RemoteCommands::Add(remote::RemoteAddArgs {
                     name: name.to_string(),
                     peer_url: peer_url.to_string(),
                     repo: repo.to_string(),
@@ -467,7 +403,7 @@ impl Env {
         remote::run(
             &self.db,
             remote::RemoteArgs {
-                command: remote::RemoteCommands::Set(sync::SyncSetArgs {
+                command: remote::RemoteCommands::Set(remote::RemoteSetArgs {
                     name: name.to_string(),
                     peer_url: peer_url.map(|s| s.to_string()),
                     peer_repo: peer_repo.map(|s| s.to_string()),
@@ -483,7 +419,7 @@ impl Env {
         remote::run(
             &self.db,
             remote::RemoteArgs {
-                command: remote::RemoteCommands::Rm(sync::SyncRmArgs {
+                command: remote::RemoteCommands::Rm(remote::RemoteRmArgs {
                     name: name.to_string(),
                     repo: repo.to_string(),
                 }),
@@ -496,7 +432,9 @@ impl Env {
     pub async fn remote_list(&self, repo: &str) -> anyhow::Result<()> {
         remote::run(
             &self.db,
-            remote::RemoteArgs { command: remote::RemoteCommands::List(sync::SyncListArgs { repo: repo.to_string() }) },
+            remote::RemoteArgs {
+                command: remote::RemoteCommands::List(remote::RemoteListArgs { repo: repo.to_string() }),
+            },
         )
         .await
     }

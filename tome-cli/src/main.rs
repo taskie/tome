@@ -30,7 +30,7 @@ enum Commands {
     Store(commands::store::StoreArgs),
     /// Manage remote peers (add, set, rm, list)
     Remote(commands::remote::RemoteArgs),
-    /// Manage sync peers and pull/push changes
+    /// Low-level sync operations (config, pull, push)
     Sync(commands::sync::SyncArgs),
     /// Manage blob tags (key=value metadata)
     Tag(commands::tag::TagArgs),

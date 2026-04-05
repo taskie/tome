@@ -363,8 +363,6 @@ tome remote list                                      # list peers
 
 Low-level sync operations. Prefer `tome push` / `tome pull` for everyday use.
 
-> **Note:** `tome sync add/set/rm/list` are deprecated — use `tome remote` instead.
-
 ```bash
 tome sync config <name> <key> <value>               # set a peer config value
 tome sync config <name> <key>                        # get a peer config value
